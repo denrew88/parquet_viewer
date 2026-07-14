@@ -1,0 +1,975 @@
+{
+  "schemaVersion": 2,
+  "generatorRevision": "phase8-cardinality-v1",
+  "seed": 20260714,
+  "generatedAtUtc": "2026-07-14T13:35:40.739715+00:00",
+  "profile": "gate",
+  "settings": {
+    "rows": 50000,
+    "columns": 10,
+    "rowGroupSize": 10000,
+    "compression": "zstd",
+    "compressionLevel": 3,
+    "streamingMaxRowsInMemory": 10000
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "pyarrow": "22.0.0",
+    "numpy": "2.3.5"
+  },
+  "cardinalityContract": {
+    "sameLogicalSchema": true,
+    "sameRowGroupAndCompressionSettings": true,
+    "low": "repeated categorical, integer, timestamp, decimal, label, score, and code values",
+    "high": "unique or near-unique values for the same logical columns where the type permits",
+    "fileBytesArePassCondition": false
+  },
+  "fixtures": [
+    {
+      "id": "F-P8-12",
+      "path": "logs/phase-8/fixtures/f-p8-12-low.parquet",
+      "format": "parquet",
+      "cardinality": "low",
+      "rows": 50000,
+      "columns": 10,
+      "rowGroupSize": 10000,
+      "rowGroups": 5,
+      "bytes": 105165,
+      "sha256": "065b986f02475124f3570034b4a551de09b445d0573ecb410b6438ff8d17d7cb",
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 99366,
+        "uncompressedBytes": 2443621,
+        "compressedToUncompressedRatio": 0.04066343,
+        "uncompressedToCompressedRatio": 24.59212407
+      },
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(23, 3)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "columnEncodings": [
+        {
+          "name": "row_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "category",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "group_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "active",
+          "encodings": [
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "optional_value",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "event_time",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "amount",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "label",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "score",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "code",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        }
+      ],
+      "cardinalitySample": {
+        "rows": 10000,
+        "distinctValues": {
+          "row_id": 10000,
+          "category": 16,
+          "group_id": 128,
+          "active": 2,
+          "optional_value": 32,
+          "event_time": 1024,
+          "amount": 1000,
+          "label": 256,
+          "score": 256,
+          "code": 64
+        }
+      },
+      "representativePages": [
+        {
+          "name": "first",
+          "offset": 0,
+          "rows": 200,
+          "checksumSha256": "37796c89d550d510dba74a2d3b8754963d26359018917e8cf4b5356dcb75de2d",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "1c5636d156c2980e5072cafd4b702e4ba1b424e7ec70d02a974c97086885e988"
+        },
+        {
+          "name": "firstRowGroupBoundary",
+          "offset": 10000,
+          "rows": 200,
+          "checksumSha256": "baa4d27d0e0267fe8c7cc0e45db62d0ec0754795f31a6343e27be8eebf88476d",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "79972e3502b644e63fdc49ae7444a7b0a9c48d840854eb985b660d890baf3cec"
+        },
+        {
+          "name": "middle",
+          "offset": 25000,
+          "rows": 200,
+          "checksumSha256": "92645dd76630d7eae784f9f82ffcd71c9bae56fbce766032c3ba7068b030e25e",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "2267c9982e053d84ebb8eca1000039b6b0de4f02d94b345c066aad181216efef"
+        },
+        {
+          "name": "last",
+          "offset": 49800,
+          "rows": 200,
+          "checksumSha256": "ddd185d5dc22ed30040d6f39e7daeeef2d13bbc62ce5a7412a5d0bd30c6519a7",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "5989929565cbea653a1b599605db9a4cbe5fb108c7021626301645f69a4d6f95"
+        }
+      ]
+    },
+    {
+      "id": "F-P8-13",
+      "path": "logs/phase-8/fixtures/f-p8-13-high.parquet",
+      "format": "parquet",
+      "cardinality": "high",
+      "rows": 50000,
+      "columns": 10,
+      "rowGroupSize": 10000,
+      "rowGroups": 5,
+      "bytes": 3087747,
+      "sha256": "22169eb3c06d58944e979c3c5804294faf1c8669d2d8fb8e24ab1061cddfa8ff",
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 3081357,
+        "uncompressedBytes": 6823816,
+        "compressedToUncompressedRatio": 0.45155922,
+        "uncompressedToCompressedRatio": 2.21454898
+      },
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(23, 3)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "columnEncodings": [
+        {
+          "name": "row_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "category",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "group_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "active",
+          "encodings": [
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "optional_value",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "event_time",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "amount",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "label",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "score",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "code",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        }
+      ],
+      "cardinalitySample": {
+        "rows": 10000,
+        "distinctValues": {
+          "row_id": 10000,
+          "category": 10000,
+          "group_id": 10000,
+          "active": 2,
+          "optional_value": 9896,
+          "event_time": 10000,
+          "amount": 10000,
+          "label": 10000,
+          "score": 10000,
+          "code": 10000
+        }
+      },
+      "representativePages": [
+        {
+          "name": "first",
+          "offset": 0,
+          "rows": 200,
+          "checksumSha256": "2381cdd54497090637cd1bf48f5c8f21d1b9f366812e8d127bb27caae87bdb3b",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "c0a53a711020add23ba2dfbea72b89a69d77fd36dd323bce12b5f67013c2a690"
+        },
+        {
+          "name": "firstRowGroupBoundary",
+          "offset": 10000,
+          "rows": 200,
+          "checksumSha256": "ce03517bb512081899c31ed5c97042221aef1a466c68714c20190e36bb8241ab",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "49dcdb294bb97e8ae1898f5e0c429af9fc1c59c700384b11bd931f4e76c929f7"
+        },
+        {
+          "name": "middle",
+          "offset": 25000,
+          "rows": 200,
+          "checksumSha256": "a1d7c0bdc173c4524d538837d95dc488e04e9a94ef56234c14d7b206238e6d0e",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "2b9878d71ef3923a61da6c0b14dbde0a907c6ccaa376cd9dc7c1940eb6a9b7d3"
+        },
+        {
+          "name": "last",
+          "offset": 49800,
+          "rows": 200,
+          "checksumSha256": "7abff59bb50858380fef2735138a7d12e605297a11c77c20e60068cc16adfeb9",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "814400d51468ced8f6ff5e56329c41d12af81e58da191c49d77fbccf91818921"
+        }
+      ]
+    }
+  ],
+  "smallDocuments": {
+    "id": "F-P8-09",
+    "openLimit": 64,
+    "batchLimit": 32,
+    "documents": [
+      {
+        "ordinal": 1,
+        "path": "logs/phase-8/fixtures/small-documents/document-01.csv",
+        "format": "csv",
+        "bytes": 287,
+        "sha256": "aec17c0a1dd4552cf3f522666186356e5f0b6f9aba2f338bdd006afe46876bac"
+      },
+      {
+        "ordinal": 2,
+        "path": "logs/phase-8/fixtures/small-documents/document-02.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "bc100bf874224003eeccab9fe074a06ebaf6f43562a6a17e9fa2245c082b6024"
+      },
+      {
+        "ordinal": 3,
+        "path": "logs/phase-8/fixtures/small-documents/document-03.csv",
+        "format": "csv",
+        "bytes": 287,
+        "sha256": "24a3360def2c7c3ebf9ded91e582f74c3d2d09f50dc76c48aeba4903f604f298"
+      },
+      {
+        "ordinal": 4,
+        "path": "logs/phase-8/fixtures/small-documents/document-04.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "fe18af1bcedfdaaa28401139edca7c990cfbb72c66ea8585e5ae2608ae4bcbe3"
+      },
+      {
+        "ordinal": 5,
+        "path": "logs/phase-8/fixtures/small-documents/document-05.csv",
+        "format": "csv",
+        "bytes": 287,
+        "sha256": "4555942ec68ad97788bb0f00b5d8e2e5e2b6b70184632e8b83fce89a1d16a259"
+      },
+      {
+        "ordinal": 6,
+        "path": "logs/phase-8/fixtures/small-documents/document-06.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "e0fe28dbfdaaf3bd229a3e6a79921c5ab0ae33f85221b95fe13efb6d99c97ac0"
+      },
+      {
+        "ordinal": 7,
+        "path": "logs/phase-8/fixtures/small-documents/document-07.csv",
+        "format": "csv",
+        "bytes": 287,
+        "sha256": "5fe428e23908553d9cf56717f98df6ee02a9d09422aa995d6f5435370a4366c2"
+      },
+      {
+        "ordinal": 8,
+        "path": "logs/phase-8/fixtures/small-documents/document-08.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "1e78d9928160ade7dbc44e4f8f10fdb82cd9b7ac159d1371fd91236b795c5fc9"
+      },
+      {
+        "ordinal": 9,
+        "path": "logs/phase-8/fixtures/small-documents/document-09.csv",
+        "format": "csv",
+        "bytes": 287,
+        "sha256": "2ac8f3f85d965c8478cfcfab697f9585ed5039c0490b828f67c19ced7cafebc6"
+      },
+      {
+        "ordinal": 10,
+        "path": "logs/phase-8/fixtures/small-documents/document-10.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "cd92e05c4ce4e1618e8c345304d8f8c79996ba5faceea199b6998bb1792beb97"
+      },
+      {
+        "ordinal": 11,
+        "path": "logs/phase-8/fixtures/small-documents/document-11.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "2493531337bd9b9cac420fd3697c77cc374c77d64fbb76695e3fc8ff4cee0c34"
+      },
+      {
+        "ordinal": 12,
+        "path": "logs/phase-8/fixtures/small-documents/document-12.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "9117eae88e1165f07dca7b2169ba84b656e41adf69fa720129c80ccba4b97002"
+      },
+      {
+        "ordinal": 13,
+        "path": "logs/phase-8/fixtures/small-documents/document-13.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "5eafaa3c37c13942f25c20c34bd49257679c035a434891a8fc4924a9acd003b0"
+      },
+      {
+        "ordinal": 14,
+        "path": "logs/phase-8/fixtures/small-documents/document-14.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "57a5d22692fd1d4c122ec2bab43c379f22f91f65b543c8b17bc588f31ad83f64"
+      },
+      {
+        "ordinal": 15,
+        "path": "logs/phase-8/fixtures/small-documents/document-15.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "0526373babcc48a732e32222e41802cf1549ba4f6d3167c2af18ef2548b6bb12"
+      },
+      {
+        "ordinal": 16,
+        "path": "logs/phase-8/fixtures/small-documents/document-16.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "9e0cf32974bece331d0450a10d50997566b80dff4a98af54c833d7bd99765c05"
+      },
+      {
+        "ordinal": 17,
+        "path": "logs/phase-8/fixtures/small-documents/document-17.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "34eb7105185a377f50864adb2cf11acc837dde902de3bde313f60d188e06c8f4"
+      },
+      {
+        "ordinal": 18,
+        "path": "logs/phase-8/fixtures/small-documents/document-18.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "679e57d1f46ab84b7ad1292f31b7c0713a30a0f567237b2ec079800e698f6c88"
+      },
+      {
+        "ordinal": 19,
+        "path": "logs/phase-8/fixtures/small-documents/document-19.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "705954359eddaee40dd7df7155151c14360ceac8dc12f12b4782c9d9ec06d17a"
+      },
+      {
+        "ordinal": 20,
+        "path": "logs/phase-8/fixtures/small-documents/document-20.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "c9ca21bffcc95de074e23d96af79e0006331254fc1a180fa91abc1832364df0b"
+      },
+      {
+        "ordinal": 21,
+        "path": "logs/phase-8/fixtures/small-documents/document-21.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "c4e6760a66e400fe5929e03e1fdb529bc627a73586521ea936df14c98d24b0d9"
+      },
+      {
+        "ordinal": 22,
+        "path": "logs/phase-8/fixtures/small-documents/document-22.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "f2a40f252d39070f4391bf01df98f576e0e11c5165c02903fb99b6ee01d9acd1"
+      },
+      {
+        "ordinal": 23,
+        "path": "logs/phase-8/fixtures/small-documents/document-23.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "3f8fc80da5bfebaf6aba0714b2153eb0094d23cac40b135d8b8221a783d93a40"
+      },
+      {
+        "ordinal": 24,
+        "path": "logs/phase-8/fixtures/small-documents/document-24.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "5688889ebd152a7fd62ad28d95fdb48180079276d3a495dc63d8ba9fd5f284dc"
+      },
+      {
+        "ordinal": 25,
+        "path": "logs/phase-8/fixtures/small-documents/document-25.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "d7283d981a9a6d370ed846f6b5367450494ff2ceef4545e082b911b3a0a2d155"
+      },
+      {
+        "ordinal": 26,
+        "path": "logs/phase-8/fixtures/small-documents/document-26.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "0626a78fe30904b46979a0cec9507e1959d91f5918dc8ed3b7e0a4900fdf9762"
+      },
+      {
+        "ordinal": 27,
+        "path": "logs/phase-8/fixtures/small-documents/document-27.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "9d7d3d18c4beecba48aa168826caf06baed0f4262bbf682b452e820000dbccb3"
+      },
+      {
+        "ordinal": 28,
+        "path": "logs/phase-8/fixtures/small-documents/document-28.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "3d001c7f05eb86c35cf991c59a2389f2e7e1ad85e7ac4a2a12054b468bb2ac5a"
+      },
+      {
+        "ordinal": 29,
+        "path": "logs/phase-8/fixtures/small-documents/document-29.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "a25110cafb4ceece4ee6cd75aa0a5a156d9fef8facd178bb21207bb07c2adeda"
+      },
+      {
+        "ordinal": 30,
+        "path": "logs/phase-8/fixtures/small-documents/document-30.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "7008bf74045c6354e7554fab6106091c7917163650622df23103732d020de41f"
+      },
+      {
+        "ordinal": 31,
+        "path": "logs/phase-8/fixtures/small-documents/document-31.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "296c77bf73c448ca95ca17cb3357f6e3ba9d13d8b8b74d205fc575d2e1c83573"
+      },
+      {
+        "ordinal": 32,
+        "path": "logs/phase-8/fixtures/small-documents/document-32.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "975e39e2e18e8def0869fda3845a032f90f672191c56bb4e10d06c4e5536e617"
+      },
+      {
+        "ordinal": 33,
+        "path": "logs/phase-8/fixtures/small-documents/document-33.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "e63f3fc277926994b5919578d99c6ea0a60fec61fa42ee512b52e8b7e3d8d5da"
+      },
+      {
+        "ordinal": 34,
+        "path": "logs/phase-8/fixtures/small-documents/document-34.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "e19c9c5d7d11f6bd4e243e535dca48256a201847eeb5ee142c7344327bc76cb3"
+      },
+      {
+        "ordinal": 35,
+        "path": "logs/phase-8/fixtures/small-documents/document-35.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "ed2a7a2dbe15e6ac7a4456a8bec39cadf143772c5aefcdb76cbe59296199f005"
+      },
+      {
+        "ordinal": 36,
+        "path": "logs/phase-8/fixtures/small-documents/document-36.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "ed0672457b6c6fa7739deab1a22f194421b235353b2eb2a18450ac73ef0cbd87"
+      },
+      {
+        "ordinal": 37,
+        "path": "logs/phase-8/fixtures/small-documents/document-37.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "066514a2c9c9b0cf09992d19c9d58beaa636f5a499d45438fc6b0a0f22fa70d6"
+      },
+      {
+        "ordinal": 38,
+        "path": "logs/phase-8/fixtures/small-documents/document-38.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "120ab06c2f6b2cc7478a84b49f83efa232d56f95d0cb6e3b501679506007f1ae"
+      },
+      {
+        "ordinal": 39,
+        "path": "logs/phase-8/fixtures/small-documents/document-39.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "d5214316a54a94c67e5ec8d855db8c5b4fe5537e819726e5b97d5a12738bda31"
+      },
+      {
+        "ordinal": 40,
+        "path": "logs/phase-8/fixtures/small-documents/document-40.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "1f8fb06240155c51e7b2a51367594d3438a1ab291b065d3984ee6407b27adb5d"
+      },
+      {
+        "ordinal": 41,
+        "path": "logs/phase-8/fixtures/small-documents/document-41.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "5b8f6457a640961cd6e2a3faaaedabbed8b3e39ab2935dd283440ab9483d5551"
+      },
+      {
+        "ordinal": 42,
+        "path": "logs/phase-8/fixtures/small-documents/document-42.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "dc3c2c60c1df3ad6c029f048f81904c656062f104d28d130bc26163f841ae886"
+      },
+      {
+        "ordinal": 43,
+        "path": "logs/phase-8/fixtures/small-documents/document-43.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "f569e05a43d81289cdc1320a80b340f127c2477c65564ed4444f964d15fce254"
+      },
+      {
+        "ordinal": 44,
+        "path": "logs/phase-8/fixtures/small-documents/document-44.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "e96bc7ca1a54d3d5a80ac8e4991d3dff836f54f5baa951ce98fc1ea24c90cf1a"
+      },
+      {
+        "ordinal": 45,
+        "path": "logs/phase-8/fixtures/small-documents/document-45.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "175725318e7e60f725cbb937579156fe75f6ee189f5ddecd8e7772dd1c1a7d9d"
+      },
+      {
+        "ordinal": 46,
+        "path": "logs/phase-8/fixtures/small-documents/document-46.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "ff5061b536b03cd52234dbf159ad92c125decc1a35be106e0ebfebab6e753151"
+      },
+      {
+        "ordinal": 47,
+        "path": "logs/phase-8/fixtures/small-documents/document-47.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "09c0d919245353b0e33d15bbdd53986b2416f40544c53822d59b90776f6c26cd"
+      },
+      {
+        "ordinal": 48,
+        "path": "logs/phase-8/fixtures/small-documents/document-48.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "c206efce80fb174850c9bc67c30d8594a0d25b0ba64deb0594d55ae6940b1621"
+      },
+      {
+        "ordinal": 49,
+        "path": "logs/phase-8/fixtures/small-documents/document-49.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "44e4190f782c8d24a6a49758b7f95f73f573831c2664def6030b57737fc49c6d"
+      },
+      {
+        "ordinal": 50,
+        "path": "logs/phase-8/fixtures/small-documents/document-50.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "b5edf6e7290e828d2631a50cee0024b03a24ffa926c3112b851b480543f0b571"
+      },
+      {
+        "ordinal": 51,
+        "path": "logs/phase-8/fixtures/small-documents/document-51.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "f974ab737eb6f0d0750f33c16b2dba83344cd7a26c25bb78d932033ebc3fda0b"
+      },
+      {
+        "ordinal": 52,
+        "path": "logs/phase-8/fixtures/small-documents/document-52.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "36c4a557b304df2b6ff851b63bc2fbfd6213d0c19d9df433ed9134b7ca8154ac"
+      },
+      {
+        "ordinal": 53,
+        "path": "logs/phase-8/fixtures/small-documents/document-53.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "aec9dc568b2bdbb4953522b61ca125266eb02e2db0e666526c04e34baca2219d"
+      },
+      {
+        "ordinal": 54,
+        "path": "logs/phase-8/fixtures/small-documents/document-54.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "7a2308b3851cd056f537506415d5132d3f5abde53751518647a6ecaad1a67471"
+      },
+      {
+        "ordinal": 55,
+        "path": "logs/phase-8/fixtures/small-documents/document-55.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "5e38889c1a10c74943038444053ace77432bf834d84cd3672f34f8ae6616c3b0"
+      },
+      {
+        "ordinal": 56,
+        "path": "logs/phase-8/fixtures/small-documents/document-56.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "3db99890169d11d8f5ea321742275705ec55e95c2a1e2bb78402087026914714"
+      },
+      {
+        "ordinal": 57,
+        "path": "logs/phase-8/fixtures/small-documents/document-57.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "96c3cc5bd64ff438846e619b9b99635c45703c997081b03674307fd5fc5e250b"
+      },
+      {
+        "ordinal": 58,
+        "path": "logs/phase-8/fixtures/small-documents/document-58.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "2a3a61e10225f190938d0c633c8687f56f281e33a645db28f2a64043d5d6415f"
+      },
+      {
+        "ordinal": 59,
+        "path": "logs/phase-8/fixtures/small-documents/document-59.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "f847e9067db33e9017a260643a07910eb65db0bd68f7b8d58d8a07da419466a4"
+      },
+      {
+        "ordinal": 60,
+        "path": "logs/phase-8/fixtures/small-documents/document-60.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "2ee4296ab1e88cffa42a2ea1e61c7ab7fd96cc5d1a28bf3c5aaee2cf2101de53"
+      },
+      {
+        "ordinal": 61,
+        "path": "logs/phase-8/fixtures/small-documents/document-61.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "38022ea45ba8c85681d56d3f28c727a410b120bc18ccf40fa16c85aabc871fab"
+      },
+      {
+        "ordinal": 62,
+        "path": "logs/phase-8/fixtures/small-documents/document-62.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "3ad777bebdf14593aa19054c295d2105dd4530e82f6724e06efe07e79cb9d741"
+      },
+      {
+        "ordinal": 63,
+        "path": "logs/phase-8/fixtures/small-documents/document-63.csv",
+        "format": "csv",
+        "bytes": 303,
+        "sha256": "ba1a4ec1493d73a22652e3c26a357993d5ec85a4250a25fba3ed594927dc7f0c"
+      },
+      {
+        "ordinal": 64,
+        "path": "logs/phase-8/fixtures/small-documents/document-64.parquet",
+        "format": "parquet",
+        "bytes": 1808,
+        "sha256": "318fecaa339aa58ff539c32d2f29a22d923efc57599c4f6e91c521fc6477d6b9"
+      }
+    ],
+    "overflowDocument": {
+      "ordinal": 65,
+      "path": "logs/phase-8/fixtures/small-documents/document-65-overflow.csv",
+      "format": "csv",
+      "bytes": 33,
+      "sha256": "fee16e17f960083ce0a9ded9057c6114f62700b1e624f65c9649f44398b2cda6",
+      "purpose": "65th document non-destructive rejection boundary"
+    }
+  }
+}

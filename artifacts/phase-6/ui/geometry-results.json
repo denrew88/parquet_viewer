@@ -1,0 +1,7 @@
+{
+  "phase": 6,
+  "status": "BLOCKED",
+  "automatedSelectionTests": 36,
+  "browserViewports": [],
+  "reason": "Browser backend and visible native interaction are unavailable"
+}

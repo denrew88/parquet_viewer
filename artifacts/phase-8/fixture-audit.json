@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-14T13:54:25.776669+00:00",
+  "manifest": "artifacts/phase-8/fixture-manifest.json",
+  "manifestSha256": "7878564644077103a8a343a875953f64ca8674d621af63ec804ae067e64c3dfb",
+  "status": "PASS",
+  "fixtures": [
+    {
+      "id": "F-P8-12",
+      "status": "PASS",
+      "path": "logs/phase-8/fixtures/f-p8-12-low.parquet",
+      "checkedFields": [
+        "rows",
+        "columns",
+        "rowGroupSize",
+        "rowGroups",
+        "bytes",
+        "sha256",
+        "compression",
+        "schema",
+        "columnEncodings",
+        "cardinalitySample",
+        "representativePages"
+      ]
+    },
+    {
+      "id": "F-P8-13",
+      "status": "PASS",
+      "path": "logs/phase-8/fixtures/f-p8-13-high.parquet",
+      "checkedFields": [
+        "rows",
+        "columns",
+        "rowGroupSize",
+        "rowGroups",
+        "bytes",
+        "sha256",
+        "compression",
+        "schema",
+        "columnEncodings",
+        "cardinalitySample",
+        "representativePages"
+      ]
+    }
+  ],
+  "smallDocumentCount": 64,
+  "overflowDocumentVerified": true
+}

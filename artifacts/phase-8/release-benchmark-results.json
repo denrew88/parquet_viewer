@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "manifestSha256": "ad1674667f055a51b1075daf6972c488edc5a70e89ddb3fc30f5a891de321a02",
+  "environment": {
+    "generatedAtUtc": "2026-07-14T14:27:02.549193+00:00",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.11.14",
+    "powerCondition": "not programmatically pinned",
+    "antivirusAndOsCache": "not disabled; results are gate-profile engineering measurements"
+  },
+  "measurement": "in-process Rust DataSource and DocumentRegistry; release optimized runner",
+  "raw": [
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "f-p8-12-low.parquet",
+      "fixtureBytes": 11757872,
+      "declaredRows": 10000000,
+      "runs": 3,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 2.3167999999999997,
+          "firstPageMs": 7.1961,
+          "cachedPageMs": 0.2182,
+          "randomPageMs": 22.5443
+        },
+        {
+          "iteration": 2,
+          "openMs": 1.1846,
+          "firstPageMs": 6.4327000000000005,
+          "cachedPageMs": 0.18259999999999998,
+          "randomPageMs": 24.5232
+        },
+        {
+          "iteration": 3,
+          "openMs": 1.2282,
+          "firstPageMs": 7.0102,
+          "cachedPageMs": 0.2079,
+          "randomPageMs": 22.746100000000002
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "f-p8-13-high.parquet",
+      "fixtureBytes": 579719187,
+      "declaredRows": 10000000,
+      "runs": 3,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 1.6431,
+          "firstPageMs": 25.5122,
+          "cachedPageMs": 0.2468,
+          "randomPageMs": 76.4003
+        },
+        {
+          "iteration": 2,
+          "openMs": 1.642,
+          "firstPageMs": 23.8904,
+          "cachedPageMs": 0.2411,
+          "randomPageMs": 71.6282
+        },
+        {
+          "iteration": 3,
+          "openMs": 1.2756,
+          "firstPageMs": 25.5963,
+          "cachedPageMs": 0.2664,
+          "randomPageMs": 87.22370000000001
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "fixtureName": "f-p8-12-low.parquet",
+      "open": {
+        "medianMs": 1.228,
+        "p95Ms": 2.317,
+        "maxMs": 2.317
+      },
+      "firstPage": {
+        "medianMs": 7.01,
+        "p95Ms": 7.196,
+        "maxMs": 7.196
+      },
+      "cachedPage": {
+        "medianMs": 0.208,
+        "p95Ms": 0.218,
+        "maxMs": 0.218
+      },
+      "randomPage": {
+        "medianMs": 22.746,
+        "p95Ms": 24.523,
+        "maxMs": 24.523
+      }
+    },
+    {
+      "fixtureName": "f-p8-13-high.parquet",
+      "open": {
+        "medianMs": 1.642,
+        "p95Ms": 1.643,
+        "maxMs": 1.643
+      },
+      "firstPage": {
+        "medianMs": 25.512,
+        "p95Ms": 25.596,
+        "maxMs": 25.596
+      },
+      "cachedPage": {
+        "medianMs": 0.247,
+        "p95Ms": 0.266,
+        "maxMs": 0.266
+      },
+      "randomPage": {
+        "medianMs": 76.4,
+        "p95Ms": 87.224,
+        "maxMs": 87.224
+      }
+    }
+  ]
+}

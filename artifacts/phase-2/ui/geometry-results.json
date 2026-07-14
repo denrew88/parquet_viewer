@@ -1,0 +1,15 @@
+{
+  "phase": 2,
+  "status": "BLOCKED",
+  "reason": "No in-app Browser backend is available",
+  "browserViewports": [],
+  "nativeSupplement": {
+    "viewport": "1196x799",
+    "screenshot": "native-desktop.png",
+    "observations": [
+      "toolbar, tabs, grid, pagination, status bar are visible",
+      "six columns render without overlapping controls",
+      "grid uses horizontal truncation for long timestamp values"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-15",
+  "status": "PARTIAL_PASS",
+  "native": [
+    {
+      "viewport": "1440x900",
+      "artifact": "artifacts/phase-8/ui/native-main-1440x900.png",
+      "status": "PASS",
+      "checks": ["multi-document tabs", "grid", "pager", "status bar", "no overlap"]
+    },
+    {
+      "viewport": "1024x768",
+      "artifact": "artifacts/phase-8/ui/native-context-1024x768.png",
+      "status": "PASS",
+      "checks": ["selection", "context menu", "viewport containment", "no clipping"]
+    },
+    {
+      "viewport": "800x600",
+      "artifact": "artifacts/phase-8/ui/native-tabs-800x600.png",
+      "status": "PASS",
+      "checks": ["8-tab overflow", "scroll controls", "grid", "no overlap"]
+    }
+  ],
+  "browser": {
+    "status": "BLOCKED",
+    "reason": "No browser is available"
+  },
+  "native150PercentDpi": {
+    "status": "BLOCKED",
+    "reason": "The current environment did not expose a controlled 150% DPI desktop session"
+  }
+}

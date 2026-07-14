@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-14T13:59:00.150939+00:00",
+  "status": "PASS",
+  "executable": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "configuration": {
+    "instances": 5,
+    "cycles": 1,
+    "totalInvocations": 5,
+    "holdSeconds": 5.0
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 27192,
+          "file": null,
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 1245600,
+              "title": ""
+            },
+            {
+              "handle": 5442568,
+              "title": ""
+            },
+            {
+              "handle": 19990476,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 25140,
+          "file": null,
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4131392,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 5768,
+          "file": null,
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4393194,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 21296,
+          "file": null,
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 2755096,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 14140,
+          "file": null,
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6884626,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Process and top-level window independence only; no native UI interaction is performed.",
+    "Cleanup closes only processes launched by this harness."
+  ]
+}

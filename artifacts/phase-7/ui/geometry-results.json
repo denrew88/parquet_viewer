@@ -1,0 +1,7 @@
+{
+  "phase": 7,
+  "status": "BLOCKED",
+  "browserViewports": [],
+  "nativeScreenshot": null,
+  "reason": "The release process had a main window title but no visible EnumWindows handle in the automation desktop"
+}

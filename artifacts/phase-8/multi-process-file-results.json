@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-14T14:01:23.713415+00:00",
+  "status": "PASS",
+  "executable": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "configuration": {
+    "instances": 2,
+    "cycles": 1,
+    "totalInvocations": 2,
+    "holdSeconds": 5.0
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 1140,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-7\\small-parquet.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8326282,
+              "title": ""
+            },
+            {
+              "handle": 3279590,
+              "title": ""
+            },
+            {
+              "handle": 12452082,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 29292,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-7\\small-parquet.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5311692,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Process and top-level window independence only; no native UI interaction is performed.",
+    "Cleanup closes only processes launched by this harness."
+  ]
+}

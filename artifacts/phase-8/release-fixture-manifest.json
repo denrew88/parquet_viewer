@@ -1,0 +1,519 @@
+{
+  "schemaVersion": 2,
+  "generatorRevision": "phase8-cardinality-v1",
+  "seed": 20260714,
+  "generatedAtUtc": "2026-07-14T14:08:42.221526+00:00",
+  "profile": "release",
+  "settings": {
+    "rows": 10000000,
+    "columns": 10,
+    "rowGroupSize": 100000,
+    "compression": "zstd",
+    "compressionLevel": 3,
+    "streamingMaxRowsInMemory": 100000
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "pyarrow": "22.0.0",
+    "numpy": "2.3.5"
+  },
+  "cardinalityContract": {
+    "sameLogicalSchema": true,
+    "sameRowGroupAndCompressionSettings": true,
+    "low": "repeated categorical, integer, timestamp, decimal, label, score, and code values",
+    "high": "unique or near-unique values for the same logical columns where the type permits",
+    "fileBytesArePassCondition": false
+  },
+  "fixtures": [
+    {
+      "id": "F-P8-12",
+      "path": "logs/phase-8/release-fixtures/f-p8-12-low.parquet",
+      "format": "parquet",
+      "cardinality": "low",
+      "rows": 10000000,
+      "columns": 10,
+      "rowGroupSize": 100000,
+      "rowGroups": 100,
+      "bytes": 11757872,
+      "sha256": "eb38e4baef3406f43bfb192b6f748699addd547b7f37dbf330cbc9651006bc06",
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 11661935,
+        "uncompressedBytes": 484412112,
+        "compressedToUncompressedRatio": 0.02407441,
+        "uncompressedToCompressedRatio": 41.53788475
+      },
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(23, 3)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "columnEncodings": [
+        {
+          "name": "row_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "category",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "group_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "active",
+          "encodings": [
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "optional_value",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "event_time",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "amount",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "label",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "score",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "code",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        }
+      ],
+      "cardinalitySample": {
+        "rows": 100000,
+        "distinctValues": {
+          "row_id": 100000,
+          "category": 16,
+          "group_id": 128,
+          "active": 2,
+          "optional_value": 32,
+          "event_time": 1024,
+          "amount": 1000,
+          "label": 256,
+          "score": 256,
+          "code": 64
+        }
+      },
+      "representativePages": [
+        {
+          "name": "first",
+          "offset": 0,
+          "rows": 200,
+          "checksumSha256": "37796c89d550d510dba74a2d3b8754963d26359018917e8cf4b5356dcb75de2d",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "1c5636d156c2980e5072cafd4b702e4ba1b424e7ec70d02a974c97086885e988"
+        },
+        {
+          "name": "firstRowGroupBoundary",
+          "offset": 100000,
+          "rows": 200,
+          "checksumSha256": "8e0210d7993ad9b1bdc2c06ef50753a7627af5fe055d42817eeaf43ddbb41601",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "0b0abd7198ce98d2f1efdeefbe56f0192c98a0de3b6935636e8d04c7619b7150"
+        },
+        {
+          "name": "middle",
+          "offset": 5000000,
+          "rows": 200,
+          "checksumSha256": "88366ec20bd507dfdfa3a54d8c8ce8855ef172593cfc330ac687f31ff8bc8fcb",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "fb1faae09fb417ba5f82f2fbe22d7e73bb4bdfbd820600dbc6d29feef4957583"
+        },
+        {
+          "name": "last",
+          "offset": 9999800,
+          "rows": 200,
+          "checksumSha256": "b1d5487bbe4906f45e5308e9eeb649e9edc160286f51895ecc9289886ad165db",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "ee8c58c5100dfe4273a822c0722e715396da130b8908626a8b154be2c3d3f3ab"
+        }
+      ]
+    },
+    {
+      "id": "F-P8-13",
+      "path": "logs/phase-8/release-fixtures/f-p8-13-high.parquet",
+      "format": "parquet",
+      "cardinality": "high",
+      "rows": 10000000,
+      "columns": 10,
+      "rowGroupSize": 100000,
+      "rowGroups": 100,
+      "bytes": 579719187,
+      "sha256": "d5c46ec70876e5f050e44d7e1bdc77cf6f507e37f50e8ca0e0a545f6fd3d1b08",
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 579608566,
+        "uncompressedBytes": 1334704012,
+        "compressedToUncompressedRatio": 0.43426,
+        "uncompressedToCompressedRatio": 2.30276792
+      },
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(23, 3)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "columnEncodings": [
+        {
+          "name": "row_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "category",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "group_id",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "active",
+          "encodings": [
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "optional_value",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "event_time",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "amount",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "label",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "score",
+          "encodings": [
+            "PLAIN",
+            "RLE"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        },
+        {
+          "name": "code",
+          "encodings": [
+            "PLAIN",
+            "RLE",
+            "RLE_DICTIONARY"
+          ],
+          "compression": [
+            "ZSTD"
+          ]
+        }
+      ],
+      "cardinalitySample": {
+        "rows": 100000,
+        "distinctValues": {
+          "row_id": 100000,
+          "category": 100000,
+          "group_id": 100000,
+          "active": 2,
+          "optional_value": 98969,
+          "event_time": 100000,
+          "amount": 100000,
+          "label": 100000,
+          "score": 100000,
+          "code": 100000
+        }
+      },
+      "representativePages": [
+        {
+          "name": "first",
+          "offset": 0,
+          "rows": 200,
+          "checksumSha256": "2381cdd54497090637cd1bf48f5c8f21d1b9f366812e8d127bb27caae87bdb3b",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "c0a53a711020add23ba2dfbea72b89a69d77fd36dd323bce12b5f67013c2a690"
+        },
+        {
+          "name": "firstRowGroupBoundary",
+          "offset": 100000,
+          "rows": 200,
+          "checksumSha256": "defd78702890821b734ed290ddffdd9ca5dfccc0bb99391ccffd4661d46e3985",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "ee274a417e253116b14b91fe5246a8ea81e66c8b7f5c1fb48f47960dcf3211ec"
+        },
+        {
+          "name": "middle",
+          "offset": 5000000,
+          "rows": 200,
+          "checksumSha256": "d5d543041014f1173a6a3d58f9eb27938aa7cc78e537627cd703d65c7e5cb7ec",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "fce008cd03c39293c1a102bd2908485a904d779d8511a21d687e3581af1ebce8"
+        },
+        {
+          "name": "last",
+          "offset": 9999800,
+          "rows": 200,
+          "checksumSha256": "193768afbf321de112c0a1eea5d10095bb27eda42991797952dedac613c3d290",
+          "projectionColumns": [
+            "row_id",
+            "category",
+            "amount"
+          ],
+          "projectionChecksumSha256": "5a1c62023cf390663c427b434550f7c19826d9f59f325caadb9a96fe607e9d02"
+        }
+      ]
+    }
+  ],
+  "smallDocuments": {
+    "id": "F-P8-09",
+    "openLimit": 64,
+    "batchLimit": 32,
+    "documents": [],
+    "overflowDocument": null
+  }
+}

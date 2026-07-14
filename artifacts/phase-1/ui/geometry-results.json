@@ -1,0 +1,17 @@
+{
+  "status": "BLOCKED",
+  "reason": "No in-app Browser backend is available for DOM geometry collection.",
+  "browserViewports": [
+    { "name": "desktop", "width": 1440, "height": 900, "status": "BLOCKED" },
+    { "name": "compact", "width": 1024, "height": 768, "status": "BLOCKED" },
+    { "name": "minimum", "width": 800, "height": 600, "status": "BLOCKED" }
+  ],
+  "nativeSupplement": {
+    "width": 800,
+    "height": 600,
+    "status": "PASS",
+    "evidence": "native-minimum.png",
+    "substitutesForBrowserGeometry": false
+  }
+}
+

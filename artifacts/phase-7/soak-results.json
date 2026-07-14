@@ -1,0 +1,926 @@
+{
+  "schemaVersion": 1,
+  "command": "soak",
+  "iterations": 100,
+  "successfulIterations": 100,
+  "failures": [],
+  "startResource": {
+    "workingSetBytes": 3969024,
+    "handleCount": 49
+  },
+  "endResource": {
+    "workingSetBytes": 7376896,
+    "handleCount": 49
+  },
+  "samples": [
+    {
+      "iteration": 1,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 31.456999999999997,
+      "resource": {
+        "workingSetBytes": 5742592,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 2,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 76.2719,
+      "resource": {
+        "workingSetBytes": 5910528,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 3,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 51.2054,
+      "resource": {
+        "workingSetBytes": 6107136,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 4,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 35.2699,
+      "resource": {
+        "workingSetBytes": 6176768,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 5,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.6673,
+      "resource": {
+        "workingSetBytes": 6303744,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 6,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 60.6747,
+      "resource": {
+        "workingSetBytes": 6074368,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 7,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 47.9467,
+      "resource": {
+        "workingSetBytes": 6234112,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 8,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 19.6766,
+      "resource": {
+        "workingSetBytes": 6180864,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 9,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 19.4496,
+      "resource": {
+        "workingSetBytes": 6152192,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 10,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 11.6325,
+      "resource": {
+        "workingSetBytes": 6234112,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 11,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 41.946999999999996,
+      "resource": {
+        "workingSetBytes": 6361088,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 12,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 29.0258,
+      "resource": {
+        "workingSetBytes": 6320128,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 13,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 20.710900000000002,
+      "resource": {
+        "workingSetBytes": 6291456,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 14,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 88.18679999999999,
+      "resource": {
+        "workingSetBytes": 6381568,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 15,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 41.2406,
+      "resource": {
+        "workingSetBytes": 6266880,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 16,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 54.5812,
+      "resource": {
+        "workingSetBytes": 6258688,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 17,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.4345,
+      "resource": {
+        "workingSetBytes": 6397952,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 18,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 34.238699999999994,
+      "resource": {
+        "workingSetBytes": 6135808,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 19,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 50.5964,
+      "resource": {
+        "workingSetBytes": 6303744,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 20,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 33.6278,
+      "resource": {
+        "workingSetBytes": 6254592,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 21,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 16.317800000000002,
+      "resource": {
+        "workingSetBytes": 6393856,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 22,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 71.3686,
+      "resource": {
+        "workingSetBytes": 6139904,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 23,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 37.0881,
+      "resource": {
+        "workingSetBytes": 6324224,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 24,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 65.7735,
+      "resource": {
+        "workingSetBytes": 6266880,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 25,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 29.8907,
+      "resource": {
+        "workingSetBytes": 6385664,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 26,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 9.2923,
+      "resource": {
+        "workingSetBytes": 6111232,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 27,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 39.2892,
+      "resource": {
+        "workingSetBytes": 6377472,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 28,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 24.9277,
+      "resource": {
+        "workingSetBytes": 6254592,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 29,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 18.660800000000002,
+      "resource": {
+        "workingSetBytes": 6369280,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 30,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 49.630300000000005,
+      "resource": {
+        "workingSetBytes": 6152192,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 31,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 52.956900000000005,
+      "resource": {
+        "workingSetBytes": 6406144,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 32,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 60.6588,
+      "resource": {
+        "workingSetBytes": 6254592,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 33,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 19.2603,
+      "resource": {
+        "workingSetBytes": 6385664,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 34,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 7.952000000000001,
+      "resource": {
+        "workingSetBytes": 6193152,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 35,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 39.196000000000005,
+      "resource": {
+        "workingSetBytes": 6397952,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 36,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 10.635399999999999,
+      "resource": {
+        "workingSetBytes": 6373376,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 37,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 18.7662,
+      "resource": {
+        "workingSetBytes": 6467584,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 38,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 24.4842,
+      "resource": {
+        "workingSetBytes": 6356992,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 39,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 41.8091,
+      "resource": {
+        "workingSetBytes": 6500352,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 40,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 20.5164,
+      "resource": {
+        "workingSetBytes": 6569984,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 41,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.5544,
+      "resource": {
+        "workingSetBytes": 6672384,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 42,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 19.0262,
+      "resource": {
+        "workingSetBytes": 6545408,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 43,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 38.2384,
+      "resource": {
+        "workingSetBytes": 6512640,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 44,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 20.7917,
+      "resource": {
+        "workingSetBytes": 6639616,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 45,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 21.6682,
+      "resource": {
+        "workingSetBytes": 6705152,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 46,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 20.675700000000003,
+      "resource": {
+        "workingSetBytes": 6381568,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 47,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 42.9912,
+      "resource": {
+        "workingSetBytes": 6352896,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 48,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 19.2006,
+      "resource": {
+        "workingSetBytes": 6320128,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 49,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 19.6313,
+      "resource": {
+        "workingSetBytes": 6520832,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 50,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 27.385099999999998,
+      "resource": {
+        "workingSetBytes": 6365184,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 51,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 58.4931,
+      "resource": {
+        "workingSetBytes": 6402048,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 52,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 28.8411,
+      "resource": {
+        "workingSetBytes": 6316032,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 53,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 16.894099999999998,
+      "resource": {
+        "workingSetBytes": 6598656,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 54,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 16.0014,
+      "resource": {
+        "workingSetBytes": 6393856,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 55,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 47.480000000000004,
+      "resource": {
+        "workingSetBytes": 6443008,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 56,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 25.5747,
+      "resource": {
+        "workingSetBytes": 6373376,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 57,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.1074,
+      "resource": {
+        "workingSetBytes": 6496256,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 58,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 23.9651,
+      "resource": {
+        "workingSetBytes": 6422528,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 59,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 38.200900000000004,
+      "resource": {
+        "workingSetBytes": 6479872,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 60,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 66.24130000000001,
+      "resource": {
+        "workingSetBytes": 6586368,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 61,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.6791,
+      "resource": {
+        "workingSetBytes": 6696960,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 62,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 66.4615,
+      "resource": {
+        "workingSetBytes": 6631424,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 63,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 42.5068,
+      "resource": {
+        "workingSetBytes": 6529024,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 64,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 51.2617,
+      "resource": {
+        "workingSetBytes": 6639616,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 65,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.2919,
+      "resource": {
+        "workingSetBytes": 6742016,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 66,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 27.032,
+      "resource": {
+        "workingSetBytes": 6356992,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 67,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 36.255900000000004,
+      "resource": {
+        "workingSetBytes": 6410240,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 68,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 20.335700000000003,
+      "resource": {
+        "workingSetBytes": 6606848,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 69,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 22.1938,
+      "resource": {
+        "workingSetBytes": 6672384,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 70,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 10.6801,
+      "resource": {
+        "workingSetBytes": 7020544,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 71,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 42.743700000000004,
+      "resource": {
+        "workingSetBytes": 6537216,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 72,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 19.2578,
+      "resource": {
+        "workingSetBytes": 7471104,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 73,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 17.030900000000003,
+      "resource": {
+        "workingSetBytes": 6807552,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 74,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 53.689800000000005,
+      "resource": {
+        "workingSetBytes": 6832128,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 75,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 37.343599999999995,
+      "resource": {
+        "workingSetBytes": 6414336,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 76,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 10.1201,
+      "resource": {
+        "workingSetBytes": 7360512,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 77,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 15.997999999999998,
+      "resource": {
+        "workingSetBytes": 6701056,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 78,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 42.480700000000006,
+      "resource": {
+        "workingSetBytes": 7020544,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 79,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 47.7684,
+      "resource": {
+        "workingSetBytes": 6561792,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 80,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 55.9497,
+      "resource": {
+        "workingSetBytes": 7426048,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 81,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 25.488899999999997,
+      "resource": {
+        "workingSetBytes": 6819840,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 82,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 94.64880000000001,
+      "resource": {
+        "workingSetBytes": 6422528,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 83,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 43.7774,
+      "resource": {
+        "workingSetBytes": 6434816,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 84,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 37.496700000000004,
+      "resource": {
+        "workingSetBytes": 7434240,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 85,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 18.4953,
+      "resource": {
+        "workingSetBytes": 6709248,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 86,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 71.5062,
+      "resource": {
+        "workingSetBytes": 6606848,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 87,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 42.0694,
+      "resource": {
+        "workingSetBytes": 6537216,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 88,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 135.6439,
+      "resource": {
+        "workingSetBytes": 7450624,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 89,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 20.9235,
+      "resource": {
+        "workingSetBytes": 6791168,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 90,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 84.7387,
+      "resource": {
+        "workingSetBytes": 6430720,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 91,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 62.010999999999996,
+      "resource": {
+        "workingSetBytes": 6451200,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 92,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 72.8665,
+      "resource": {
+        "workingSetBytes": 7376896,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 93,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 20.065099999999997,
+      "resource": {
+        "workingSetBytes": 6701056,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 94,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 52.114,
+      "resource": {
+        "workingSetBytes": 6987776,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 95,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 47.3199,
+      "resource": {
+        "workingSetBytes": 6574080,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 96,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 42.0179,
+      "resource": {
+        "workingSetBytes": 7446528,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 97,
+      "fixtureName": "small-parquet.parquet",
+      "elapsedMs": 33.6609,
+      "resource": {
+        "workingSetBytes": 6795264,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 98,
+      "fixtureName": "small-csv.csv",
+      "elapsedMs": 23.5145,
+      "resource": {
+        "workingSetBytes": 6832128,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 99,
+      "fixtureName": "large-parquet.parquet",
+      "elapsedMs": 48.0745,
+      "resource": {
+        "workingSetBytes": 6459392,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 100,
+      "fixtureName": "large-csv.csv",
+      "elapsedMs": 30.2884,
+      "resource": {
+        "workingSetBytes": 7376896,
+        "handleCount": 49
+      }
+    }
+  ],
+  "environment": {
+    "generatedAtUtc": "2026-07-14T09:45:34.117489+00:00",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.11.14",
+    "powerCondition": "not programmatically pinned",
+    "antivirusAndOsCache": "not disabled; results are gate-profile engineering measurements"
+  },
+  "runnerSha256": "b6046d49b654bc9d132ca79419093972e2b9efc75fe6ae043709b15391f2bd01"
+}

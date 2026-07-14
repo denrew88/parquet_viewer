@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-14T09:46:09.009547+00:00",
+  "findings": [
+    {
+      "check": "CSP is non-null",
+      "status": "PASS",
+      "detail": "release CSP must be explicit"
+    },
+    {
+      "check": "CSP blocks unsafe-eval",
+      "status": "PASS",
+      "detail": "{\"default-src\": \"'self' customprotocol: asset:\", \"connect-src\": \"ipc: http://ipc.localhost\", \"img-src\": \"'self' asset: http://asset.localhost data:\", \"style-src\": \"'self' 'unsafe-inline'\"}"
+    },
+    {
+      "check": "CSP has no wildcard or remote HTTPS",
+      "status": "PASS",
+      "detail": "{\"default-src\": \"'self' customprotocol: asset:\", \"connect-src\": \"ipc: http://ipc.localhost\", \"img-src\": \"'self' asset: http://asset.localhost data:\", \"style-src\": \"'self' 'unsafe-inline'\"}"
+    },
+    {
+      "check": "NSIS is the only bundle target",
+      "status": "PASS",
+      "detail": "['nsis']"
+    },
+    {
+      "check": "CSV and Parquet associations exist",
+      "status": "PASS",
+      "detail": "extensions audited"
+    },
+    {
+      "check": "No shell/fs/http capability",
+      "status": "PASS",
+      "detail": "['core:default', 'clipboard-manager:allow-write-text']"
+    },
+    {
+      "check": "Hostile corpus does not panic",
+      "status": "PASS",
+      "detail": "10 cases probed"
+    },
+    {
+      "check": "Hostile corpus typed rejection",
+      "status": "PASS",
+      "detail": "every rejected case has a stable error code; bounded valid CSV edge cases may be accepted"
+    }
+  ],
+  "hostileProbe": [
+    {
+      "pathName": "zero-byte.csv",
+      "outcome": "accepted",
+      "errorCode": null,
+      "message": null
+    },
+    {
+      "pathName": "invalid-utf8.csv",
+      "outcome": "rejected",
+      "errorCode": "InvalidEncoding",
+      "message": "CSV file fixtures\\phase-7\\hostile\\invalid-utf8.csv is not valid UTF-8 near byte offset 26."
+    },
+    {
+      "pathName": "ragged.csv",
+      "outcome": "accepted",
+      "errorCode": null,
+      "message": null
+    },
+    {
+      "pathName": "quote-bomb.csv",
+      "outcome": "accepted",
+      "errorCode": null,
+      "message": null
+    },
+    {
+      "pathName": "truncated.parquet",
+      "outcome": "rejected",
+      "errorCode": "InvalidParquet",
+      "message": "Invalid Parquet file fixtures\\phase-7\\hostile\\truncated.parquet: missing footer magic"
+    },
+    {
+      "pathName": "bad-magic.parquet",
+      "outcome": "rejected",
+      "errorCode": "InvalidParquet",
+      "message": "Invalid Parquet file fixtures\\phase-7\\hostile\\bad-magic.parquet: missing header magic"
+    },
+    {
+      "pathName": "unsupported.txt",
+      "outcome": "rejected",
+      "errorCode": "UnsupportedFormat",
+      "message": "Only .csv and .parquet files are supported: fixtures\\phase-7\\hostile\\unsupported.txt"
+    },
+    {
+      "pathName": "too-many-columns.csv",
+      "outcome": "rejected",
+      "errorCode": "CsvLimitExceeded",
+      "message": "CSV safety limit exceeded in fixtures\\phase-7\\hostile\\too-many-columns.csv: record has 4097 columns; maximum is 4096"
+    },
+    {
+      "pathName": "giant-record.csv",
+      "outcome": "rejected",
+      "errorCode": "CsvLimitExceeded",
+      "message": "CSV safety limit exceeded in fixtures\\phase-7\\hostile\\giant-record.csv: logical record is 8388610 bytes; maximum is 8388608"
+    },
+    {
+      "pathName": "directory.csv",
+      "outcome": "rejected",
+      "errorCode": "Io",
+      "message": "Could not read fixtures\\phase-7\\hostile\\directory.csv: path does not identify a regular file"
+    }
+  ],
+  "limitations": [
+    "Static capability audit does not prove Windows ACL behavior.",
+    "CSP violation console evidence requires an installed native WebView run.",
+    "Dependency advisories are recorded separately because registry access can be unavailable."
+  ]
+}

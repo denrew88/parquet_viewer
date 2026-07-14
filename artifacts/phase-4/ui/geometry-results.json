@@ -1,0 +1,6 @@
+{
+  "phase": 4,
+  "status": "BLOCKED",
+  "reason": "Browser backend and interactive native window are unavailable",
+  "viewports": []
+}

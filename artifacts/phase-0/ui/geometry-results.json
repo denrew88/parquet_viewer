@@ -1,0 +1,13 @@
+{
+  "status": "BLOCKED",
+  "date": "2026-07-14",
+  "target": "http://127.0.0.1:1420/",
+  "reason": "The in-app Browser runtime reported no available browser backends.",
+  "browserList": [],
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900, "status": "BLOCKED" },
+    { "name": "compact", "width": 1024, "height": 768, "status": "BLOCKED" },
+    { "name": "minimum", "width": 800, "height": 600, "status": "BLOCKED" }
+  ]
+}
+

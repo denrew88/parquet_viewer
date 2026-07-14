@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "generatorRevision": "phase7-v1",
+  "seed": 20260714,
+  "generatedAtUtc": "2026-07-14T09:42:34.913777+00:00",
+  "profile": "gate",
+  "host": {
+    "os": "nt"
+  },
+  "releaseTarget": {
+    "largeParquet": "10,000,000 x 40, 1-2 GiB target",
+    "largeCsv": "5,000,000 x 40, >=1 GiB target",
+    "note": "gate profile is intentionally smaller; release profile generates the full CSV row target"
+  },
+  "fixtures": [
+    {
+      "id": "small-parquet",
+      "path": "fixtures/phase-7/small-parquet.parquet",
+      "format": "parquet",
+      "rows": 10000,
+      "columns": 20,
+      "bytes": 602603,
+      "sha256": "e5563f855cf0f1830b214fc0903e59ad6050e73eb88b2daef6b5b24709e3d315"
+    },
+    {
+      "id": "small-csv",
+      "path": "fixtures/phase-7/small-csv.csv",
+      "format": "csv",
+      "rows": 10000,
+      "columns": 20,
+      "bytes": 2617004,
+      "sha256": "c76cc9ddb724b84812216f4803c11923b78fa91f23b198d22df03ed2942a7849"
+    },
+    {
+      "id": "large-parquet",
+      "path": "fixtures/phase-7/large-parquet.parquet",
+      "format": "parquet",
+      "rows": 250000,
+      "columns": 40,
+      "bytes": 30375364,
+      "sha256": "51604d25add827e249c934fd5b2c8a33b18444733d3f6fa6ac2ace989c0f7985"
+    },
+    {
+      "id": "large-csv",
+      "path": "fixtures/phase-7/large-csv.csv",
+      "format": "csv",
+      "rows": 250000,
+      "columns": 40,
+      "bytes": 149526947,
+      "sha256": "b883e8a2397bb80b1ee08197c5b8f3ed7de995796282c16fc4334c9b077be979"
+    }
+  ],
+  "hostile": [
+    {
+      "name": "zero-byte.csv",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "invalid-utf8.csv",
+      "bytes": 26,
+      "sha256": "499d9325be7c4efc76f23c0687f5c97ba3fdfcfbe21531aa7b4d33f91caa7ca2"
+    },
+    {
+      "name": "ragged.csv",
+      "bytes": 18,
+      "sha256": "73e723d084fae9a69a1a21002046ed5d3b95b1c3446db9b5e717dbd80c1062dd"
+    },
+    {
+      "name": "quote-bomb.csv",
+      "bytes": 400011,
+      "sha256": "b46f03593618e0872ddd15bbb84dd3f1e353fbc32348acdc32a5dd596fa67b4e"
+    },
+    {
+      "name": "truncated.parquet",
+      "bytes": 27,
+      "sha256": "f2c79cbb98f36911c52d6d945c9d15677a26b4ba97ca252f7bc89360c7cf769d"
+    },
+    {
+      "name": "bad-magic.parquet",
+      "bytes": 18,
+      "sha256": "e8fe7c38fbb85831e19ba5eb90a4a5cd8b8e761c5328f881ff745b80957ae4ff"
+    },
+    {
+      "name": "unsupported.txt",
+      "bytes": 8,
+      "sha256": "492d5ea496056f1a6a6592241032fab764c321596317930b4fa0e1e8bc3b7470"
+    },
+    {
+      "name": "too-many-columns.csv",
+      "bytes": 48054,
+      "sha256": "6f1eafb497d8c1c3d1f091354eb05d7a8f54d3089105ab20b04ef73c9fd678e6"
+    },
+    {
+      "name": "giant-record.csv",
+      "bytes": 8388616,
+      "sha256": "4bf1f5f10bb988eda90da3852eebc6a14a9c6b9b87daee7b9d0aef44a949e18f"
+    },
+    {
+      "name": "directory.csv",
+      "kind": "directory"
+    }
+  ]
+}

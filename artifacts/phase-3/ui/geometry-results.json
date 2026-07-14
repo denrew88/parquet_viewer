@@ -1,0 +1,11 @@
+{
+  "phase": 3,
+  "status": "BLOCKED",
+  "reason": "The in-app Browser runtime reported no available browser backends (agent.browsers.list() returned []).",
+  "substitutionUsed": false,
+  "viewports": [
+    { "width": 1440, "height": 900, "status": "BLOCKED" },
+    { "width": 1024, "height": 768, "status": "BLOCKED" },
+    { "width": 800, "height": 600, "status": "BLOCKED" }
+  ]
+}

@@ -1,0 +1,241 @@
+[
+  {
+    "file": "header.csv",
+    "headerMode": "auto",
+    "state": "complete",
+    "rowCount": 3,
+    "columnCount": 3,
+    "columnNames": [
+      "name",
+      "age",
+      "city"
+    ],
+    "firstRow": [
+      "Alice",
+      "30",
+      "Seoul"
+    ],
+    "suggestedHeader": true,
+    "headerUsed": true,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "no-header.csv",
+    "headerMode": "absent",
+    "state": "complete",
+    "rowCount": 3,
+    "columnCount": 3,
+    "columnNames": [
+      "Column 1",
+      "Column 2",
+      "Column 3"
+    ],
+    "firstRow": [
+      "1",
+      "Alice",
+      "Seoul"
+    ],
+    "suggestedHeader": false,
+    "headerUsed": false,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "bom-korean.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 2,
+    "columnCount": 2,
+    "columnNames": [
+      "이름",
+      "도시"
+    ],
+    "firstRow": [
+      "가나다",
+      "서울"
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "quoted.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 2,
+    "columnCount": 3,
+    "columnNames": [
+      "id",
+      "note",
+      "empty"
+    ],
+    "firstRow": [
+      "1",
+      "comma, value",
+      ""
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "empty.csv",
+    "headerMode": "auto",
+    "state": "complete",
+    "rowCount": 0,
+    "columnCount": 0,
+    "columnNames": [],
+    "firstRow": [],
+    "headerUsed": false,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "empty-fields.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 2,
+    "columnCount": 3,
+    "columnNames": [
+      "a",
+      "b",
+      "c"
+    ],
+    "firstRow": [
+      "1",
+      "",
+      ""
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "inconsistent.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 3,
+    "columnCount": 4,
+    "columnNames": [
+      "a",
+      "b",
+      "c",
+      "Column 4"
+    ],
+    "firstRow": [
+      "1",
+      "2",
+      "",
+      ""
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 2
+  },
+  {
+    "file": "large-20000.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 20000,
+    "columnCount": 2,
+    "columnNames": [
+      "row_id",
+      "label"
+    ],
+    "firstRow": [
+      "0",
+      "row-00000"
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "ambiguous-header.csv",
+    "headerMode": "auto",
+    "state": "complete",
+    "rowCount": 2,
+    "columnCount": 2,
+    "columnNames": [
+      "Column 1",
+      "Column 2"
+    ],
+    "firstRow": [
+      "alpha",
+      "beta"
+    ],
+    "suggestedHeader": false,
+    "headerUsed": false,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "header-audit.csv",
+    "headerMode": "present",
+    "state": "complete",
+    "rowCount": 1,
+    "columnCount": 4,
+    "columnNames": [
+      "name",
+      "Column 2",
+      "name (2)",
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    ],
+    "firstRow": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "headerUsed": true,
+    "structureIssueCount": 0,
+    "headerIssueCount": 2
+  },
+  {
+    "file": "background-failure.csv",
+    "headerMode": "absent",
+    "state": "failed",
+    "rowCount": null,
+    "columnCount": 2,
+    "columnNames": [
+      "Column 1",
+      "Column 2"
+    ],
+    "firstRow": [
+      "0",
+      "valid"
+    ],
+    "headerUsed": false,
+    "structureIssueCount": 0
+  },
+  {
+    "file": "record-boundary-minus-one.csv",
+    "headerMode": "absent",
+    "state": "complete",
+    "rowCount": 1,
+    "columnCount": 1
+  },
+  {
+    "file": "record-boundary-exact.csv",
+    "headerMode": "absent",
+    "state": "complete",
+    "rowCount": 1,
+    "columnCount": 1
+  },
+  {
+    "file": "record-boundary-plus-one.csv",
+    "headerMode": "absent",
+    "expectedError": "CsvLimitExceeded"
+  },
+  {
+    "file": "column-boundary-minus-one.csv",
+    "headerMode": "absent",
+    "state": "complete",
+    "rowCount": 1,
+    "columnCount": 4095
+  },
+  {
+    "file": "column-boundary-exact.csv",
+    "headerMode": "absent",
+    "state": "complete",
+    "rowCount": 1,
+    "columnCount": 4096
+  },
+  {
+    "file": "column-boundary-plus-one.csv",
+    "headerMode": "absent",
+    "expectedError": "CsvLimitExceeded"
+  }
+]

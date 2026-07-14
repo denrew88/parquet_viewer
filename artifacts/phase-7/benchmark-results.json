@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "manifestSha256": "28baea7bff42c941e06bbd79a693dc48f8796e22c5b13026b2017efdb79f1b81",
+  "environment": {
+    "generatedAtUtc": "2026-07-14T09:45:34.117489+00:00",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.11.14",
+    "powerCondition": "not programmatically pinned",
+    "antivirusAndOsCache": "not disabled; results are gate-profile engineering measurements"
+  },
+  "measurement": "in-process Rust DataSource and SessionSlot; release optimized runner",
+  "raw": [
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "small-parquet.parquet",
+      "fixtureBytes": 602603,
+      "declaredRows": 10000,
+      "runs": 5,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 1.6463,
+          "firstPageMs": 20.4545,
+          "cachedPageMs": 1.1537,
+          "randomPageMs": 20.3649
+        },
+        {
+          "iteration": 2,
+          "openMs": 0.6193000000000001,
+          "firstPageMs": 21.3294,
+          "cachedPageMs": 0.9912,
+          "randomPageMs": 18.1702
+        },
+        {
+          "iteration": 3,
+          "openMs": 0.7669,
+          "firstPageMs": 17.308799999999998,
+          "cachedPageMs": 0.9298000000000001,
+          "randomPageMs": 17.7164
+        },
+        {
+          "iteration": 4,
+          "openMs": 0.6566000000000001,
+          "firstPageMs": 15.749300000000002,
+          "cachedPageMs": 0.9091,
+          "randomPageMs": 19.5315
+        },
+        {
+          "iteration": 5,
+          "openMs": 0.6305,
+          "firstPageMs": 16.3418,
+          "cachedPageMs": 0.9560000000000001,
+          "randomPageMs": 23.5129
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "small-csv.csv",
+      "fixtureBytes": 2617004,
+      "declaredRows": 10000,
+      "runs": 5,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 2.5715,
+          "firstPageMs": 3.5149,
+          "cachedPageMs": 0.8825999999999999,
+          "randomPageMs": 8.3116
+        },
+        {
+          "iteration": 2,
+          "openMs": 2.2091,
+          "firstPageMs": 5.4906,
+          "cachedPageMs": 0.8991,
+          "randomPageMs": 8.012
+        },
+        {
+          "iteration": 3,
+          "openMs": 1.9873999999999998,
+          "firstPageMs": 3.0959,
+          "cachedPageMs": 0.8852000000000001,
+          "randomPageMs": 7.6754
+        },
+        {
+          "iteration": 4,
+          "openMs": 2.2348,
+          "firstPageMs": 3.3436,
+          "cachedPageMs": 0.9541999999999999,
+          "randomPageMs": 7.855499999999999
+        },
+        {
+          "iteration": 5,
+          "openMs": 2.3383000000000003,
+          "firstPageMs": 3.311,
+          "cachedPageMs": 0.8832,
+          "randomPageMs": 7.873099999999999
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "large-parquet.parquet",
+      "fixtureBytes": 30375364,
+      "declaredRows": 250000,
+      "runs": 5,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 6.0038,
+          "firstPageMs": 38.7387,
+          "cachedPageMs": 4.041,
+          "randomPageMs": 40.2941
+        },
+        {
+          "iteration": 2,
+          "openMs": 3.892,
+          "firstPageMs": 33.8531,
+          "cachedPageMs": 1.8223,
+          "randomPageMs": 57.716499999999996
+        },
+        {
+          "iteration": 3,
+          "openMs": 3.7054,
+          "firstPageMs": 38.6585,
+          "cachedPageMs": 1.8137999999999999,
+          "randomPageMs": 68.8139
+        },
+        {
+          "iteration": 4,
+          "openMs": 6.3687,
+          "firstPageMs": 39.1296,
+          "cachedPageMs": 1.8441,
+          "randomPageMs": 43.7567
+        },
+        {
+          "iteration": 5,
+          "openMs": 3.9121,
+          "firstPageMs": 35.836600000000004,
+          "cachedPageMs": 1.8714,
+          "randomPageMs": 48.812099999999994
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "command": "benchmark",
+      "fixtureName": "large-csv.csv",
+      "fixtureBytes": 149526947,
+      "declaredRows": 250000,
+      "runs": 5,
+      "samples": [
+        {
+          "iteration": 1,
+          "openMs": 4.0805,
+          "firstPageMs": 6.0599,
+          "cachedPageMs": 1.7233,
+          "randomPageMs": 660.9096
+        },
+        {
+          "iteration": 2,
+          "openMs": 3.8982,
+          "firstPageMs": 6.133900000000001,
+          "cachedPageMs": 1.674,
+          "randomPageMs": 658.0382
+        },
+        {
+          "iteration": 3,
+          "openMs": 3.604,
+          "firstPageMs": 6.050599999999999,
+          "cachedPageMs": 1.6788,
+          "randomPageMs": 396.80830000000003
+        },
+        {
+          "iteration": 4,
+          "openMs": 4.062600000000001,
+          "firstPageMs": 6.3302000000000005,
+          "cachedPageMs": 1.7654999999999998,
+          "randomPageMs": 631.4751
+        },
+        {
+          "iteration": 5,
+          "openMs": 3.6649,
+          "firstPageMs": 5.7936000000000005,
+          "cachedPageMs": 1.659,
+          "randomPageMs": 360.44300000000004
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "fixtureName": "small-parquet.parquet",
+      "open": {
+        "medianMs": 0.657,
+        "p95Ms": 1.646,
+        "maxMs": 1.646
+      },
+      "firstPage": {
+        "medianMs": 17.309,
+        "p95Ms": 21.329,
+        "maxMs": 21.329
+      },
+      "cachedPage": {
+        "medianMs": 0.956,
+        "p95Ms": 1.154,
+        "maxMs": 1.154
+      },
+      "randomPage": {
+        "medianMs": 19.532,
+        "p95Ms": 23.513,
+        "maxMs": 23.513
+      }
+    },
+    {
+      "fixtureName": "small-csv.csv",
+      "open": {
+        "medianMs": 2.235,
+        "p95Ms": 2.571,
+        "maxMs": 2.571
+      },
+      "firstPage": {
+        "medianMs": 3.344,
+        "p95Ms": 5.491,
+        "maxMs": 5.491
+      },
+      "cachedPage": {
+        "medianMs": 0.885,
+        "p95Ms": 0.954,
+        "maxMs": 0.954
+      },
+      "randomPage": {
+        "medianMs": 7.873,
+        "p95Ms": 8.312,
+        "maxMs": 8.312
+      }
+    },
+    {
+      "fixtureName": "large-parquet.parquet",
+      "open": {
+        "medianMs": 3.912,
+        "p95Ms": 6.369,
+        "maxMs": 6.369
+      },
+      "firstPage": {
+        "medianMs": 38.658,
+        "p95Ms": 39.13,
+        "maxMs": 39.13
+      },
+      "cachedPage": {
+        "medianMs": 1.844,
+        "p95Ms": 4.041,
+        "maxMs": 4.041
+      },
+      "randomPage": {
+        "medianMs": 48.812,
+        "p95Ms": 68.814,
+        "maxMs": 68.814
+      }
+    },
+    {
+      "fixtureName": "large-csv.csv",
+      "open": {
+        "medianMs": 3.898,
+        "p95Ms": 4.08,
+        "maxMs": 4.08
+      },
+      "firstPage": {
+        "medianMs": 6.06,
+        "p95Ms": 6.33,
+        "maxMs": 6.33
+      },
+      "cachedPage": {
+        "medianMs": 1.679,
+        "p95Ms": 1.765,
+        "maxMs": 1.765
+      },
+      "randomPage": {
+        "medianMs": 631.475,
+        "p95Ms": 660.91,
+        "maxMs": 660.91
+      }
+    }
+  ]
+}

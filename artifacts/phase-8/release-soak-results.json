@@ -1,0 +1,926 @@
+{
+  "schemaVersion": 1,
+  "command": "soak",
+  "iterations": 100,
+  "successfulIterations": 100,
+  "failures": [],
+  "startResource": {
+    "workingSetBytes": 3993600,
+    "handleCount": 49
+  },
+  "endResource": {
+    "workingSetBytes": 6258688,
+    "handleCount": 49
+  },
+  "samples": [
+    {
+      "iteration": 1,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 15.780700000000001,
+      "resource": {
+        "workingSetBytes": 5894144,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 2,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.763199999999998,
+      "resource": {
+        "workingSetBytes": 5926912,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 3,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.28,
+      "resource": {
+        "workingSetBytes": 6078464,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 4,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.1025,
+      "resource": {
+        "workingSetBytes": 6070272,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 5,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.5613,
+      "resource": {
+        "workingSetBytes": 5914624,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 6,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 35.7543,
+      "resource": {
+        "workingSetBytes": 5976064,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 7,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.615,
+      "resource": {
+        "workingSetBytes": 5967872,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 8,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.1188,
+      "resource": {
+        "workingSetBytes": 6045696,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 9,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.4883,
+      "resource": {
+        "workingSetBytes": 6053888,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 10,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.3584,
+      "resource": {
+        "workingSetBytes": 6025216,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 11,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 12.1209,
+      "resource": {
+        "workingSetBytes": 6037504,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 12,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 35.8005,
+      "resource": {
+        "workingSetBytes": 6078464,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 13,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.4104,
+      "resource": {
+        "workingSetBytes": 6062080,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 14,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.1466,
+      "resource": {
+        "workingSetBytes": 6000640,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 15,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.6407,
+      "resource": {
+        "workingSetBytes": 5931008,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 16,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.2237,
+      "resource": {
+        "workingSetBytes": 6033408,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 17,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.3192,
+      "resource": {
+        "workingSetBytes": 6045696,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 18,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.1911,
+      "resource": {
+        "workingSetBytes": 6074368,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 19,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.0292,
+      "resource": {
+        "workingSetBytes": 6094848,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 20,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 33.7613,
+      "resource": {
+        "workingSetBytes": 6033408,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 21,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 12.6314,
+      "resource": {
+        "workingSetBytes": 6012928,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 22,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 33.162499999999994,
+      "resource": {
+        "workingSetBytes": 6066176,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 23,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 12.185,
+      "resource": {
+        "workingSetBytes": 6098944,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 24,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 34.2866,
+      "resource": {
+        "workingSetBytes": 6025216,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 25,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 14.1558,
+      "resource": {
+        "workingSetBytes": 6025216,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 26,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.6347,
+      "resource": {
+        "workingSetBytes": 6070272,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 27,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.109399999999999,
+      "resource": {
+        "workingSetBytes": 6037504,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 28,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 27.072499999999998,
+      "resource": {
+        "workingSetBytes": 6041600,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 29,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.8586,
+      "resource": {
+        "workingSetBytes": 6066176,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 30,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 32.2649,
+      "resource": {
+        "workingSetBytes": 6135808,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 31,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.7857,
+      "resource": {
+        "workingSetBytes": 6090752,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 32,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.8835,
+      "resource": {
+        "workingSetBytes": 6074368,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 33,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.7956,
+      "resource": {
+        "workingSetBytes": 6062080,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 34,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.7601,
+      "resource": {
+        "workingSetBytes": 6111232,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 35,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.4343,
+      "resource": {
+        "workingSetBytes": 6135808,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 36,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.0681,
+      "resource": {
+        "workingSetBytes": 6090752,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 37,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.2635,
+      "resource": {
+        "workingSetBytes": 6074368,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 38,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.0918,
+      "resource": {
+        "workingSetBytes": 6139904,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 39,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.279900000000001,
+      "resource": {
+        "workingSetBytes": 6197248,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 40,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 39.3101,
+      "resource": {
+        "workingSetBytes": 6193152,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 41,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 12.3934,
+      "resource": {
+        "workingSetBytes": 6127616,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 42,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 37.036699999999996,
+      "resource": {
+        "workingSetBytes": 6197248,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 43,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 14.525400000000001,
+      "resource": {
+        "workingSetBytes": 6168576,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 44,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.741899999999998,
+      "resource": {
+        "workingSetBytes": 6160384,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 45,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.560300000000002,
+      "resource": {
+        "workingSetBytes": 6119424,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 46,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.769400000000005,
+      "resource": {
+        "workingSetBytes": 6152192,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 47,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.329799999999999,
+      "resource": {
+        "workingSetBytes": 6119424,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 48,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.270699999999998,
+      "resource": {
+        "workingSetBytes": 6258688,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 49,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.657499999999999,
+      "resource": {
+        "workingSetBytes": 6242304,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 50,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 32.270199999999996,
+      "resource": {
+        "workingSetBytes": 6156288,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 51,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.2065,
+      "resource": {
+        "workingSetBytes": 6213632,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 52,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.747799999999998,
+      "resource": {
+        "workingSetBytes": 6246400,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 53,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.6115,
+      "resource": {
+        "workingSetBytes": 6217728,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 54,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.9169,
+      "resource": {
+        "workingSetBytes": 6111232,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 55,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.6991,
+      "resource": {
+        "workingSetBytes": 6336512,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 56,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.0857,
+      "resource": {
+        "workingSetBytes": 6299648,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 57,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.588,
+      "resource": {
+        "workingSetBytes": 6344704,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 58,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.1614,
+      "resource": {
+        "workingSetBytes": 6234112,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 59,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.364799999999999,
+      "resource": {
+        "workingSetBytes": 6340608,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 60,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 32.7389,
+      "resource": {
+        "workingSetBytes": 6266880,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 61,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.3793,
+      "resource": {
+        "workingSetBytes": 6348800,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 62,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.0171,
+      "resource": {
+        "workingSetBytes": 6217728,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 63,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.225200000000001,
+      "resource": {
+        "workingSetBytes": 6348800,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 64,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.2017,
+      "resource": {
+        "workingSetBytes": 6234112,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 65,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.3331,
+      "resource": {
+        "workingSetBytes": 6324224,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 66,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.4537,
+      "resource": {
+        "workingSetBytes": 6275072,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 67,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.304599999999999,
+      "resource": {
+        "workingSetBytes": 6348800,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 68,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.142100000000003,
+      "resource": {
+        "workingSetBytes": 6201344,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 69,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.2688,
+      "resource": {
+        "workingSetBytes": 6356992,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 70,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.1509,
+      "resource": {
+        "workingSetBytes": 6303744,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 71,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 8.639100000000001,
+      "resource": {
+        "workingSetBytes": 6389760,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 72,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 31.4768,
+      "resource": {
+        "workingSetBytes": 6246400,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 73,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 8.9458,
+      "resource": {
+        "workingSetBytes": 6414336,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 74,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.7257,
+      "resource": {
+        "workingSetBytes": 6262784,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 75,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.6668,
+      "resource": {
+        "workingSetBytes": 6381568,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 76,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 27.4634,
+      "resource": {
+        "workingSetBytes": 6250496,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 77,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.259699999999999,
+      "resource": {
+        "workingSetBytes": 6414336,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 78,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 29.5204,
+      "resource": {
+        "workingSetBytes": 6230016,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 79,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.1249,
+      "resource": {
+        "workingSetBytes": 6369280,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 80,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 32.7409,
+      "resource": {
+        "workingSetBytes": 6291456,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 81,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.2326,
+      "resource": {
+        "workingSetBytes": 6381568,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 82,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 32.597899999999996,
+      "resource": {
+        "workingSetBytes": 6258688,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 83,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 13.723,
+      "resource": {
+        "workingSetBytes": 6369280,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 84,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.8249,
+      "resource": {
+        "workingSetBytes": 6275072,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 85,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.946200000000001,
+      "resource": {
+        "workingSetBytes": 6373376,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 86,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 25.2742,
+      "resource": {
+        "workingSetBytes": 6266880,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 87,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.5495,
+      "resource": {
+        "workingSetBytes": 6381568,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 88,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.1771,
+      "resource": {
+        "workingSetBytes": 6287360,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 89,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.5661,
+      "resource": {
+        "workingSetBytes": 6389760,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 90,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.66,
+      "resource": {
+        "workingSetBytes": 6262784,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 91,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 10.3273,
+      "resource": {
+        "workingSetBytes": 6348800,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 92,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.513599999999997,
+      "resource": {
+        "workingSetBytes": 6279168,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 93,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 12.347900000000001,
+      "resource": {
+        "workingSetBytes": 6414336,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 94,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.9342,
+      "resource": {
+        "workingSetBytes": 6234112,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 95,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 9.8686,
+      "resource": {
+        "workingSetBytes": 6402048,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 96,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 30.39,
+      "resource": {
+        "workingSetBytes": 6307840,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 97,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.8494,
+      "resource": {
+        "workingSetBytes": 6393856,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 98,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 34.970099999999995,
+      "resource": {
+        "workingSetBytes": 6246400,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 99,
+      "fixtureName": "f-p8-12-low.parquet",
+      "elapsedMs": 11.267100000000001,
+      "resource": {
+        "workingSetBytes": 6397952,
+        "handleCount": 49
+      }
+    },
+    {
+      "iteration": 100,
+      "fixtureName": "f-p8-13-high.parquet",
+      "elapsedMs": 28.0619,
+      "resource": {
+        "workingSetBytes": 6258688,
+        "handleCount": 49
+      }
+    }
+  ],
+  "environment": {
+    "generatedAtUtc": "2026-07-14T14:27:02.549193+00:00",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.11.14",
+    "powerCondition": "not programmatically pinned",
+    "antivirusAndOsCache": "not disabled; results are gate-profile engineering measurements"
+  },
+  "runnerSha256": "7c97df7dcfd1905476c52135b86077cfddf30dc41301a25a89678632487efd4a"
+}
