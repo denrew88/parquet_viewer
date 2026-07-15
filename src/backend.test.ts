@@ -10,19 +10,40 @@ import {
   createDefaultBackend,
   DataViewerError,
   parseDataPage,
+  parseDataValue,
+  parseCsvParsingProfile,
+  parseCsvProfilePreviewResponse,
+  parseCsvValidationStatus,
   parseFileSummary,
+  parseFormatDescriptor,
+  parseQueryPlan,
+  parseQueryStatus,
+  parseDistinctValuesResponse,
+  parseFindQueryMatchResponse,
+  parseQueryTempCleanupResult,
+  parseQueryTempUsage,
   parseOpenDataRequest,
   parseOpenDataResponse,
   parseOpenFileResponse,
   parseOpenedDataFile,
+  parseSupportedFormats,
   tauriBackend,
+  type CsvParsingProfileWire,
 } from "./backend";
+import { defaultAppSettings } from "./settings/model";
 
 const validSummary = {
   sessionId: "session-1",
   fileName: "fixture.parquet",
   path: "C:\\fixtures\\fixture.parquet",
   format: "parquet",
+  formatDescriptor: {
+    id: "parquet",
+    displayName: "Parquet",
+    extensions: ["parquet"],
+    mimeTypes: ["application/vnd.apache.parquet"],
+    capabilities: ["typedSchema", "columnProjection", "rowGroups"],
+  },
   fileSize: 512,
   rowCount: 1,
   rowCountStatus: {
@@ -47,6 +68,16 @@ const validSummary = {
     },
   ],
   csvMetadata: null,
+  formatDetails: [
+    {
+      id: "parquet-row-groups",
+      title: "Row groups",
+      kind: "table",
+      columns: ["Index", "Rows"],
+      rows: [["0", "1"]],
+      truncated: false,
+    },
+  ],
 };
 
 const validPage = {
@@ -64,6 +95,13 @@ const validCsvSummary = {
   fileName: "quoted.csv",
   path: "C:\\fixtures\\quoted.csv",
   format: "csv",
+  formatDescriptor: {
+    id: "csv",
+    displayName: "CSV",
+    extensions: ["csv"],
+    mimeTypes: ["text/csv"],
+    capabilities: ["columnProjection", "backgroundRowCount"],
+  },
   fileSize: 100,
   rowCount: null,
   rowCountStatus: {
@@ -97,7 +135,129 @@ const validCsvSummary = {
     headerIssueCount: 0,
     headerIssues: [],
   },
+  formatDetails: [
+    {
+      id: "csv-parsing",
+      title: "CSV parsing",
+      kind: "keyValue",
+      entries: [{ label: "Encoding", value: "utf-8" }],
+    },
+  ],
 };
+
+const validCsvProfile: CsvParsingProfileWire = {
+  mode: "auto" as const,
+  generation: 3,
+  columns: ["name", "note", "empty"].map((sourceName, sourceIndex) => ({
+    sourceIndex,
+    sourceName,
+    targetType: "auto" as const,
+    trim: false,
+    nullTokens: ["NULL", "N/A"],
+    trueTokens: ["true", "TRUE", "1"],
+    falseTokens: ["false", "FALSE", "0"],
+    decimalSeparator: ".",
+    thousandSeparator: null,
+    temporalFormats: [],
+    timezonePolicy: "preserve" as const,
+    timezoneOffsetMinutes: null,
+    failurePolicy: "preserveInvalid" as const,
+  })),
+};
+
+function validCsvPreview(generation = validCsvProfile.generation) {
+  const profile = { ...validCsvProfile, generation };
+  return {
+    documentId: "document-csv",
+    sessionId: "csv-session",
+    preview: {
+      generation,
+      stage: "leading" as const,
+      profile,
+      columns: profile.columns.map((column) => ({
+        sourceIndex: column.sourceIndex,
+        sourceName: column.sourceName,
+        recommendedType: "text" as const,
+        confidence: 0.98,
+        targetType: "text" as const,
+        successCount: 1,
+        nullCount: 0,
+        invalidCount: 0,
+      })),
+      rows: [
+        {
+          sourceRow: 0,
+          cells: ["Kim", "note", ""].map((raw) => ({
+            raw,
+            converted: {
+              kind: "string",
+              display: raw,
+              state: raw === "" ? "empty" : "valid",
+              rawDisplay: raw,
+              diagnostic: null,
+            },
+          })),
+        },
+      ],
+    },
+  };
+}
+
+function validCsvValidation(state: "queued" | "running" | "complete" = "queued") {
+  return {
+    taskId: "csv-task-1",
+    documentId: "document-csv",
+    sessionId: "csv-session",
+    generation: validCsvProfile.generation,
+    state,
+    rowsScanned: state === "complete" ? 1 : 0,
+    totalRows: 1,
+    columns: validCsvProfile.columns.map((column) => ({
+      sourceIndex: column.sourceIndex,
+      sourceName: column.sourceName,
+      successCount: state === "complete" ? 1 : 0,
+      nullCount: 0,
+      invalidCount: 0,
+      firstErrorRow: null,
+      errorSamples: [],
+    })),
+    error: null,
+  };
+}
+
+const validQueryPlan = {
+  filters: [
+    {
+      id: "filter:value",
+      columnId: "value",
+      scalarType: "text" as const,
+      operator: "contains" as const,
+      values: ["alpha"],
+    },
+  ],
+  search: null,
+  sort: [{ columnId: "value", direction: "ascending" as const, nullsLast: true as const }],
+  projection: [],
+};
+
+function validQueryStatus(state: "queued" | "running" | "complete" = "queued") {
+  return {
+    documentId: "document-1",
+    sessionId: "session-1",
+    queryId: "query-1",
+    taskId: "task-1",
+    state,
+    progress: {
+      rowsScanned: state === "complete" ? 1 : 0,
+      totalRows: 1,
+      resultRows: state === "complete" ? 1 : 0,
+    },
+    columns: ["value"],
+    elapsedMs: state === "complete" ? 25 : 0,
+    findMatchCount: null,
+    error: null,
+  };
+}
 
 describe("backend adapters", () => {
   it("uses the explicit browser mock outside a Tauri runtime", async () => {
@@ -106,6 +266,505 @@ describe("backend adapters", () => {
       status: "ok",
       appVersion: "browser-mock",
     });
+    await expect(browserMockBackend.listSupportedFormats()).resolves.toEqual([
+      expect.objectContaining({ id: "csv", extensions: ["csv"] }),
+      expect.objectContaining({ id: "parquet", extensions: ["parquet"] }),
+    ]);
+  });
+
+  it("FMT-007 validates the supported-format command response", async () => {
+    const formats = [validCsvSummary.formatDescriptor, validSummary.formatDescriptor];
+    invokeMock.mockResolvedValueOnce(formats);
+
+    await expect(tauriBackend.listSupportedFormats()).resolves.toEqual(formats);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_supported_formats", undefined);
+    expect(parseSupportedFormats(formats)).toEqual(formats);
+  });
+
+  it("strictly validates settings returned by the Tauri commands", async () => {
+    const settings = {
+      ...defaultAppSettings(),
+      csvDefaultParsingMode: "allText" as const,
+    };
+    invokeMock.mockResolvedValueOnce(settings).mockResolvedValueOnce(settings);
+
+    await expect(tauriBackend.getSettings()).resolves.toEqual(settings);
+    expect(invokeMock).toHaveBeenLastCalledWith("get_settings", undefined);
+    await expect(tauriBackend.updateSettings(settings)).resolves.toEqual(settings);
+    expect(invokeMock).toHaveBeenLastCalledWith("update_settings", { settings });
+  });
+
+  it("CSV-001/012 sends exact CSV profile command arguments and validates identities", async () => {
+    const previewRequest = {
+      documentId: "document-csv",
+      sessionId: "csv-session",
+      generation: validCsvProfile.generation,
+      profile: validCsvProfile,
+    };
+    const validationRequest = { ...previewRequest, taskId: "csv-task-1" };
+    const appliedSummary = { ...validCsvSummary, sessionId: "csv-session-profile-3" };
+    invokeMock
+      .mockResolvedValueOnce({
+        documentId: "document-csv",
+        sessionId: "csv-session",
+        profile: validCsvProfile,
+      })
+      .mockResolvedValueOnce(validCsvPreview())
+      .mockResolvedValueOnce(validCsvValidation())
+      .mockResolvedValueOnce(validCsvValidation("running"))
+      .mockResolvedValueOnce({ ...validCsvValidation(), state: "cancelled" })
+      .mockResolvedValueOnce({
+        documentId: "document-csv",
+        sessionId: "csv-session-profile-3",
+        summary: appliedSummary,
+      });
+
+    await tauriBackend.getCsvProfile("document-csv", "csv-session");
+    expect(invokeMock).toHaveBeenLastCalledWith("get_csv_profile", {
+      documentId: "document-csv",
+      sessionId: "csv-session",
+    });
+    await tauriBackend.previewCsvProfile(previewRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("preview_csv_profile", {
+      request: previewRequest,
+    });
+    await tauriBackend.validateCsvProfile(validationRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("validate_csv_profile", {
+      request: validationRequest,
+    });
+    await tauriBackend.getCsvProfileValidationStatus("document-csv", "csv-session", "csv-task-1");
+    expect(invokeMock).toHaveBeenLastCalledWith("get_csv_profile_validation_status", {
+      documentId: "document-csv",
+      sessionId: "csv-session",
+      taskId: "csv-task-1",
+    });
+    await tauriBackend.cancelCsvProfileValidation("document-csv", "csv-session", "csv-task-1");
+    await expect(
+      tauriBackend.applyCsvProfile({
+        documentId: "document-csv",
+        sessionId: "csv-session",
+        profile: validCsvProfile,
+      }),
+    ).resolves.toMatchObject({ sessionId: "csv-session-profile-3" });
+    expect(invokeMock).toHaveBeenLastCalledWith("apply_csv_profile", {
+      request: {
+        documentId: "document-csv",
+        sessionId: "csv-session",
+        profile: validCsvProfile,
+      },
+    });
+  });
+
+  it("CSV-003/014 rejects malformed profile, preview, cell-state, and validation DTOs", () => {
+    expect(() =>
+      parseCsvParsingProfile({
+        ...validCsvProfile,
+        columns: validCsvProfile.columns.map((column, index) =>
+          index === 0 ? { ...column, timezoneOffsetMinutes: 60 } : column,
+        ),
+      }),
+    ).toThrow(DataViewerError);
+    const preview = validCsvPreview();
+    expect(() =>
+      parseCsvProfilePreviewResponse({
+        ...preview,
+        preview: {
+          ...preview.preview,
+          rows: [{ sourceRow: 0, cells: preview.preview.rows[0].cells.slice(1) }],
+        },
+      }),
+    ).toThrow(DataViewerError);
+    expect(
+      parseDataValue({
+        kind: "int",
+        display: "bad",
+        state: "invalid",
+        rawDisplay: "bad",
+        diagnostic: { code: "csvConversion", message: "Expected Int64" },
+      }),
+    ).toEqual(expect.objectContaining({ state: "invalid", rawDisplay: "bad" }));
+    expect(
+      parseDataValue({
+        kind: "int",
+        display: "bad",
+        state: "invalid",
+        rawDisplay: "bad",
+        diagnostic: null,
+      }),
+    ).toBeNull();
+    expect(() => parseCsvValidationStatus({ ...validCsvValidation(), taskId: "" })).toThrow(
+      DataViewerError,
+    );
+  });
+
+  it("accepts matching separators for integer profiles but rejects them for fractional profiles", () => {
+    for (const targetType of ["auto", "int64", "uint64"] as const) {
+      expect(() =>
+        parseCsvParsingProfile({
+          ...validCsvProfile,
+          columns: validCsvProfile.columns.map((column, index) =>
+            index === 0
+              ? {
+                  ...column,
+                  targetType,
+                  decimalSeparator: ".",
+                  thousandSeparator: ".",
+                }
+              : column,
+          ),
+        }),
+      ).not.toThrow();
+    }
+
+    for (const targetType of ["float64", "decimal"] as const) {
+      expect(() =>
+        parseCsvParsingProfile({
+          ...validCsvProfile,
+          columns: validCsvProfile.columns.map((column, index) =>
+            index === 0
+              ? {
+                  ...column,
+                  targetType,
+                  decimalSeparator: ".",
+                  thousandSeparator: ".",
+                }
+              : column,
+          ),
+        }),
+      ).toThrow("invalid CSV profile");
+    }
+  });
+
+  it("accepts the canonical Rust camelCase UInt64 preview spelling", () => {
+    const response = validCsvPreview();
+    const canonical = {
+      ...response,
+      preview: {
+        ...response.preview,
+        profile: {
+          ...response.preview.profile,
+          columns: response.preview.profile.columns.map((column, index) =>
+            index === 0 ? { ...column, targetType: "uint64" as const } : column,
+          ),
+        },
+        columns: response.preview.columns.map((column, index) =>
+          index === 0
+            ? {
+                ...column,
+                recommendedType: "uint64" as const,
+                targetType: "uint64" as const,
+              }
+            : column,
+        ),
+      },
+    };
+    expect(parseCsvProfilePreviewResponse(canonical).preview.columns[0]).toMatchObject({
+      recommendedType: "uint64",
+      targetType: "uint64",
+    });
+    expect(() =>
+      parseCsvProfilePreviewResponse({
+        ...canonical,
+        preview: {
+          ...canonical.preview,
+          columns: canonical.preview.columns.map((column, index) =>
+            index === 0 ? { ...column, recommendedType: "uInt64" } : column,
+          ),
+        },
+      }),
+    ).toThrow(DataViewerError);
+  });
+
+  it("CSV-015 rejects valid-shaped responses belonging to another request", async () => {
+    invokeMock
+      .mockResolvedValueOnce({
+        documentId: "another-document",
+        sessionId: "csv-session",
+        profile: validCsvProfile,
+      })
+      .mockResolvedValueOnce({
+        ...validCsvPreview(validCsvProfile.generation + 1),
+        documentId: "document-csv",
+      })
+      .mockResolvedValueOnce({ ...validCsvValidation(), taskId: "another-task" });
+
+    await expect(tauriBackend.getCsvProfile("document-csv", "csv-session")).rejects.toThrow(
+      "another document",
+    );
+    await expect(
+      tauriBackend.previewCsvProfile({
+        documentId: "document-csv",
+        sessionId: "csv-session",
+        generation: validCsvProfile.generation,
+        profile: validCsvProfile,
+      }),
+    ).rejects.toThrow("another profile generation");
+    await expect(
+      tauriBackend.getCsvProfileValidationStatus("document-csv", "csv-session", "csv-task-1"),
+    ).rejects.toThrow("another CSV validation task");
+  });
+
+  it("QRY-001 sends exact query, result, distinct, find, cancel, and temp commands", async () => {
+    const executeRequest = {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      taskId: "task-1",
+      plan: validQueryPlan,
+    };
+    const pageRequest = {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      offset: 0,
+      limit: 200,
+    };
+    const distinctRequest = {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      columnId: "value",
+      search: null,
+      offset: 0,
+      limit: 100,
+    };
+    const findRequest = {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      fromResultOffset: 0,
+      fromMatchIndex: null,
+      direction: "next" as const,
+      wrap: true,
+    };
+    invokeMock
+      .mockResolvedValueOnce(validQueryStatus())
+      .mockResolvedValueOnce(validQueryStatus("running"))
+      .mockResolvedValueOnce({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: "query-1",
+        page: Object.fromEntries(Object.entries(validPage).filter(([key]) => key !== "sessionId")),
+      })
+      .mockResolvedValueOnce({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: "query-1",
+        columnId: "value",
+        values: [{ value: "alpha", isNull: false, isInvalid: false, count: 1 }],
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: "query-1",
+        match: {
+          rowOffset: 0,
+          columnId: "value",
+          matchIndex: 0,
+          totalMatches: 1,
+          wrapped: false,
+        },
+      })
+      .mockResolvedValueOnce({ ...validQueryStatus(), state: "cancelled" })
+      .mockResolvedValueOnce({
+        processBytes: 10,
+        limitBytes: 1_000,
+        availableBytes: 20_000,
+        activeQueries: 0,
+      })
+      .mockResolvedValueOnce({
+        deletedBytes: 10,
+        orphanFailureCount: 0,
+        cleanupFailures: [],
+        remainingUsage: {
+          processBytes: 0,
+          limitBytes: 1_000,
+          availableBytes: 20_010,
+          activeQueries: 0,
+        },
+      });
+
+    await tauriBackend.executeQuery(executeRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("execute_query", { request: executeRequest });
+    await tauriBackend.getQueryStatus("document-1", "session-1", "query-1", "task-1");
+    await expect(tauriBackend.readQueryPage(pageRequest)).resolves.toMatchObject({
+      page: { sessionId: "session-1" },
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("read_query_page", { request: pageRequest });
+    await tauriBackend.listDistinctValues(distinctRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_distinct_values", {
+      request: distinctRequest,
+    });
+    await tauriBackend.findQueryMatch(findRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("find_query_match", { request: findRequest });
+    await tauriBackend.cancelQuery("document-1", "session-1", "query-1", "task-1");
+    expect(invokeMock).toHaveBeenLastCalledWith("cancel_query", {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      taskId: "task-1",
+    });
+    await tauriBackend.getQueryTempUsage();
+    expect(invokeMock).toHaveBeenLastCalledWith("get_query_temp_usage", undefined);
+    await tauriBackend.clearQueryTemp();
+    expect(invokeMock).toHaveBeenLastCalledWith("clear_query_temp", undefined);
+  });
+
+  it("QRY-002 rejects malformed query DTOs and cross-task responses", async () => {
+    expect(() => parseQueryPlan({ ...validQueryPlan, projection: ["value", "value"] })).toThrow(
+      DataViewerError,
+    );
+    expect(() =>
+      parseQueryStatus({
+        ...validQueryStatus(),
+        progress: { rowsScanned: 2, totalRows: 1, resultRows: 0 },
+      }),
+    ).toThrow(DataViewerError);
+    expect(() =>
+      parseDistinctValuesResponse({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: null,
+        columnId: "value",
+        values: [{ value: "not-null", isNull: true, isInvalid: false, count: 1 }],
+        hasMore: false,
+      }),
+    ).toThrow(DataViewerError);
+    expect(() =>
+      parseFindQueryMatchResponse({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: "query-1",
+        match: { rowOffset: 0, columnId: "value", matchIndex: 1, totalMatches: 1, wrapped: false },
+      }),
+    ).toThrow(DataViewerError);
+    expect(() => parseQueryTempUsage({ processBytes: -1 })).toThrow(DataViewerError);
+    expect(() =>
+      parseQueryTempCleanupResult({
+        deletedBytes: 10,
+        orphanFailureCount: 1,
+        cleanupFailures: [],
+        remainingUsage: {
+          processBytes: 0,
+          limitBytes: 1_000,
+          availableBytes: 20_010,
+          activeQueries: 0,
+        },
+      }),
+    ).toThrow(DataViewerError);
+
+    invokeMock.mockResolvedValueOnce({ ...validQueryStatus(), taskId: "another-task" });
+    await expect(
+      tauriBackend.executeQuery({
+        documentId: "document-1",
+        sessionId: "session-1",
+        queryId: "query-1",
+        taskId: "task-1",
+        plan: validQueryPlan,
+      }),
+    ).rejects.toThrow("another task");
+  });
+
+  it("rejects invalid settings before invoking an atomic update", async () => {
+    const callCount = invokeMock.mock.calls.length;
+    const invalid = { ...defaultAppSettings(), queryTempLimitBytes: -1 };
+
+    await expect(
+      tauriBackend.updateSettings(invalid as unknown as ReturnType<typeof defaultAppSettings>),
+    ).rejects.toThrow("queryTempLimitBytes");
+    expect(invokeMock).toHaveBeenCalledTimes(callCount);
+  });
+
+  it("keeps the browser mock's last valid settings after a rejected write", async () => {
+    const original = await browserMockBackend.getSettings();
+    const changed = {
+      ...original,
+      csvDefaultParsingMode: "askEveryTime" as const,
+      queryTempLimitBytes: 512 * 1024 * 1024,
+    };
+    try {
+      await expect(browserMockBackend.updateSettings(changed)).resolves.toEqual(changed);
+      await expect(browserMockBackend.getSettings()).resolves.toEqual(changed);
+      await expect(
+        browserMockBackend.updateSettings({
+          ...changed,
+          queryTempLimitBytes: 0,
+        } as unknown as ReturnType<typeof defaultAppSettings>),
+      ).rejects.toThrow("queryTempLimitBytes");
+      await expect(browserMockBackend.getSettings()).resolves.toEqual(changed);
+    } finally {
+      await browserMockBackend.updateSettings(original);
+    }
+  });
+
+  it.each([
+    ["empty id", { ...validSummary.formatDescriptor, id: "" }],
+    ["dotted extension", { ...validSummary.formatDescriptor, extensions: [".parquet"] }],
+    ["uppercase extension", { ...validSummary.formatDescriptor, extensions: ["PARQUET"] }],
+    [
+      "duplicate extension",
+      { ...validSummary.formatDescriptor, extensions: ["parquet", "parquet"] },
+    ],
+    ["blank capability", { ...validSummary.formatDescriptor, capabilities: [""] }],
+  ])("rejects malformed format descriptors: %s", (_name, descriptor) => {
+    expect(() => parseFormatDescriptor(descriptor)).toThrow(DataViewerError);
+  });
+
+  it("rejects catalogs with an extension claimed by multiple descriptors", () => {
+    expect(() =>
+      parseSupportedFormats([
+        validSummary.formatDescriptor,
+        { ...validCsvSummary.formatDescriptor, extensions: ["parquet"] },
+      ]),
+    ).toThrow(DataViewerError);
+  });
+
+  it("accepts a generic format summary without adding a format-id parser branch", () => {
+    const parsed = parseFileSummary({
+      ...validSummary,
+      format: "test-table",
+      formatDescriptor: {
+        id: "test-table",
+        displayName: "Test Table",
+        extensions: ["table"],
+        mimeTypes: ["application/x-test-table"],
+        capabilities: ["columnProjection", "futureCapability"],
+      },
+      rowGroupCount: 0,
+      rowGroups: [],
+      formatDetails: [
+        {
+          id: "test-details",
+          title: "Test details",
+          kind: "keyValue",
+          entries: [{ label: "Version", value: "1" }],
+        },
+      ],
+    });
+
+    expect(parsed.formatDescriptor?.capabilities).toContain("futureCapability");
+    expect(parsed.formatDetails?.[0]).toEqual(
+      expect.objectContaining({ id: "test-details", kind: "keyValue" }),
+    );
+  });
+
+  it("rejects malformed generic table details", () => {
+    expect(() =>
+      parseFileSummary({
+        ...validSummary,
+        formatDetails: [
+          {
+            id: "broken-table",
+            title: "Broken table",
+            kind: "table",
+            columns: ["A", "B"],
+            rows: [["one cell"]],
+            truncated: false,
+          },
+        ],
+      }),
+    ).toThrow(DataViewerError);
   });
 
   it("forwards open cancellation to the Tauri request command", async () => {

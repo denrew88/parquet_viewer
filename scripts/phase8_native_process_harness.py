@@ -87,7 +87,11 @@ def main() -> None:
                 if args.file:
                     assigned_file = args.file[instance_index % len(args.file)].resolve()
                     command.append(str(assigned_file))
-                process = subprocess.Popen(command)
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
                 processes.append(process)
                 launch_records.append(
                     {
@@ -109,6 +113,11 @@ def main() -> None:
         finally:
             for process, record in zip(processes, launch_records, strict=True):
                 record["cleanup"] = terminate_owned(process, args.cleanup_timeout)
+                stdout, stderr = process.communicate()
+                if stdout:
+                    record["stdout"] = stdout.decode("utf-8", errors="replace")[-16384:]
+                if stderr:
+                    record["stderr"] = stderr.decode("utf-8", errors="replace")[-16384:]
         cycles.append({"cycle": cycle_index + 1, "instances": launch_records})
 
     result = {

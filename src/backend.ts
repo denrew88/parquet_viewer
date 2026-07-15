@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { defaultAppSettings, parseAppSettings, type AppSettingsV1 } from "./settings/model";
+import type { QueryPlan } from "./query/model";
 
 export interface HealthCheckResponse {
   status: "ok";
@@ -40,6 +42,225 @@ const dataValueKinds: readonly DataValueKind[] = [
 export interface DataValue {
   kind: DataValueKind;
   display: string | null;
+  state?: DataValueState;
+  rawDisplay?: string | null;
+  diagnostic?: CellDiagnostic | null;
+}
+
+export type DataValueState = "valid" | "null" | "empty" | "invalid";
+
+export interface CellDiagnostic {
+  code: string;
+  message: string;
+}
+
+export type CsvProfileMode = "auto" | "allText" | "custom";
+export type CsvTargetType =
+  | "auto"
+  | "text"
+  | "boolean"
+  | "int64"
+  | "uint64"
+  | "float64"
+  | "decimal"
+  | "date"
+  | "timestamp"
+  | "skip";
+export type CsvConversionFailurePolicy = "preserveInvalid" | "fail" | "asNull";
+export type CsvTimezonePolicy = "preserve" | "assumeUtc" | "fixedOffset";
+
+export interface CsvColumnProfileWire {
+  sourceIndex: number;
+  sourceName: string;
+  targetType: CsvTargetType;
+  trim: boolean;
+  nullTokens: string[];
+  trueTokens: string[];
+  falseTokens: string[];
+  decimalSeparator: string;
+  thousandSeparator: string | null;
+  temporalFormats: string[];
+  timezonePolicy: CsvTimezonePolicy;
+  timezoneOffsetMinutes: number | null;
+  failurePolicy: CsvConversionFailurePolicy;
+}
+
+export interface CsvParsingProfileWire {
+  mode: CsvProfileMode;
+  generation: number;
+  columns: CsvColumnProfileWire[];
+}
+
+export interface CsvProfileResponse {
+  documentId: string;
+  sessionId: string;
+  profile: CsvParsingProfileWire;
+}
+
+export interface CsvProfilePreviewRequest {
+  documentId: string;
+  sessionId: string;
+  generation: number;
+  profile: CsvParsingProfileWire;
+}
+
+export interface CsvProfilePreviewColumnWire {
+  sourceIndex: number;
+  sourceName: string;
+  recommendedType: CsvTargetType;
+  confidence: number;
+  targetType: CsvTargetType;
+  successCount: number;
+  nullCount: number;
+  invalidCount: number;
+}
+
+export interface CsvProfilePreviewWire {
+  generation: number;
+  stage: "leading" | "distributed";
+  profile: CsvParsingProfileWire;
+  columns: CsvProfilePreviewColumnWire[];
+  rows: { sourceRow: number; cells: { raw: string; converted: DataValue }[] }[];
+}
+
+export interface CsvProfilePreviewResponse {
+  documentId: string;
+  sessionId: string;
+  preview: CsvProfilePreviewWire;
+}
+
+export interface CsvProfileValidationRequest extends CsvProfilePreviewRequest {
+  taskId: string;
+}
+
+export type CsvValidationState = "queued" | "running" | "complete" | "cancelled" | "failed";
+
+export interface CsvValidationStatusWire {
+  taskId: string;
+  documentId: string;
+  sessionId: string;
+  generation: number;
+  state: CsvValidationState;
+  rowsScanned: number;
+  totalRows: number | null;
+  columns: {
+    sourceIndex: number;
+    sourceName: string;
+    successCount: number;
+    nullCount: number;
+    invalidCount: number;
+    firstErrorRow: number | null;
+    errorSamples: { sourceRow: number; raw: string; message: string }[];
+  }[];
+  error: { code: string; message: string } | null;
+}
+
+export interface ApplyCsvProfileRequest {
+  documentId: string;
+  sessionId: string;
+  profile: CsvParsingProfileWire;
+}
+
+export interface ExecuteQueryRequest {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  taskId: string;
+  plan: QueryPlan;
+}
+
+export type QueryTaskState =
+  "queued" | "running" | "complete" | "cancelling" | "cancelled" | "failed";
+
+export interface QueryStatusResponse {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  taskId: string;
+  state: QueryTaskState;
+  progress: { rowsScanned: number; totalRows: number | null; resultRows: number };
+  columns: string[];
+  elapsedMs: number;
+  findMatchCount: number | null;
+  error: { code: string; message: string } | null;
+}
+
+export interface ReadQueryPageRequest {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  offset: number;
+  limit: number;
+}
+
+export interface ReadQueryPageResponse {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  page: DataPage;
+}
+
+export interface DistinctValuesRequest {
+  documentId: string;
+  sessionId: string;
+  queryId: string | null;
+  columnId: string;
+  search: string | null;
+  offset: number;
+  limit: number;
+}
+
+export interface DistinctValue {
+  value: string | null;
+  isNull: boolean;
+  isInvalid: boolean;
+  count: number;
+}
+
+export interface DistinctValuesResponse {
+  documentId: string;
+  sessionId: string;
+  queryId: string | null;
+  columnId: string;
+  values: DistinctValue[];
+  hasMore: boolean;
+}
+
+export interface FindQueryMatchRequest {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  fromResultOffset: number;
+  fromMatchIndex?: number | null;
+  direction: "next" | "previous";
+  wrap: boolean;
+}
+
+export interface FindQueryMatchResponse {
+  documentId: string;
+  sessionId: string;
+  queryId: string;
+  match: {
+    rowOffset: number;
+    columnId: string;
+    matchIndex: number;
+    totalMatches: number;
+    wrapped: boolean;
+  } | null;
+}
+
+export interface QueryTempUsage {
+  processBytes: number;
+  limitBytes: number;
+  availableBytes: number;
+  activeQueries: number;
+}
+
+export interface QueryTempCleanupResult {
+  deletedBytes: number;
+  orphanFailureCount: number;
+  cleanupFailures: string[];
+  remainingUsage: QueryTempUsage;
 }
 
 export interface ColumnSchema {
@@ -58,7 +279,37 @@ export interface RowGroupSummary {
   statisticsColumnCount: number;
 }
 
-export type DataFormat = "parquet" | "csv";
+export type DataFormat = string;
+export type SourceCapability = string;
+
+export interface FormatDescriptor {
+  id: DataFormat;
+  displayName: string;
+  extensions: string[];
+  mimeTypes: string[];
+  capabilities: SourceCapability[];
+}
+
+export interface MetadataEntry {
+  label: string;
+  value: string;
+}
+
+export type FormatDetailsSection =
+  | {
+      id: string;
+      title: string;
+      kind: "keyValue";
+      entries: MetadataEntry[];
+    }
+  | {
+      id: string;
+      title: string;
+      kind: "table";
+      columns: string[];
+      rows: string[][];
+      truncated: boolean;
+    };
 export type CsvHeaderMode = "auto" | "present" | "absent";
 export type RowCountState = "calculating" | "complete" | "cancelled" | "failed";
 
@@ -106,6 +357,7 @@ export interface FileSummary {
   fileName: string;
   path: string;
   format: DataFormat;
+  formatDescriptor?: FormatDescriptor;
   fileSize: number;
   rowCount: number | null;
   rowCountStatus: RowCountStatus;
@@ -114,6 +366,7 @@ export interface FileSummary {
   columns: ColumnSchema[];
   rowGroups: RowGroupSummary[];
   csvMetadata: CsvMetadata | null;
+  formatDetails?: FormatDetailsSection[];
 }
 
 export interface DataPage {
@@ -194,6 +447,9 @@ export type OpenRequestErrorHandler = (error: DataViewerError) => void;
 
 export interface BackendAdapter {
   healthCheck(): Promise<HealthCheckResponse>;
+  listSupportedFormats(): Promise<FormatDescriptor[]>;
+  getSettings(): Promise<AppSettingsV1>;
+  updateSettings(settings: AppSettingsV1): Promise<AppSettingsV1>;
   selectDataFile(): Promise<FileSummary | null>;
   selectDataFilePath(requestId: string): Promise<OpenDataResponse | LegacyOpenedDataFile | null>;
   openDataFile(request: OpenDataRequest): Promise<OpenDataResponse | LegacyOpenedDataFile>;
@@ -209,6 +465,38 @@ export interface BackendAdapter {
     sessionId: string,
     headerMode: CsvHeaderMode,
   ): Promise<DocumentSummaryResponse | FileSummary>;
+  getCsvProfile(documentId: string, sessionId: string): Promise<CsvProfileResponse>;
+  previewCsvProfile(request: CsvProfilePreviewRequest): Promise<CsvProfilePreviewResponse>;
+  validateCsvProfile(request: CsvProfileValidationRequest): Promise<CsvValidationStatusWire>;
+  getCsvProfileValidationStatus(
+    documentId: string,
+    sessionId: string,
+    taskId: string,
+  ): Promise<CsvValidationStatusWire>;
+  cancelCsvProfileValidation(
+    documentId: string,
+    sessionId: string,
+    taskId: string,
+  ): Promise<CsvValidationStatusWire>;
+  applyCsvProfile(request: ApplyCsvProfileRequest): Promise<DocumentSummaryResponse>;
+  executeQuery(request: ExecuteQueryRequest): Promise<QueryStatusResponse>;
+  getQueryStatus(
+    documentId: string,
+    sessionId: string,
+    queryId: string,
+    taskId: string,
+  ): Promise<QueryStatusResponse>;
+  readQueryPage(request: ReadQueryPageRequest): Promise<ReadQueryPageResponse>;
+  listDistinctValues(request: DistinctValuesRequest): Promise<DistinctValuesResponse>;
+  findQueryMatch(request: FindQueryMatchRequest): Promise<FindQueryMatchResponse>;
+  cancelQuery(
+    documentId: string,
+    sessionId: string,
+    queryId: string,
+    taskId: string,
+  ): Promise<QueryStatusResponse>;
+  getQueryTempUsage(): Promise<QueryTempUsage>;
+  clearQueryTemp(): Promise<QueryTempCleanupResult>;
   getDataFileStatus(
     documentId: string,
     sessionId: string,
@@ -241,6 +529,876 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function stringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? (value as string[])
+    : null;
+}
+
+function hasUniqueValues(values: readonly string[]): boolean {
+  return new Set(values).size === values.length;
+}
+
+function exactObjectKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+const csvProfileModes: readonly CsvProfileMode[] = ["auto", "allText", "custom"];
+const csvTargetTypes: readonly CsvTargetType[] = [
+  "auto",
+  "text",
+  "boolean",
+  "int64",
+  "uint64",
+  "float64",
+  "decimal",
+  "date",
+  "timestamp",
+  "skip",
+];
+const csvFailurePolicies: readonly CsvConversionFailurePolicy[] = [
+  "preserveInvalid",
+  "fail",
+  "asNull",
+];
+const csvTimezonePolicies: readonly CsvTimezonePolicy[] = ["preserve", "assumeUtc", "fixedOffset"];
+const csvValidationStates: readonly CsvValidationState[] = [
+  "queued",
+  "running",
+  "complete",
+  "cancelled",
+  "failed",
+];
+
+function oneUnicodeCharacter(value: string): boolean {
+  return [...value].length === 1 && value !== "\r" && value !== "\n" && value !== "\0";
+}
+
+function parseCsvColumnProfile(value: unknown, expectedIndex: number): CsvColumnProfileWire {
+  const item = record(value);
+  const nullTokens = stringArray(item?.nullTokens);
+  const trueTokens = stringArray(item?.trueTokens);
+  const falseTokens = stringArray(item?.falseTokens);
+  const temporalFormats = stringArray(item?.temporalFormats);
+  const timezoneOffset = item?.timezoneOffsetMinutes;
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "sourceIndex",
+      "sourceName",
+      "targetType",
+      "trim",
+      "nullTokens",
+      "trueTokens",
+      "falseTokens",
+      "decimalSeparator",
+      "thousandSeparator",
+      "temporalFormats",
+      "timezonePolicy",
+      "timezoneOffsetMinutes",
+      "failurePolicy",
+    ]) ||
+    item.sourceIndex !== expectedIndex ||
+    !isNonEmptyString(item.sourceName) ||
+    !csvTargetTypes.includes(item.targetType as CsvTargetType) ||
+    typeof item.trim !== "boolean" ||
+    !nullTokens ||
+    !trueTokens ||
+    !falseTokens ||
+    !temporalFormats ||
+    !hasUniqueValues(nullTokens) ||
+    !hasUniqueValues(trueTokens) ||
+    !hasUniqueValues(falseTokens) ||
+    typeof item.decimalSeparator !== "string" ||
+    !oneUnicodeCharacter(item.decimalSeparator) ||
+    (item.thousandSeparator !== null &&
+      (typeof item.thousandSeparator !== "string" ||
+        !oneUnicodeCharacter(item.thousandSeparator))) ||
+    ((item.targetType === "float64" || item.targetType === "decimal") &&
+      item.thousandSeparator === item.decimalSeparator) ||
+    !csvTimezonePolicies.includes(item.timezonePolicy as CsvTimezonePolicy) ||
+    (timezoneOffset !== null &&
+      (typeof timezoneOffset !== "number" ||
+        !Number.isInteger(timezoneOffset) ||
+        timezoneOffset < -1_439 ||
+        timezoneOffset > 1_439)) ||
+    (item.timezonePolicy === "fixedOffset" ? timezoneOffset === null : timezoneOffset !== null) ||
+    !csvFailurePolicies.includes(item.failurePolicy as CsvConversionFailurePolicy)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV profile.");
+  }
+  return {
+    sourceIndex: item.sourceIndex,
+    sourceName: item.sourceName,
+    targetType: item.targetType as CsvTargetType,
+    trim: item.trim,
+    nullTokens,
+    trueTokens,
+    falseTokens,
+    decimalSeparator: item.decimalSeparator,
+    thousandSeparator: item.thousandSeparator as string | null,
+    temporalFormats,
+    timezonePolicy: item.timezonePolicy as CsvTimezonePolicy,
+    timezoneOffsetMinutes: timezoneOffset as number | null,
+    failurePolicy: item.failurePolicy as CsvConversionFailurePolicy,
+  };
+}
+
+export function parseCsvParsingProfile(value: unknown): CsvParsingProfileWire {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["mode", "generation", "columns"]) ||
+    !csvProfileModes.includes(item.mode as CsvProfileMode) ||
+    !isNonNegativeInteger(item.generation) ||
+    item.generation === 0 ||
+    !Array.isArray(item.columns) ||
+    item.columns.length === 0
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV profile.");
+  }
+  const columns = item.columns.map(parseCsvColumnProfile);
+  if (!hasUniqueValues(columns.map((column) => column.sourceName))) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV profile.");
+  }
+  return { mode: item.mode as CsvProfileMode, generation: item.generation, columns };
+}
+
+export function parseCsvProfileResponse(value: unknown): CsvProfileResponse {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["documentId", "sessionId", "profile"]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId)
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned an invalid CSV profile response.",
+    );
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    profile: parseCsvParsingProfile(item.profile),
+  };
+}
+
+function parseCsvPreviewColumn(value: unknown, expectedIndex: number): CsvProfilePreviewColumnWire {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "sourceIndex",
+      "sourceName",
+      "recommendedType",
+      "confidence",
+      "targetType",
+      "successCount",
+      "nullCount",
+      "invalidCount",
+    ]) ||
+    item.sourceIndex !== expectedIndex ||
+    !isNonEmptyString(item.sourceName) ||
+    !csvTargetTypes.includes(item.recommendedType as CsvTargetType) ||
+    typeof item.confidence !== "number" ||
+    !Number.isFinite(item.confidence) ||
+    item.confidence < 0 ||
+    item.confidence > 1 ||
+    !csvTargetTypes.includes(item.targetType as CsvTargetType) ||
+    !isNonNegativeInteger(item.successCount) ||
+    !isNonNegativeInteger(item.nullCount) ||
+    !isNonNegativeInteger(item.invalidCount)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV preview.");
+  }
+  return item as unknown as CsvProfilePreviewColumnWire;
+}
+
+export function parseCsvProfilePreviewResponse(value: unknown): CsvProfilePreviewResponse {
+  const item = record(value);
+  const preview = record(item?.preview);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["documentId", "sessionId", "preview"]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !preview ||
+    !exactObjectKeys(preview, ["generation", "stage", "profile", "columns", "rows"]) ||
+    !isNonNegativeInteger(preview.generation) ||
+    preview.generation === 0 ||
+    (preview.stage !== "leading" && preview.stage !== "distributed") ||
+    !Array.isArray(preview.columns) ||
+    !Array.isArray(preview.rows)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV preview.");
+  }
+  const profile = parseCsvParsingProfile(preview.profile);
+  const columns = preview.columns.map(parseCsvPreviewColumn);
+  const rows = preview.rows.map((rowValue) => {
+    const row = record(rowValue);
+    if (
+      !row ||
+      !exactObjectKeys(row, ["sourceRow", "cells"]) ||
+      !isNonNegativeInteger(row.sourceRow) ||
+      !Array.isArray(row.cells) ||
+      row.cells.length !== columns.length
+    ) {
+      throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV preview.");
+    }
+    const cells = row.cells.map((cellValue) => {
+      const cell = record(cellValue);
+      const converted = parseDataValue(cell?.converted);
+      if (
+        !cell ||
+        !exactObjectKeys(cell, ["raw", "converted"]) ||
+        typeof cell.raw !== "string" ||
+        !converted
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned an invalid CSV preview.",
+        );
+      }
+      return { raw: cell.raw, converted };
+    });
+    return { sourceRow: row.sourceRow as number, cells };
+  });
+  if (
+    profile.generation !== preview.generation ||
+    profile.columns.length !== columns.length ||
+    columns.some((column, index) => column.sourceName !== profile.columns[index]?.sourceName)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV preview.");
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    preview: {
+      generation: preview.generation,
+      stage: preview.stage,
+      profile,
+      columns,
+      rows,
+    },
+  };
+}
+
+export function parseCsvValidationStatus(value: unknown): CsvValidationStatusWire {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "taskId",
+      "documentId",
+      "sessionId",
+      "generation",
+      "state",
+      "rowsScanned",
+      "totalRows",
+      "columns",
+      "error",
+    ]) ||
+    !isNonEmptyString(item.taskId) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !isNonNegativeInteger(item.generation) ||
+    item.generation === 0 ||
+    !csvValidationStates.includes(item.state as CsvValidationState) ||
+    !isNonNegativeInteger(item.rowsScanned) ||
+    (item.totalRows !== null && !isNonNegativeInteger(item.totalRows)) ||
+    (isNonNegativeInteger(item.totalRows) && item.rowsScanned > item.totalRows) ||
+    !Array.isArray(item.columns)
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned an invalid CSV validation status.",
+    );
+  }
+  const columns = item.columns.map((columnValue, index) => {
+    const column = record(columnValue);
+    if (
+      !column ||
+      !exactObjectKeys(column, [
+        "sourceIndex",
+        "sourceName",
+        "successCount",
+        "nullCount",
+        "invalidCount",
+        "firstErrorRow",
+        "errorSamples",
+      ]) ||
+      column.sourceIndex !== index ||
+      !isNonEmptyString(column.sourceName) ||
+      !isNonNegativeInteger(column.successCount) ||
+      !isNonNegativeInteger(column.nullCount) ||
+      !isNonNegativeInteger(column.invalidCount) ||
+      (column.firstErrorRow !== null && !isNonNegativeInteger(column.firstErrorRow)) ||
+      !Array.isArray(column.errorSamples)
+    ) {
+      throw new DataViewerError(
+        "InvalidResponse",
+        "The backend returned an invalid CSV validation status.",
+      );
+    }
+    const errorSamples = column.errorSamples.map((sampleValue) => {
+      const sample = record(sampleValue);
+      if (
+        !sample ||
+        !exactObjectKeys(sample, ["sourceRow", "raw", "message"]) ||
+        !isNonNegativeInteger(sample.sourceRow) ||
+        typeof sample.raw !== "string" ||
+        !isNonEmptyString(sample.message)
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned an invalid CSV validation status.",
+        );
+      }
+      return {
+        sourceRow: sample.sourceRow as number,
+        raw: sample.raw as string,
+        message: sample.message as string,
+      };
+    });
+    return {
+      sourceIndex: column.sourceIndex as number,
+      sourceName: column.sourceName as string,
+      successCount: column.successCount as number,
+      nullCount: column.nullCount as number,
+      invalidCount: column.invalidCount as number,
+      firstErrorRow: column.firstErrorRow as number | null,
+      errorSamples,
+    };
+  });
+  const errorRecord = record(item.error);
+  const error =
+    item.error === null
+      ? null
+      : errorRecord &&
+          exactObjectKeys(errorRecord, ["code", "message"]) &&
+          isNonEmptyString(errorRecord.code) &&
+          isNonEmptyString(errorRecord.message)
+        ? { code: errorRecord.code, message: errorRecord.message }
+        : undefined;
+  if (error === undefined || (item.state === "failed" ? error === null : error !== null)) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned an invalid CSV validation status.",
+    );
+  }
+  return {
+    taskId: item.taskId,
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    generation: item.generation,
+    state: item.state as CsvValidationState,
+    rowsScanned: item.rowsScanned,
+    totalRows: item.totalRows as number | null,
+    columns,
+    error,
+  };
+}
+
+function validatedCsvPreviewRequest(request: CsvProfilePreviewRequest): CsvProfilePreviewRequest {
+  const profile = parseCsvParsingProfile(request.profile);
+  if (
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    !isNonNegativeInteger(request.generation) ||
+    request.generation === 0 ||
+    request.generation !== profile.generation
+  ) {
+    throw new DataViewerError("InvalidRequest", "The CSV profile request is invalid.");
+  }
+  return { ...request, profile };
+}
+
+function validatedCsvValidationRequest(
+  request: CsvProfileValidationRequest,
+): CsvProfileValidationRequest {
+  const validated = validatedCsvPreviewRequest(request);
+  if (!isNonEmptyString(request.taskId) || request.taskId.length > 128) {
+    throw new DataViewerError("InvalidRequest", "The CSV validation task ID is invalid.");
+  }
+  return { ...validated, taskId: request.taskId };
+}
+
+const queryScalarTypes = [
+  "text",
+  "number",
+  "decimal",
+  "date",
+  "timestamp",
+  "boolean",
+  "other",
+] as const;
+const queryFilterOperators = [
+  "equals",
+  "notEquals",
+  "contains",
+  "startsWith",
+  "endsWith",
+  "greaterThan",
+  "greaterThanOrEqual",
+  "lessThan",
+  "lessThanOrEqual",
+  "between",
+  "oneOf",
+  "isTrue",
+  "isFalse",
+  "isNull",
+  "isNotNull",
+  "isInvalid",
+  "isNotInvalid",
+] as const;
+const queryTaskStates: readonly QueryTaskState[] = [
+  "queued",
+  "running",
+  "complete",
+  "cancelling",
+  "cancelled",
+  "failed",
+];
+
+export function parseQueryPlan(value: unknown): QueryPlan {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["filters", "search", "sort", "projection"]) ||
+    !Array.isArray(item.filters) ||
+    item.filters.length > 256 ||
+    !Array.isArray(item.sort) ||
+    item.sort.length > 64 ||
+    !Array.isArray(item.projection) ||
+    item.projection.length > 64
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query plan is invalid.");
+  }
+  const filters = item.filters.map((value) => {
+    const filter = record(value);
+    const values = stringArray(filter?.values);
+    if (
+      !filter ||
+      !exactObjectKeys(filter, ["id", "columnId", "scalarType", "operator", "values"]) ||
+      !isNonEmptyString(filter.id) ||
+      !isNonEmptyString(filter.columnId) ||
+      !queryScalarTypes.includes(filter.scalarType as (typeof queryScalarTypes)[number]) ||
+      !queryFilterOperators.includes(filter.operator as (typeof queryFilterOperators)[number]) ||
+      !values ||
+      values.some((value) => !value.trim()) ||
+      values.length > 10_000
+    ) {
+      throw new DataViewerError("InvalidResponse", "The query filter is invalid.");
+    }
+    const expected = [
+      "isTrue",
+      "isFalse",
+      "isNull",
+      "isNotNull",
+      "isInvalid",
+      "isNotInvalid",
+    ].includes(filter.operator as string)
+      ? 0
+      : filter.operator === "between"
+        ? 2
+        : filter.operator === "oneOf"
+          ? null
+          : 1;
+    if (
+      (expected === null && values.length === 0) ||
+      (expected !== null && values.length !== expected)
+    ) {
+      throw new DataViewerError("InvalidResponse", "The query filter value count is invalid.");
+    }
+    return {
+      id: filter.id as string,
+      columnId: filter.columnId as string,
+      scalarType: filter.scalarType as QueryPlan["filters"][number]["scalarType"],
+      operator: filter.operator as QueryPlan["filters"][number]["operator"],
+      values,
+    };
+  });
+  const searchItem = item.search === null ? null : record(item.search);
+  const targets = searchItem ? stringArray(searchItem.targetColumnIds) : null;
+  if (
+    item.search !== null &&
+    (!searchItem ||
+      !exactObjectKeys(searchItem, ["text", "mode", "caseSensitive", "exact", "targetColumnIds"]) ||
+      !isNonEmptyString(searchItem.text) ||
+      searchItem.text.length > 16_384 ||
+      (searchItem.mode !== "find" && searchItem.mode !== "filter") ||
+      typeof searchItem.caseSensitive !== "boolean" ||
+      typeof searchItem.exact !== "boolean" ||
+      !targets ||
+      !hasUniqueValues(targets) ||
+      targets.some((target) => !target.trim()))
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query search is invalid.");
+  }
+  const sort = item.sort.map((value) => {
+    const order = record(value);
+    if (
+      !order ||
+      !exactObjectKeys(order, ["columnId", "direction", "nullsLast"]) ||
+      !isNonEmptyString(order.columnId) ||
+      (order.direction !== "ascending" && order.direction !== "descending") ||
+      order.nullsLast !== true
+    ) {
+      throw new DataViewerError("InvalidResponse", "The query sort is invalid.");
+    }
+    return {
+      columnId: order.columnId as string,
+      direction: order.direction as "ascending" | "descending",
+      nullsLast: true as const,
+    };
+  });
+  const projection = stringArray(item.projection);
+  if (
+    !projection ||
+    !hasUniqueValues(projection) ||
+    projection.some((column) => !column.trim()) ||
+    !hasUniqueValues(filters.map((filter) => filter.id)) ||
+    !hasUniqueValues(filters.map((filter) => filter.columnId)) ||
+    !hasUniqueValues(sort.map((order) => order.columnId))
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query plan contains duplicate fields.");
+  }
+  return {
+    filters,
+    search: searchItem
+      ? {
+          text: searchItem.text as string,
+          mode: searchItem.mode as "find" | "filter",
+          caseSensitive: searchItem.caseSensitive as boolean,
+          exact: searchItem.exact as boolean,
+          targetColumnIds: targets!,
+        }
+      : null,
+    sort,
+    projection,
+  };
+}
+
+export function parseQueryStatus(value: unknown): QueryStatusResponse {
+  const item = record(value);
+  const progress = record(item?.progress);
+  const columns = stringArray(item?.columns);
+  const errorItem = item?.error === null ? null : record(item?.error);
+  const error =
+    item?.error === null
+      ? null
+      : errorItem &&
+          exactObjectKeys(errorItem, ["code", "message"]) &&
+          isNonEmptyString(errorItem.code) &&
+          isNonEmptyString(errorItem.message)
+        ? { code: errorItem.code, message: errorItem.message }
+        : undefined;
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "documentId",
+      "sessionId",
+      "queryId",
+      "taskId",
+      "state",
+      "progress",
+      "columns",
+      "elapsedMs",
+      "findMatchCount",
+      "error",
+    ]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !isNonEmptyString(item.queryId) ||
+    !isNonEmptyString(item.taskId) ||
+    !queryTaskStates.includes(item.state as QueryTaskState) ||
+    !progress ||
+    !exactObjectKeys(progress, ["rowsScanned", "totalRows", "resultRows"]) ||
+    !isNonNegativeInteger(progress.rowsScanned) ||
+    (progress.totalRows !== null && !isNonNegativeInteger(progress.totalRows)) ||
+    !isNonNegativeInteger(progress.resultRows) ||
+    (isNonNegativeInteger(progress.totalRows) && progress.rowsScanned > progress.totalRows) ||
+    !columns ||
+    !hasUniqueValues(columns) ||
+    !isNonNegativeInteger(item.elapsedMs) ||
+    (item.findMatchCount !== null && !isNonNegativeInteger(item.findMatchCount)) ||
+    error === undefined ||
+    (item.state === "failed" ? error === null : error !== null)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query status is invalid.");
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    queryId: item.queryId,
+    taskId: item.taskId,
+    state: item.state as QueryTaskState,
+    progress: {
+      rowsScanned: progress.rowsScanned as number,
+      totalRows: progress.totalRows as number | null,
+      resultRows: progress.resultRows as number,
+    },
+    columns,
+    elapsedMs: item.elapsedMs,
+    findMatchCount: item.findMatchCount as number | null,
+    error,
+  };
+}
+
+export function parseReadQueryPageResponse(value: unknown): ReadQueryPageResponse {
+  const item = record(value);
+  const page = record(item?.page);
+  if (
+    !item ||
+    !page ||
+    !exactObjectKeys(item, ["documentId", "sessionId", "queryId", "page"]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !isNonEmptyString(item.queryId) ||
+    (page.sessionId !== undefined && page.sessionId !== item.sessionId)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query page response is invalid.");
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    queryId: item.queryId,
+    page: parseDataPage({ ...page, sessionId: item.sessionId }),
+  };
+}
+
+export function parseDistinctValuesResponse(value: unknown): DistinctValuesResponse {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "documentId",
+      "sessionId",
+      "queryId",
+      "columnId",
+      "values",
+      "hasMore",
+    ]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    (item.queryId !== null && !isNonEmptyString(item.queryId)) ||
+    !isNonEmptyString(item.columnId) ||
+    !Array.isArray(item.values) ||
+    item.values.length > 200 ||
+    typeof item.hasMore !== "boolean"
+  ) {
+    throw new DataViewerError("InvalidResponse", "The distinct-values response is invalid.");
+  }
+  const values = item.values.map((value) => {
+    const distinct = record(value);
+    if (
+      !distinct ||
+      !exactObjectKeys(distinct, ["value", "isNull", "isInvalid", "count"]) ||
+      (distinct.value !== null && typeof distinct.value !== "string") ||
+      typeof distinct.isNull !== "boolean" ||
+      typeof distinct.isInvalid !== "boolean" ||
+      !isNonNegativeInteger(distinct.count) ||
+      distinct.count === 0 ||
+      (distinct.isNull ? distinct.value !== null || distinct.isInvalid : distinct.value === null)
+    ) {
+      throw new DataViewerError("InvalidResponse", "A distinct value is invalid.");
+    }
+    return distinct as unknown as DistinctValue;
+  });
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    queryId: item.queryId as string | null,
+    columnId: item.columnId,
+    values,
+    hasMore: item.hasMore,
+  };
+}
+
+export function parseFindQueryMatchResponse(value: unknown): FindQueryMatchResponse {
+  const item = record(value);
+  const match = item?.match === null ? null : record(item?.match);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["documentId", "sessionId", "queryId", "match"]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !isNonEmptyString(item.queryId) ||
+    (item.match !== null &&
+      (!match ||
+        !exactObjectKeys(match, [
+          "rowOffset",
+          "columnId",
+          "matchIndex",
+          "totalMatches",
+          "wrapped",
+        ]) ||
+        !isNonNegativeInteger(match.rowOffset) ||
+        !isNonEmptyString(match.columnId) ||
+        !isNonNegativeInteger(match.matchIndex) ||
+        !isNonNegativeInteger(match.totalMatches) ||
+        match.totalMatches === 0 ||
+        match.matchIndex >= match.totalMatches ||
+        typeof match.wrapped !== "boolean"))
+  ) {
+    throw new DataViewerError("InvalidResponse", "The find-match response is invalid.");
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    queryId: item.queryId,
+    match: match as FindQueryMatchResponse["match"],
+  };
+}
+
+export function parseQueryTempUsage(value: unknown): QueryTempUsage {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["processBytes", "limitBytes", "availableBytes", "activeQueries"]) ||
+    !isNonNegativeInteger(item.processBytes) ||
+    !isNonNegativeInteger(item.limitBytes) ||
+    item.limitBytes === 0 ||
+    !isNonNegativeInteger(item.availableBytes) ||
+    !isNonNegativeInteger(item.activeQueries)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The query temporary-storage usage is invalid.");
+  }
+  return item as unknown as QueryTempUsage;
+}
+
+export function parseQueryTempCleanupResult(value: unknown): QueryTempCleanupResult {
+  const item = record(value);
+  const cleanupFailures = stringArray(item?.cleanupFailures);
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "deletedBytes",
+      "orphanFailureCount",
+      "cleanupFailures",
+      "remainingUsage",
+    ]) ||
+    !isNonNegativeInteger(item.deletedBytes) ||
+    !isNonNegativeInteger(item.orphanFailureCount) ||
+    !cleanupFailures ||
+    item.orphanFailureCount !== cleanupFailures.length
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The temporary-storage cleanup result is invalid.",
+    );
+  }
+  return {
+    deletedBytes: item.deletedBytes,
+    orphanFailureCount: item.orphanFailureCount,
+    cleanupFailures,
+    remainingUsage: parseQueryTempUsage(item.remainingUsage),
+  };
+}
+
+export function parseFormatDescriptor(value: unknown): FormatDescriptor {
+  const descriptor = record(value);
+  const extensions = stringArray(descriptor?.extensions);
+  const mimeTypes = stringArray(descriptor?.mimeTypes);
+  const capabilities = stringArray(descriptor?.capabilities);
+  if (
+    !descriptor ||
+    !isNonEmptyString(descriptor.id) ||
+    !isNonEmptyString(descriptor.displayName) ||
+    !extensions ||
+    extensions.length === 0 ||
+    extensions.some(
+      (extension) =>
+        extension.length === 0 ||
+        extension !== extension.toLocaleLowerCase() ||
+        !/^[a-z0-9]+$/.test(extension),
+    ) ||
+    !hasUniqueValues(extensions) ||
+    !mimeTypes ||
+    mimeTypes.some((mimeType) => !isNonEmptyString(mimeType)) ||
+    !hasUniqueValues(mimeTypes) ||
+    !capabilities ||
+    capabilities.some((capability) => !isNonEmptyString(capability)) ||
+    !hasUniqueValues(capabilities)
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned an invalid format descriptor.",
+    );
+  }
+  return {
+    id: descriptor.id,
+    displayName: descriptor.displayName,
+    extensions,
+    mimeTypes,
+    capabilities,
+  };
+}
+
+export function parseSupportedFormats(value: unknown): FormatDescriptor[] {
+  if (!Array.isArray(value)) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid format catalog.");
+  }
+  const descriptors = value.map(parseFormatDescriptor);
+  const ids = descriptors.map((descriptor) => descriptor.id);
+  const names = descriptors.map((descriptor) => descriptor.displayName);
+  const extensions = descriptors.flatMap((descriptor) => descriptor.extensions);
+  if (
+    descriptors.length === 0 ||
+    !hasUniqueValues(ids) ||
+    !hasUniqueValues(names) ||
+    !hasUniqueValues(extensions)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid format catalog.");
+  }
+  return descriptors;
+}
+
+function parseMetadataEntry(value: unknown): MetadataEntry | null {
+  const entry = record(value);
+  return entry && isNonEmptyString(entry.label) && typeof entry.value === "string"
+    ? { label: entry.label, value: entry.value }
+    : null;
+}
+
+function parseFormatDetailsSection(value: unknown): FormatDetailsSection | null {
+  const section = record(value);
+  if (!section || !isNonEmptyString(section.id) || !isNonEmptyString(section.title)) return null;
+  if (section.kind === "keyValue") {
+    const entries = Array.isArray(section.entries) ? section.entries.map(parseMetadataEntry) : null;
+    return entries && entries.every((entry) => entry !== null)
+      ? {
+          id: section.id,
+          title: section.title,
+          kind: "keyValue",
+          entries: entries as MetadataEntry[],
+        }
+      : null;
+  }
+  if (section.kind === "table") {
+    const columns = stringArray(section.columns);
+    const rows = Array.isArray(section.rows) ? section.rows.map((row) => stringArray(row)) : null;
+    return columns &&
+      columns.every(isNonEmptyString) &&
+      hasUniqueValues(columns) &&
+      rows &&
+      rows.every((row) => row !== null && row.length === columns.length) &&
+      typeof section.truncated === "boolean"
+      ? {
+          id: section.id,
+          title: section.title,
+          kind: "table",
+          columns,
+          rows: rows as string[][],
+          truncated: section.truncated,
+        }
+      : null;
+  }
+  return null;
 }
 
 function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
@@ -408,33 +1566,39 @@ function parseCsvMetadata(value: unknown): CsvMetadata | null {
 
 export function parseFileSummary(value: unknown): FileSummary {
   const summary = record(value);
+  const formatDescriptor = parseFormatDescriptor(summary?.formatDescriptor);
   const columnCount = summary?.columnCount;
   const columns = Array.isArray(summary?.columns) ? summary.columns.map(parseColumnSchema) : null;
   const rowGroups = Array.isArray(summary?.rowGroups)
     ? summary.rowGroups.map(parseRowGroupSummary)
     : null;
-  const isParquet = summary?.format === "parquet";
-  const isCsv = summary?.format === "csv";
   const rowCount = summary?.rowCount;
   const rowCountStatus =
-    summary?.rowCountStatus === undefined && isParquet && isNonNegativeInteger(rowCount)
+    summary?.rowCountStatus === undefined && isNonNegativeInteger(rowCount)
       ? {
           state: "complete" as const,
           rowsScanned: rowCount,
-          bytesScanned: isNonNegativeInteger(summary.fileSize) ? summary.fileSize : 0,
-          totalBytes: isNonNegativeInteger(summary.fileSize) ? summary.fileSize : 0,
+          bytesScanned: isNonNegativeInteger(summary?.fileSize) ? summary.fileSize : 0,
+          totalBytes: isNonNegativeInteger(summary?.fileSize) ? summary.fileSize : 0,
           generation: 0,
           message: null,
         }
       : parseRowCountStatus(summary?.rowCountStatus);
-  const csvMetadata = isCsv ? parseCsvMetadata(summary?.csvMetadata) : null;
+  const hasCsvMetadataPayload = summary?.csvMetadata !== null;
+  const csvMetadata = hasCsvMetadataPayload ? parseCsvMetadata(summary?.csvMetadata) : null;
+  const formatDetails = Array.isArray(summary?.formatDetails)
+    ? summary.formatDetails.map(parseFormatDetailsSection)
+    : null;
+  const hasRowGroups = formatDescriptor.capabilities.includes("rowGroups");
+  const hasLegacyCsvDetails = formatDetails?.some((section) => section?.id === "csv-parsing");
 
   if (
     !summary ||
     !isNonEmptyString(summary.sessionId) ||
     !isNonEmptyString(summary.fileName) ||
     !isNonEmptyString(summary.path) ||
-    (!isParquet && !isCsv) ||
+    !isNonEmptyString(summary.format) ||
+    summary.format !== formatDescriptor.id ||
     !isNonNegativeInteger(summary.fileSize) ||
     (rowCount !== null && !isNonNegativeInteger(rowCount)) ||
     !rowCountStatus ||
@@ -452,15 +1616,17 @@ export function parseFileSummary(value: unknown): FileSummary {
         rowGroup.statisticsColumnCount > columnCount,
     ) ||
     rowGroups.length !== summary.rowGroupCount ||
-    (isParquet &&
+    !formatDetails ||
+    formatDetails.some((section) => section === null) ||
+    !hasUniqueValues(formatDetails.map((section) => section?.id ?? "")) ||
+    (hasRowGroups &&
+      rowCount !== null &&
       (summary.rowGroupCount !== rowGroups.length ||
         rowGroups.reduce((total, rowGroup) => total + (rowGroup?.rowCount ?? 0), 0) !==
           rowCount)) ||
-    (isCsv &&
-      (!csvMetadata ||
-        summary.rowGroupCount !== 0 ||
-        rowGroups.length !== 0 ||
-        columnCount > 4_096))
+    (hasCsvMetadataPayload && !csvMetadata) ||
+    (hasLegacyCsvDetails && !csvMetadata) ||
+    (csvMetadata && (summary.rowGroupCount !== 0 || rowGroups.length !== 0 || columnCount > 4_096))
   ) {
     throw new DataViewerError("InvalidResponse", "The backend returned an invalid file summary.");
   }
@@ -470,6 +1636,7 @@ export function parseFileSummary(value: unknown): FileSummary {
     fileName: summary.fileName,
     path: summary.path,
     format: summary.format as DataFormat,
+    formatDescriptor,
     fileSize: summary.fileSize,
     rowCount: rowCount as number | null,
     rowCountStatus,
@@ -478,22 +1645,70 @@ export function parseFileSummary(value: unknown): FileSummary {
     columns: columns as ColumnSchema[],
     rowGroups: rowGroups as RowGroupSummary[],
     csvMetadata,
+    formatDetails: formatDetails as FormatDetailsSection[],
   };
 }
 
-function parseDataValue(value: unknown): DataValue | null {
+export function parseDataValue(value: unknown): DataValue | null {
   const dataValue = record(value);
   if (!dataValue || !dataValueKinds.includes(dataValue.kind as DataValueKind)) {
     return null;
   }
 
-  if (dataValue.kind === "null") {
-    return dataValue.display === null ? { kind: "null", display: null } : null;
+  const extended = ["state", "rawDisplay", "diagnostic"].some((key) =>
+    Object.prototype.hasOwnProperty.call(dataValue, key),
+  );
+  if (!extended) {
+    if (dataValue.kind === "null") {
+      return dataValue.display === null ? { kind: "null", display: null } : null;
+    }
+    return typeof dataValue.display === "string"
+      ? { kind: dataValue.kind as Exclude<DataValueKind, "null">, display: dataValue.display }
+      : null;
   }
 
-  return typeof dataValue.display === "string"
-    ? { kind: dataValue.kind as Exclude<DataValueKind, "null">, display: dataValue.display }
-    : null;
+  const state = dataValue.state;
+  const rawDisplay = dataValue.rawDisplay;
+  const diagnostic = record(dataValue.diagnostic);
+  const diagnosticValue =
+    dataValue.diagnostic === null
+      ? null
+      : diagnostic &&
+          exactObjectKeys(diagnostic, ["code", "message"]) &&
+          isNonEmptyString(diagnostic.code) &&
+          isNonEmptyString(diagnostic.message)
+        ? { code: diagnostic.code, message: diagnostic.message }
+        : undefined;
+  const commonValid =
+    ["valid", "null", "empty", "invalid"].includes(state as string) &&
+    (rawDisplay === null || typeof rawDisplay === "string") &&
+    diagnosticValue !== undefined;
+  const semanticValid =
+    (state === "null" &&
+      dataValue.kind === "null" &&
+      dataValue.display === null &&
+      diagnosticValue === null) ||
+    (state === "empty" &&
+      dataValue.kind === "string" &&
+      dataValue.display === "" &&
+      diagnosticValue === null) ||
+    (state === "valid" &&
+      dataValue.kind !== "null" &&
+      typeof dataValue.display === "string" &&
+      diagnosticValue === null) ||
+    (state === "invalid" &&
+      dataValue.kind !== "null" &&
+      typeof dataValue.display === "string" &&
+      typeof rawDisplay === "string" &&
+      diagnosticValue !== null);
+  if (!commonValid || !semanticValid) return null;
+  return {
+    kind: dataValue.kind as DataValueKind,
+    display: dataValue.display as string | null,
+    state: state as DataValueState,
+    rawDisplay: rawDisplay as string | null,
+    diagnostic: diagnosticValue,
+  };
 }
 
 export function parseDataPage(value: unknown): DataPage {
@@ -838,6 +2053,71 @@ function parseDocumentPageResponse(value: unknown, request: ReadPageRequest): Da
   return parseDataPage({ ...page, sessionId: response.sessionId });
 }
 
+function validatedExecuteQueryRequest(request: ExecuteQueryRequest): ExecuteQueryRequest {
+  const plan = parseQueryPlan(request.plan);
+  if (
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    !isNonEmptyString(request.queryId) ||
+    !isNonEmptyString(request.taskId) ||
+    request.queryId.length > 128 ||
+    request.taskId.length > 128
+  ) {
+    throw new DataViewerError("InvalidRequest", "The query request is invalid.");
+  }
+  return { ...request, plan };
+}
+
+function validatedReadQueryPageRequest(request: ReadQueryPageRequest): ReadQueryPageRequest {
+  if (
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    !isNonEmptyString(request.queryId) ||
+    !isNonNegativeInteger(request.offset) ||
+    !isNonNegativeInteger(request.limit) ||
+    request.limit < 1 ||
+    request.limit > 200
+  ) {
+    throw new DataViewerError("InvalidRequest", "The query page request is invalid.");
+  }
+  return request;
+}
+
+function validatedDistinctValuesRequest(request: DistinctValuesRequest): DistinctValuesRequest {
+  if (
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    (request.queryId !== null && !isNonEmptyString(request.queryId)) ||
+    !isNonEmptyString(request.columnId) ||
+    (request.search !== null &&
+      (typeof request.search !== "string" || request.search.length > 4_096)) ||
+    !isNonNegativeInteger(request.offset) ||
+    !isNonNegativeInteger(request.limit) ||
+    request.limit < 1 ||
+    request.limit > 200
+  ) {
+    throw new DataViewerError("InvalidRequest", "The distinct-values request is invalid.");
+  }
+  return request;
+}
+
+function validatedFindQueryMatchRequest(request: FindQueryMatchRequest): FindQueryMatchRequest {
+  if (
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    !isNonEmptyString(request.queryId) ||
+    !isNonNegativeInteger(request.fromResultOffset) ||
+    (request.fromMatchIndex !== undefined &&
+      request.fromMatchIndex !== null &&
+      !isNonNegativeInteger(request.fromMatchIndex)) ||
+    (request.direction !== "next" && request.direction !== "previous") ||
+    typeof request.wrap !== "boolean"
+  ) {
+    throw new DataViewerError("InvalidRequest", "The find-match request is invalid.");
+  }
+  return request;
+}
+
 function normalizeBackendError(error: unknown): DataViewerError {
   if (error instanceof DataViewerError) {
     return error;
@@ -886,6 +2166,16 @@ export const tauriBackend: BackendAdapter = {
       }
       return response;
     });
+  },
+  async listSupportedFormats() {
+    return validatedInvoke("list_supported_formats", undefined, parseSupportedFormats);
+  },
+  async getSettings() {
+    return validatedInvoke("get_settings", undefined, parseAppSettings);
+  },
+  async updateSettings(settings) {
+    const validated = parseAppSettings(settings);
+    return validatedInvoke("update_settings", { settings: validated }, parseAppSettings);
   },
   async selectDataFile() {
     return validatedInvoke("select_data_file", undefined, (response) =>
@@ -938,6 +2228,210 @@ export const tauriBackend: BackendAdapter = {
       parseDocumentSummaryResponse,
     );
   },
+  async getCsvProfile(documentId, sessionId) {
+    return validatedInvoke("get_csv_profile", { documentId, sessionId }, (value) => {
+      const response = parseCsvProfileResponse(value);
+      if (response.documentId !== documentId || response.sessionId !== sessionId) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned a CSV profile for another document.",
+        );
+      }
+      return response;
+    });
+  },
+  async previewCsvProfile(request) {
+    const validated = validatedCsvPreviewRequest(request);
+    return validatedInvoke("preview_csv_profile", { request: validated }, (value) => {
+      const response = parseCsvProfilePreviewResponse(value);
+      if (
+        response.documentId !== validated.documentId ||
+        response.sessionId !== validated.sessionId ||
+        response.preview.generation !== validated.generation
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned a CSV preview for another profile generation.",
+        );
+      }
+      return response;
+    });
+  },
+  async validateCsvProfile(request) {
+    const validated = validatedCsvValidationRequest(request);
+    return validatedInvoke("validate_csv_profile", { request: validated }, (value) => {
+      const status = parseCsvValidationStatus(value);
+      if (
+        status.taskId !== validated.taskId ||
+        status.documentId !== validated.documentId ||
+        status.sessionId !== validated.sessionId ||
+        status.generation !== validated.generation
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned a status for another CSV validation task.",
+        );
+      }
+      return status;
+    });
+  },
+  async getCsvProfileValidationStatus(documentId, sessionId, taskId) {
+    return validatedInvoke(
+      "get_csv_profile_validation_status",
+      { documentId, sessionId, taskId },
+      (value) => {
+        const status = parseCsvValidationStatus(value);
+        if (
+          status.taskId !== taskId ||
+          status.documentId !== documentId ||
+          status.sessionId !== sessionId
+        ) {
+          throw new DataViewerError(
+            "InvalidResponse",
+            "The backend returned a status for another CSV validation task.",
+          );
+        }
+        return status;
+      },
+    );
+  },
+  async cancelCsvProfileValidation(documentId, sessionId, taskId) {
+    return validatedInvoke(
+      "cancel_csv_profile_validation",
+      { documentId, sessionId, taskId },
+      (value) => {
+        const status = parseCsvValidationStatus(value);
+        if (
+          status.taskId !== taskId ||
+          status.documentId !== documentId ||
+          status.sessionId !== sessionId
+        ) {
+          throw new DataViewerError(
+            "InvalidResponse",
+            "The backend returned a status for another CSV validation task.",
+          );
+        }
+        return status;
+      },
+    );
+  },
+  async applyCsvProfile(request) {
+    const profile = parseCsvParsingProfile(request.profile);
+    if (!isNonEmptyString(request.documentId) || !isNonEmptyString(request.sessionId)) {
+      throw new DataViewerError("InvalidRequest", "The CSV profile apply request is invalid.");
+    }
+    return validatedInvoke("apply_csv_profile", { request: { ...request, profile } }, (value) => {
+      const response = parseDocumentSummaryResponse(value);
+      if (response.documentId !== request.documentId || response.sessionId === request.sessionId) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend did not create a new CSV profile session.",
+        );
+      }
+      return response;
+    });
+  },
+  async executeQuery(request) {
+    const validated = validatedExecuteQueryRequest(request);
+    return validatedInvoke("execute_query", { request: validated }, (value) => {
+      const status = parseQueryStatus(value);
+      if (
+        status.documentId !== validated.documentId ||
+        status.sessionId !== validated.sessionId ||
+        status.queryId !== validated.queryId ||
+        status.taskId !== validated.taskId
+      ) {
+        throw new DataViewerError("InvalidResponse", "The query status belongs to another task.");
+      }
+      return status;
+    });
+  },
+  async getQueryStatus(documentId, sessionId, queryId, taskId) {
+    return validatedInvoke(
+      "get_query_status",
+      { documentId, sessionId, queryId, taskId },
+      (value) => {
+        const status = parseQueryStatus(value);
+        if (
+          status.documentId !== documentId ||
+          status.sessionId !== sessionId ||
+          status.queryId !== queryId ||
+          status.taskId !== taskId
+        ) {
+          throw new DataViewerError("InvalidResponse", "The query status belongs to another task.");
+        }
+        return status;
+      },
+    );
+  },
+  async readQueryPage(request) {
+    const validated = validatedReadQueryPageRequest(request);
+    return validatedInvoke("read_query_page", { request: validated }, (value) => {
+      const response = parseReadQueryPageResponse(value);
+      if (
+        response.documentId !== validated.documentId ||
+        response.sessionId !== validated.sessionId ||
+        response.queryId !== validated.queryId ||
+        response.page.sessionId !== validated.sessionId ||
+        response.page.offset !== validated.offset
+      ) {
+        throw new DataViewerError("InvalidResponse", "The query page belongs to another result.");
+      }
+      return response;
+    });
+  },
+  async listDistinctValues(request) {
+    const validated = validatedDistinctValuesRequest(request);
+    return validatedInvoke("list_distinct_values", { request: validated }, (value) => {
+      const response = parseDistinctValuesResponse(value);
+      if (
+        response.documentId !== validated.documentId ||
+        response.sessionId !== validated.sessionId ||
+        response.queryId !== validated.queryId ||
+        response.columnId !== validated.columnId
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The distinct values belong to another query column.",
+        );
+      }
+      return response;
+    });
+  },
+  async findQueryMatch(request) {
+    const validated = validatedFindQueryMatchRequest(request);
+    return validatedInvoke("find_query_match", { request: validated }, (value) => {
+      const response = parseFindQueryMatchResponse(value);
+      if (
+        response.documentId !== validated.documentId ||
+        response.sessionId !== validated.sessionId ||
+        response.queryId !== validated.queryId
+      ) {
+        throw new DataViewerError("InvalidResponse", "The find match belongs to another query.");
+      }
+      return response;
+    });
+  },
+  async cancelQuery(documentId, sessionId, queryId, taskId) {
+    return validatedInvoke("cancel_query", { documentId, sessionId, queryId, taskId }, (value) => {
+      const status = parseQueryStatus(value);
+      if (
+        status.documentId !== documentId ||
+        status.sessionId !== sessionId ||
+        status.queryId !== queryId ||
+        status.taskId !== taskId
+      ) {
+        throw new DataViewerError("InvalidResponse", "The query status belongs to another task.");
+      }
+      return status;
+    });
+  },
+  async getQueryTempUsage() {
+    return validatedInvoke("get_query_temp_usage", undefined, parseQueryTempUsage);
+  },
+  async clearQueryTemp() {
+    return validatedInvoke("clear_query_temp", undefined, parseQueryTempCleanupResult);
+  },
   async getDataFileStatus(documentId, sessionId) {
     return validatedInvoke(
       "get_data_file_status",
@@ -957,11 +2451,29 @@ export const tauriBackend: BackendAdapter = {
   },
 };
 
+export const browserSupportedFormats: FormatDescriptor[] = [
+  {
+    id: "csv",
+    displayName: "CSV",
+    extensions: ["csv"],
+    mimeTypes: ["text/csv"],
+    capabilities: ["columnProjection", "backgroundRowCount", "parsingProfile", "queryProvider"],
+  },
+  {
+    id: "parquet",
+    displayName: "Parquet",
+    extensions: ["parquet"],
+    mimeTypes: ["application/vnd.apache.parquet"],
+    capabilities: ["typedSchema", "columnProjection", "rowGroups", "queryProvider"],
+  },
+];
+
 const browserFixtureSummary: FileSummary = {
   sessionId: "browser-parquet-session",
   fileName: "typed-row-groups.parquet",
   path: "C:\\Data\\typed-row-groups.parquet",
   format: "parquet",
+  formatDescriptor: browserSupportedFormats[1],
   fileSize: 262_144,
   rowCount: 240,
   rowCountStatus: {
@@ -1020,6 +2532,20 @@ const browserFixtureSummary: FileSummary = {
     },
   ],
   csvMetadata: null,
+  formatDetails: [
+    {
+      id: "parquet-row-groups",
+      title: "Row groups",
+      kind: "table",
+      columns: ["Index", "Rows", "Compressed bytes", "Total bytes", "Compression"],
+      rows: [
+        ["0", "80", "38912", "98304", "SNAPPY"],
+        ["1", "80", "36864", "102400", "ZSTD, SNAPPY"],
+        ["2", "80", "34816", "96256", "ZSTD"],
+      ],
+      truncated: false,
+    },
+  ],
 };
 
 function browserFixturePage(request: ReadPageRequest): DataPage {
@@ -1063,6 +2589,7 @@ function browserCsvSummary(
     fileName: "quoted-multiline.csv",
     path: "C:\\Data\\quoted-multiline.csv",
     format: "csv",
+    formatDescriptor: browserSupportedFormats[0],
     fileSize: 8_192,
     rowCount: complete ? 3 : null,
     rowCountStatus: {
@@ -1096,6 +2623,18 @@ function browserCsvSummary(
       headerIssueCount: 0,
       headerIssues: [],
     },
+    formatDetails: [
+      {
+        id: "csv-parsing",
+        title: "CSV parsing",
+        kind: "keyValue",
+        entries: [
+          { label: "Delimiter", value: "," },
+          { label: "Encoding", value: "utf-8" },
+          { label: "Header mode", value: headerMode },
+        ],
+      },
+    ],
   };
 }
 
@@ -1142,11 +2681,40 @@ function browserScenario(): string | null {
 interface BrowserCsvState {
   headerMode: CsvHeaderMode;
   generation: number;
+  profile: CsvParsingProfileWire;
 }
 
 const browserCsvStates = new Map<string, BrowserCsvState>();
+const browserCsvValidationTasks = new Map<string, CsvValidationStatusWire>();
+const browserQueryTasks = new Map<
+  string,
+  { request: ExecuteQueryRequest; status: QueryStatusResponse }
+>();
 const browserCancelledOpenRequests = new Set<string>();
 const browserOpenRequestHandlers = new Set<OpenRequestHandler>();
+let browserSettings = defaultAppSettings();
+
+function browserCsvProfile(generation = 1, mode: CsvProfileMode = "auto"): CsvParsingProfileWire {
+  return {
+    mode,
+    generation,
+    columns: ["name", "note", "empty"].map((sourceName, sourceIndex) => ({
+      sourceIndex,
+      sourceName,
+      targetType: mode === "allText" ? "text" : "auto",
+      trim: false,
+      nullTokens: ["NULL", "N/A"],
+      trueTokens: ["true", "TRUE", "1"],
+      falseTokens: ["false", "FALSE", "0"],
+      decimalSeparator: ".",
+      thousandSeparator: null,
+      temporalFormats: [],
+      timezonePolicy: "preserve",
+      timezoneOffsetMinutes: null,
+      failurePolicy: "preserveInvalid",
+    })),
+  };
+}
 
 export function emitBrowserOpenDataRequest(request: OpenDataRequest): void {
   const parsed = parseOpenDataRequest(request);
@@ -1155,15 +2723,25 @@ export function emitBrowserOpenDataRequest(request: OpenDataRequest): void {
 
 function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile {
   const extension = path.split(".").pop()?.toLocaleLowerCase();
-  if (extension !== "csv" && extension !== "parquet") {
-    throw new DataViewerError("UnsupportedFormat", "Only CSV and Parquet files are supported.");
+  const descriptor = browserSupportedFormats.find((candidate) =>
+    candidate.extensions.includes(extension ?? ""),
+  );
+  if (!descriptor) {
+    throw new DataViewerError(
+      "UnsupportedFormat",
+      `Supported formats: ${browserSupportedFormats.map((format) => format.displayName).join(", ")}.`,
+    );
   }
   const fileName = path.split(/[\\/]/).pop() ?? path;
   const identity = `${itemIndex}-${fileName.replace(/[^a-z0-9]/gi, "-")}`;
   const documentId = `browser-document-${identity}`;
   const sessionId = `browser-${extension}-session-${identity}`;
-  if (extension === "csv") {
-    browserCsvStates.set(sessionId, { headerMode: "auto", generation: 1 });
+  if (descriptor.id === "csv") {
+    browserCsvStates.set(sessionId, {
+      headerMode: "auto",
+      generation: 1,
+      profile: browserCsvProfile(),
+    });
     const summary = { ...browserCsvSummary(), sessionId, fileName, path };
     return {
       itemIndex,
@@ -1199,6 +2777,22 @@ export const browserMockBackend: BackendAdapter = {
   async healthCheck() {
     return { status: "ok", appVersion: "browser-mock" };
   },
+  async listSupportedFormats() {
+    return browserSupportedFormats.map((descriptor) => ({
+      ...descriptor,
+      extensions: [...descriptor.extensions],
+      mimeTypes: [...descriptor.mimeTypes],
+      capabilities: [...descriptor.capabilities],
+    }));
+  },
+  async getSettings() {
+    return parseAppSettings(browserSettings);
+  },
+  async updateSettings(settings) {
+    const validated = parseAppSettings(settings);
+    browserSettings = validated;
+    return parseAppSettings(browserSettings);
+  },
   async selectDataFile() {
     await wait(220);
     const scenario = browserScenario();
@@ -1210,7 +2804,11 @@ export const browserMockBackend: BackendAdapter = {
     }
     if (scenario === "csv" || scenario === "csv-progress") {
       const summary = browserCsvSummary();
-      browserCsvStates.set(summary.sessionId, { headerMode: "auto", generation: 1 });
+      browserCsvStates.set(summary.sessionId, {
+        headerMode: "auto",
+        generation: 1,
+        profile: browserCsvProfile(),
+      });
       return summary;
     }
     return browserFixtureSummary;
@@ -1294,6 +2892,286 @@ export const browserMockBackend: BackendAdapter = {
     state.generation += 1;
     return { ...browserCsvSummary(state.headerMode, false, state.generation), sessionId };
   },
+  async getCsvProfile(documentId, sessionId) {
+    const state = browserCsvStates.get(sessionId);
+    if (!state) throw new DataViewerError("UnsupportedFormat", "The current file is not CSV.");
+    return parseCsvProfileResponse({ documentId, sessionId, profile: state.profile });
+  },
+  async previewCsvProfile(request) {
+    const validated = validatedCsvPreviewRequest(request);
+    const state = browserCsvStates.get(validated.sessionId);
+    if (!state) throw new DataViewerError("StaleSession", "The CSV session is no longer active.");
+    await wait(30);
+    const rawRows = [
+      ["Kim, Mina", "line one\nline two", ""],
+      ['Lee "quoted"', "CRLF\r\npreserved", "value"],
+      ["Park", "plain", ""],
+    ];
+    const preview: CsvProfilePreviewWire = {
+      generation: validated.generation,
+      stage: "leading",
+      profile: validated.profile,
+      columns: validated.profile.columns.map((column) => ({
+        sourceIndex: column.sourceIndex,
+        sourceName: column.sourceName,
+        recommendedType: "text",
+        confidence: 0.99,
+        targetType: column.targetType === "auto" ? "text" : column.targetType,
+        successCount: rawRows.filter((row) => row[column.sourceIndex] !== "").length,
+        nullCount: 0,
+        invalidCount: 0,
+      })),
+      rows: rawRows.map((row, sourceRow) => ({
+        sourceRow,
+        cells: row.map((raw) => ({
+          raw,
+          converted: {
+            kind: "string" as const,
+            display: raw,
+            state: raw === "" ? ("empty" as const) : ("valid" as const),
+            rawDisplay: raw,
+            diagnostic: null,
+          },
+        })),
+      })),
+    };
+    return parseCsvProfilePreviewResponse({
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      preview,
+    });
+  },
+  async validateCsvProfile(request) {
+    const validated = validatedCsvValidationRequest(request);
+    if (!browserCsvStates.has(validated.sessionId)) {
+      throw new DataViewerError("StaleSession", "The CSV session is no longer active.");
+    }
+    const status: CsvValidationStatusWire = {
+      taskId: validated.taskId,
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      generation: validated.generation,
+      state: "queued",
+      rowsScanned: 0,
+      totalRows: 3,
+      columns: validated.profile.columns.map((column) => ({
+        sourceIndex: column.sourceIndex,
+        sourceName: column.sourceName,
+        successCount: 0,
+        nullCount: 0,
+        invalidCount: 0,
+        firstErrorRow: null,
+        errorSamples: [],
+      })),
+      error: null,
+    };
+    browserCsvValidationTasks.set(status.taskId, status);
+    return parseCsvValidationStatus(status);
+  },
+  async getCsvProfileValidationStatus(documentId, sessionId, taskId) {
+    const current = browserCsvValidationTasks.get(taskId);
+    if (!current || current.documentId !== documentId || current.sessionId !== sessionId) {
+      throw new DataViewerError("InvalidRequest", "CSV validation task was not found.");
+    }
+    if (current.state === "queued" || current.state === "running") {
+      const complete: CsvValidationStatusWire = {
+        ...current,
+        state: "complete",
+        rowsScanned: 3,
+        columns: current.columns.map((column) => ({
+          ...column,
+          successCount: 3,
+        })),
+      };
+      browserCsvValidationTasks.set(taskId, complete);
+      return parseCsvValidationStatus(complete);
+    }
+    return parseCsvValidationStatus(current);
+  },
+  async cancelCsvProfileValidation(documentId, sessionId, taskId) {
+    const current = browserCsvValidationTasks.get(taskId);
+    if (!current || current.documentId !== documentId || current.sessionId !== sessionId) {
+      throw new DataViewerError("InvalidRequest", "CSV validation task was not found.");
+    }
+    const cancelled: CsvValidationStatusWire = { ...current, state: "cancelled", error: null };
+    browserCsvValidationTasks.set(taskId, cancelled);
+    return parseCsvValidationStatus(cancelled);
+  },
+  async applyCsvProfile(request) {
+    const profile = parseCsvParsingProfile(request.profile);
+    const state = browserCsvStates.get(request.sessionId);
+    if (!state) throw new DataViewerError("StaleSession", "The CSV session is no longer active.");
+    await wait(40);
+    const sessionId = `${request.sessionId}-profile-${profile.generation}`;
+    browserCsvStates.delete(request.sessionId);
+    browserCsvStates.set(sessionId, { ...state, generation: profile.generation, profile });
+    const summary = {
+      ...browserCsvSummary(state.headerMode, true, profile.generation),
+      sessionId,
+      columns: browserCsvSummary().columns.map((column, index) => ({
+        ...column,
+        logicalType:
+          profile.columns[index]?.targetType === "auto"
+            ? "Utf8"
+            : (profile.columns[index]?.targetType ?? "Utf8"),
+      })),
+    };
+    return {
+      documentId: request.documentId,
+      sessionId,
+      summary,
+    };
+  },
+  async executeQuery(request) {
+    const validated = validatedExecuteQueryRequest(request);
+    const columns =
+      validated.plan.projection.length > 0
+        ? validated.plan.projection
+        : validated.sessionId.includes("csv-session")
+          ? ["name", "note", "empty"]
+          : browserFixtureSummary.columns.map((column) => column.name);
+    const totalRows = validated.sessionId.includes("csv-session") ? 3 : 240;
+    const status: QueryStatusResponse = {
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      queryId: validated.queryId,
+      taskId: validated.taskId,
+      state: "queued",
+      progress: { rowsScanned: 0, totalRows, resultRows: 0 },
+      columns,
+      elapsedMs: 0,
+      findMatchCount: null,
+      error: null,
+    };
+    browserQueryTasks.set(validated.taskId, { request: validated, status });
+    return parseQueryStatus(status);
+  },
+  async getQueryStatus(documentId, sessionId, queryId, taskId) {
+    const task = browserQueryTasks.get(taskId);
+    if (
+      !task ||
+      task.request.documentId !== documentId ||
+      task.request.sessionId !== sessionId ||
+      task.request.queryId !== queryId
+    ) {
+      throw new DataViewerError("QueryNotFound", `Query result not found: ${queryId}`);
+    }
+    if (task.status.state === "queued" || task.status.state === "running") {
+      const totalRows = task.status.progress.totalRows ?? 0;
+      task.status = {
+        ...task.status,
+        state: "complete",
+        progress: { rowsScanned: totalRows, totalRows, resultRows: totalRows },
+        elapsedMs: 24,
+        findMatchCount: task.request.plan.search?.mode === "find" ? 2 : null,
+      };
+    }
+    return parseQueryStatus(task.status);
+  },
+  async readQueryPage(request) {
+    const validated = validatedReadQueryPageRequest(request);
+    const task = [...browserQueryTasks.values()].find(
+      (candidate) =>
+        candidate.request.documentId === validated.documentId &&
+        candidate.request.sessionId === validated.sessionId &&
+        candidate.request.queryId === validated.queryId,
+    );
+    if (!task || task.status.state !== "complete") {
+      throw new DataViewerError("QueryNotFound", `Query result not found: ${validated.queryId}`);
+    }
+    const sourcePage = validated.sessionId.includes("csv-session")
+      ? browserCsvPage(validated)
+      : browserFixturePage(validated);
+    const indexes = task.status.columns.map((column) => sourcePage.columns.indexOf(column));
+    const page = {
+      ...sourcePage,
+      columns: [...task.status.columns],
+      rows: sourcePage.rows.map((row) => indexes.map((index) => row[index])),
+    };
+    return parseReadQueryPageResponse({
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      queryId: validated.queryId,
+      page,
+    });
+  },
+  async listDistinctValues(request) {
+    const validated = validatedDistinctValuesRequest(request);
+    const candidates = validated.columnId === "name" ? ["Kim, Mina", "Park"] : ["alpha", "beta"];
+    const filtered = candidates.filter((value) =>
+      validated.search
+        ? value.toLocaleLowerCase().includes(validated.search.toLocaleLowerCase())
+        : true,
+    );
+    const values = filtered
+      .slice(validated.offset, validated.offset + validated.limit)
+      .map((value) => ({ value, isNull: false, isInvalid: false, count: 1 }));
+    return parseDistinctValuesResponse({
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      queryId: validated.queryId,
+      columnId: validated.columnId,
+      values,
+      hasMore: validated.offset + values.length < filtered.length,
+    });
+  },
+  async findQueryMatch(request) {
+    const validated = validatedFindQueryMatchRequest(request);
+    const task = [...browserQueryTasks.values()].find(
+      (candidate) =>
+        candidate.request.documentId === validated.documentId &&
+        candidate.request.sessionId === validated.sessionId &&
+        candidate.request.queryId === validated.queryId,
+    );
+    const totalMatches = task?.status.findMatchCount ?? 0;
+    return parseFindQueryMatchResponse({
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      queryId: validated.queryId,
+      match:
+        totalMatches === 0
+          ? null
+          : {
+              rowOffset:
+                validated.direction === "next"
+                  ? validated.fromResultOffset + 1
+                  : Math.max(0, validated.fromResultOffset - 1),
+              columnId: task?.status.columns[0] ?? "name",
+              matchIndex: 0,
+              totalMatches,
+              wrapped: false,
+            },
+    });
+  },
+  async cancelQuery(documentId, sessionId, queryId, taskId) {
+    const task = browserQueryTasks.get(taskId);
+    if (
+      !task ||
+      task.request.documentId !== documentId ||
+      task.request.sessionId !== sessionId ||
+      task.request.queryId !== queryId
+    ) {
+      throw new DataViewerError("QueryNotFound", `Query result not found: ${queryId}`);
+    }
+    task.status = { ...task.status, state: "cancelled" };
+    return parseQueryStatus(task.status);
+  },
+  async getQueryTempUsage() {
+    return {
+      processBytes: 0,
+      limitBytes: browserSettings.queryTempLimitBytes,
+      availableBytes: 20 * 1024 ** 3,
+      activeQueries: 0,
+    };
+  },
+  async clearQueryTemp() {
+    return {
+      deletedBytes: 0,
+      orphanFailureCount: 0,
+      cleanupFailures: [],
+      remainingUsage: await browserMockBackend.getQueryTempUsage(),
+    };
+  },
   async getDataFileStatus(_documentId, sessionId) {
     await wait(80);
     const state = browserCsvStates.get(sessionId);
@@ -1313,6 +3191,12 @@ export const browserMockBackend: BackendAdapter = {
   },
   async closeDataFile(_documentId, sessionId) {
     browserCsvStates.delete(sessionId);
+    for (const [taskId, task] of browserCsvValidationTasks) {
+      if (task.sessionId === sessionId) browserCsvValidationTasks.delete(taskId);
+    }
+    for (const [taskId, task] of browserQueryTasks) {
+      if (task.request.sessionId === sessionId) browserQueryTasks.delete(taskId);
+    }
   },
 };
 

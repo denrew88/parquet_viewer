@@ -16,6 +16,8 @@ import {
   FolderOpen,
   LoaderCircle,
   RefreshCw,
+  Settings as SettingsIcon,
+  SlidersHorizontal,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -24,10 +26,17 @@ import {
   DataViewerError,
   type BackendAdapter,
   type CsvHeaderMode,
+  type CsvParsingProfileWire,
+  type CsvProfileMode,
+  type CsvValidationStatusWire,
   type DataPage,
   type DocumentSummaryResponse,
   type FileSummary,
+  type FormatDescriptor,
+  type FormatDetailsSection,
   type HealthCheckResponse,
+  type QueryStatusResponse,
+  type QueryTempUsage,
   type LegacyOpenedDataFile,
   type OpenDataResponse,
   type OpenDataRequest,
@@ -38,7 +47,38 @@ import {
   type DragDropAdapter,
   type FileDragDropEvent,
 } from "./dragDrop";
+import { CopySettingsDialog, type CopySettingsValue } from "./copy/CopySettingsDialog";
+import type { CopyOptions, CopyPreset } from "./copy/model";
+import { CsvProfileDialog } from "./csv-profile/CsvProfileDialog";
+import {
+  uiRequestToWireProfile,
+  matchesCurrentGeneration,
+  wirePreviewToUi,
+  wireProfileToColumns,
+  wireValidationToUi,
+  type CsvColumnProfile,
+  type CsvProfilePreview,
+  type CsvProfileRequest,
+  type CsvProfileValidation,
+} from "./csv-profile/model";
+import { AppSettingsDialog } from "./settings/AppSettingsDialog";
+import {
+  activeCopyOptions,
+  defaultAppSettings,
+  parseAppSettings,
+  type AppSettingsV1,
+} from "./settings/model";
 import { VirtualDataGrid } from "./VirtualDataGrid";
+import { EMPTY_QUERY_PLAN, resultKey, type QueryPlan } from "./query/model";
+import { inferQueryScalarType } from "./query/scalarType";
+import {
+  createDocumentQueryState,
+  documentQueryReducer,
+  type DocumentQueryState,
+  type QueryProgress,
+} from "./query/state";
+import type { DistinctValuesState } from "./query/ColumnFilterPopover";
+import type { QueryToolbarStatus } from "./query/QueryToolbar";
 import "./App.css";
 
 const defaultBackend = createDefaultBackend();
@@ -53,7 +93,7 @@ const tabLabels: Record<WorkspaceTab, string> = {
 };
 
 const emptyStateCopy: Record<WorkspaceTab, { title: string; detail: string }> = {
-  data: { title: "No file open", detail: "Open a CSV or Parquet file to view its data." },
+  data: { title: "No file open", detail: "Open a supported data file to view its data." },
   schema: { title: "No schema available", detail: "Schema details appear after a file is opened." },
   metadata: {
     title: "No metadata available",
@@ -81,8 +121,31 @@ interface DropTargetState {
   paths: string[];
 }
 
-function isSupportedDataPath(path: string): boolean {
-  return /\.(csv|parquet)$/i.test(path);
+function pathExtension(path: string): string {
+  const fileName = fileNameFromPath(path);
+  const dot = fileName.lastIndexOf(".");
+  return dot < 0 ? "" : fileName.slice(dot + 1).toLocaleLowerCase();
+}
+
+function isSupportedDataPath(path: string, formats: readonly FormatDescriptor[]): boolean {
+  const extension = pathExtension(path);
+  return formats.some((format) => format.extensions.includes(extension));
+}
+
+function joinFormatNames(formats: readonly FormatDescriptor[], conjunction: "and" | "or"): string {
+  const names = formats.map((format) => format.displayName);
+  if (names.length === 0) return "supported data";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} ${conjunction} ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, ${conjunction} ${names[names.length - 1]}`;
+}
+
+function hasCapability(summary: FileSummary, capability: string): boolean {
+  return summary.formatDescriptor?.capabilities.includes(capability) ?? false;
+}
+
+function formatDisplayName(summary: FileSummary): string {
+  return summary.formatDescriptor?.displayName ?? summary.format;
 }
 
 function fileNameFromPath(path: string): string {
@@ -121,19 +184,26 @@ function documentTabLabel(document: ViewerDocument, documents: ViewerDocument[])
   return `${document.label} (${duplicates.indexOf(document) + 1})`;
 }
 
-function DropTarget({ state }: { state: DropTargetState }) {
-  const supported =
-    state.paths.length > 0 && state.paths.length <= 32 && state.paths.every(isSupportedDataPath);
+function DropTarget({
+  formats,
+  state,
+}: {
+  formats: readonly FormatDescriptor[];
+  state: DropTargetState;
+}) {
+  const unsupported =
+    formats.length > 0 && state.paths.some((path) => !isSupportedDataPath(path, formats));
+  const supported = state.paths.length > 0 && state.paths.length <= 32 && !unsupported;
   let title = "Drop data files";
-  let detail = "Release CSV or Parquet files to open them in tabs.";
+  let detail = `Release ${joinFormatNames(formats, "or")} files to open them in tabs.`;
   let Icon = FileUp;
   if (state.paths.length > 32) {
     title = "Too many files";
     detail = "Open at most 32 files in one operation.";
     Icon = TriangleAlert;
-  } else if (state.paths.some((path) => !isSupportedDataPath(path))) {
+  } else if (unsupported) {
     title = "Unsupported file type";
-    detail = "Only CSV and Parquet files can be opened.";
+    detail = `Only ${joinFormatNames(formats, "and")} files can be opened.`;
     Icon = TriangleAlert;
   } else if (state.paths.length === 1) {
     title = `Open ${fileNameFromPath(state.paths[0])}`;
@@ -182,6 +252,31 @@ function validateInitialPage(summary: FileSummary, page: DataPage): void {
   }
 }
 
+function formatQueryToolbarStatus(state: QueryUiState): QueryToolbarStatus {
+  if (state.status === "failed") {
+    return {
+      state: "error",
+      message: state.errorCode
+        ? `${state.errorCode}: ${state.error}`
+        : (state.error ?? "Query failed"),
+      matchCount: state.findMatchCount,
+    };
+  }
+  if (state.status === "queued" || state.status === "running" || state.status === "cancelling") {
+    const progress = state.progress;
+    const message =
+      state.status === "queued"
+        ? "Query queued"
+        : state.status === "cancelling"
+          ? "Cancelling query"
+          : progress?.totalRows
+            ? `Scanning ${progress.rowsScanned.toLocaleString()} / ${progress.totalRows.toLocaleString()} rows`
+            : `Scanning ${progress?.rowsScanned.toLocaleString() ?? 0} rows`;
+    return { state: state.status, message, matchCount: state.findMatchCount };
+  }
+  return { state: "idle", message: "", matchCount: state.findMatchCount };
+}
+
 function BackendStatus({ state }: { state: BackendState }) {
   if (state.kind === "checking") {
     return (
@@ -210,8 +305,14 @@ function BackendStatus({ state }: { state: BackendState }) {
   );
 }
 
-function EmptyState({ tab }: { tab: WorkspaceTab }) {
-  const content = emptyStateCopy[tab];
+function EmptyState({ formats, tab }: { formats: readonly FormatDescriptor[]; tab: WorkspaceTab }) {
+  const content =
+    tab === "data" && formats.length > 0
+      ? {
+          title: emptyStateCopy.data.title,
+          detail: `Open a ${joinFormatNames(formats, "or")} file to view its data.`,
+        }
+      : emptyStateCopy[tab];
   return (
     <section className="empty-state" aria-labelledby="empty-state-title">
       <FileSpreadsheet className="empty-state__icon" aria-hidden="true" />
@@ -223,59 +324,117 @@ function EmptyState({ tab }: { tab: WorkspaceTab }) {
 
 interface DataViewProps {
   active?: boolean;
+  copyOptions: CopyOptions;
+  copyPresetError: string | null;
+  copyPresetSaving: boolean;
   isLoading: boolean;
   isCancelling: boolean;
   onCancel(): void;
+  onOpenCopySettings(): void;
+  onCopyPresetChange(preset: CopyPreset): void;
   onPageChange(offset: number): void;
   onReadError(error: unknown, offset: number): void;
+  onCancelQuery(): void;
+  onFindMatch(direction: "next" | "previous"): void;
+  onOpenDistinctValues(columnId: string): void;
+  onRetryQuery(): void;
+  onQueryPlanChange(plan: QueryPlan): void;
   page: DataPage;
+  queryState: QueryUiState | null;
+  distinctValuesForColumn(columnId: string): DistinctValuesState | undefined;
   readPage(request: Parameters<BackendAdapter["readPage"]>[0]): Promise<DataPage>;
   summary: FileSummary;
 }
 
 function DataView({
   active = true,
+  copyOptions,
+  copyPresetError,
+  copyPresetSaving,
   isCancelling,
   isLoading,
   onCancel,
+  onOpenCopySettings,
+  onCopyPresetChange,
   onPageChange,
   onReadError,
+  onCancelQuery,
+  onFindMatch,
+  onOpenDistinctValues,
+  onRetryQuery,
+  onQueryPlanChange,
   page,
+  queryState,
+  distinctValuesForColumn,
   readPage,
   summary,
 }: DataViewProps) {
+  const invalidValues = page.rows.flat().filter((value) => value.state === "invalid");
+  const hasNotices = summary.rowCountStatus.state === "calculating" || invalidValues.length > 0;
   return (
-    <div
-      className={`data-view${summary.rowCountStatus.state === "calculating" ? " data-view--scanning" : ""}`}
-    >
-      {summary.rowCountStatus.state === "calculating" && (
-        <div className="csv-progress" role="status" aria-live="polite">
-          <LoaderCircle aria-hidden="true" />
-          <div>
-            <strong>Calculating CSV row count</strong>
-            <span>
-              {formatBytes(summary.rowCountStatus.bytesScanned)} of{" "}
-              {formatBytes(summary.rowCountStatus.totalBytes)} scanned
-            </span>
-          </div>
-          <progress
-            aria-label="CSV scan progress"
-            max={summary.rowCountStatus.totalBytes || 1}
-            value={summary.rowCountStatus.bytesScanned}
-          />
-          <button disabled={isCancelling} onClick={onCancel} type="button">
-            <X aria-hidden="true" />
-            <span>{isCancelling ? "Cancelling..." : "Cancel scan"}</span>
-          </button>
+    <div className={`data-view${hasNotices ? " data-view--notices" : ""}`}>
+      {hasNotices && (
+        <div className="data-view__notices">
+          {summary.rowCountStatus.state === "calculating" && (
+            <div className="csv-progress" role="status" aria-live="polite">
+              <LoaderCircle aria-hidden="true" />
+              <div>
+                <strong>Calculating CSV row count</strong>
+                <span>
+                  {formatBytes(summary.rowCountStatus.bytesScanned)} of{" "}
+                  {formatBytes(summary.rowCountStatus.totalBytes)} scanned
+                </span>
+              </div>
+              <progress
+                aria-label="CSV scan progress"
+                max={summary.rowCountStatus.totalBytes || 1}
+                value={summary.rowCountStatus.bytesScanned}
+              />
+              <button disabled={isCancelling} onClick={onCancel} type="button">
+                <X aria-hidden="true" />
+                <span>{isCancelling ? "Cancelling..." : "Cancel scan"}</span>
+              </button>
+            </div>
+          )}
+          {invalidValues.length > 0 && (
+            <div className="data-quality-strip" role="status">
+              <TriangleAlert aria-hidden="true" />
+              <span>
+                {invalidValues.length.toLocaleString()} invalid value
+                {invalidValues.length === 1 ? "" : "s"} shown as original text.
+              </span>
+              {invalidValues[0].diagnostic && (
+                <span title={invalidValues[0].diagnostic.message}>
+                  {invalidValues[0].diagnostic.message}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
       <VirtualDataGrid
         active={active}
+        copyOptions={copyOptions}
+        copyPresetError={copyPresetError}
+        copyPresetSaving={copyPresetSaving}
+        distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
+        findTarget={queryState?.findTarget ?? undefined}
         isLoading={isLoading}
+        onCancelQuery={queryState ? onCancelQuery : undefined}
+        onFindNext={queryState ? () => onFindMatch("next") : undefined}
+        onFindPrevious={queryState ? () => onFindMatch("previous") : undefined}
+        onOpenDistinctValues={queryState ? onOpenDistinctValues : undefined}
+        onRetryQuery={queryState ? onRetryQuery : undefined}
         onPageChange={onPageChange}
+        onCopyPresetChange={onCopyPresetChange}
+        onOpenCopySettings={onOpenCopySettings}
+        onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
         onReadError={onReadError}
         page={page}
+        queryPlan={queryState?.draftPlan}
+        queryStatus={queryState ? formatQueryToolbarStatus(queryState) : undefined}
         readPage={readPage}
+        resultKey={queryState ? resultKey(queryState.sessionId, queryState.queryId) : undefined}
         summary={summary}
       />
     </div>
@@ -347,6 +506,79 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
 }
 
+function GenericFormatDetails({ sections }: { sections: readonly FormatDetailsSection[] }) {
+  return (
+    <>
+      {sections.map((section) => (
+        <section
+          aria-labelledby={`format-details-${section.id}`}
+          className="format-details"
+          key={section.id}
+        >
+          <div className="row-groups__heading">
+            <h3 id={`format-details-${section.id}`}>{section.title}</h3>
+            {section.kind === "table" && section.truncated && <span>Preview truncated</span>}
+          </div>
+          {section.kind === "keyValue" ? (
+            <dl className="metadata-grid format-details__grid">
+              {section.entries.map((entry, index) => (
+                <MetadataItem
+                  key={`${entry.label}-${index}`}
+                  label={entry.label}
+                  title={entry.value}
+                >
+                  {entry.value}
+                </MetadataItem>
+              ))}
+            </dl>
+          ) : (
+            <div className="row-groups__scroll">
+              <table aria-label={section.title} className="detail-table format-details__table">
+                <thead>
+                  <tr>
+                    {section.columns.map((column) => (
+                      <th key={column} scope="col">
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {section.rows.map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.map((cell, columnIndex) =>
+                        columnIndex === 0 ? (
+                          <th key={columnIndex} scope="row" title={cell}>
+                            {cell}
+                          </th>
+                        ) : (
+                          <td key={columnIndex} title={cell}>
+                            {cell}
+                          </td>
+                        ),
+                      )}
+                    </tr>
+                  ))}
+                  {section.rows.length === 0 && (
+                    <tr>
+                      <td
+                        className="row-groups__empty"
+                        colSpan={Math.max(1, section.columns.length)}
+                      >
+                        No details
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ))}
+    </>
+  );
+}
+
 function MetadataView({
   isConfiguring,
   onHeaderModeChange,
@@ -357,11 +589,17 @@ function MetadataView({
   summary: FileSummary;
 }) {
   const csv = summary.csvMetadata;
+  const showRowGroups = hasCapability(summary, "rowGroups");
+  const genericSections = (summary.formatDetails ?? []).filter(
+    (section) =>
+      !(section.id === "csv-parsing" && csv) &&
+      !(section.id === "parquet-row-groups" && showRowGroups),
+  );
   return (
     <div className="detail-view metadata-view">
       <header className="detail-heading">
         <h2>Metadata</h2>
-        <p>File and {summary.format === "csv" ? "CSV parsing" : "Parquet structure"}</p>
+        <p>File and {formatDisplayName(summary)} details</p>
       </header>
       <div className="metadata-content">
         <dl className="metadata-grid">
@@ -371,13 +609,13 @@ function MetadataView({
           <MetadataItem label="Path" title={summary.path}>
             {summary.path}
           </MetadataItem>
-          <MetadataItem label="Format">{summary.format === "csv" ? "CSV" : "Parquet"}</MetadataItem>
+          <MetadataItem label="Format">{formatDisplayName(summary)}</MetadataItem>
           <MetadataItem label="File size">{formatBytes(summary.fileSize)}</MetadataItem>
           <MetadataItem label="Rows">
             {summary.rowCount === null ? "Calculating..." : summary.rowCount.toLocaleString()}
           </MetadataItem>
           <MetadataItem label="Columns">{summary.columnCount.toLocaleString()}</MetadataItem>
-          {summary.format === "parquet" && (
+          {showRowGroups && (
             <MetadataItem label="Row groups">{summary.rowGroupCount.toLocaleString()}</MetadataItem>
           )}
         </dl>
@@ -476,7 +714,7 @@ function MetadataView({
             )}
           </section>
         )}
-        {summary.format === "parquet" && (
+        {showRowGroups && (
           <section className="row-groups" aria-labelledby="row-groups-heading">
             <div className="row-groups__heading">
               <h3 id="row-groups-heading">Row groups</h3>
@@ -522,6 +760,7 @@ function MetadataView({
             </div>
           </section>
         )}
+        <GenericFormatDetails sections={genericSections} />
       </div>
     </div>
   );
@@ -567,6 +806,123 @@ interface ViewerDocument {
   error: OpenFileError | null;
 }
 
+interface CsvProfileUiState {
+  identity: { documentId: string; sessionId: string };
+  wireProfile: CsvParsingProfileWire;
+  columns: readonly CsvColumnProfile[];
+  preview: CsvProfilePreview | null;
+  validation: CsvProfileValidation | null;
+  validationWire: CsvValidationStatusWire | null;
+  isApplying: boolean;
+  error: string | null;
+  structuralError: string | null;
+}
+
+interface QueryDistinctState {
+  values: { value: string; count: number | null }[];
+  search: string;
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  requestId: number;
+}
+
+interface QueryUiState extends DocumentQueryState {
+  pendingQueryId: string | null;
+  errorCode: string | null;
+  findMatchCount: number | null;
+  findTarget: { row: number; columnId: string; matchIndex: number; key: string } | null;
+  distinct: Record<string, QueryDistinctState>;
+}
+
+function createQueryUiState(documentId: string, sessionId: string): QueryUiState {
+  return {
+    ...createDocumentQueryState(documentId, sessionId),
+    pendingQueryId: null,
+    errorCode: null,
+    findMatchCount: null,
+    findTarget: null,
+    distinct: {},
+  };
+}
+
+function compatibleQueryPlan(
+  plan: QueryPlan,
+  summary: FileSummary,
+): { plan: QueryPlan; adjustmentReason: string | null } {
+  const columnTypes = new Map(
+    summary.columns.map((column) => [column.name, inferQueryScalarType(summary, column.name)]),
+  );
+  const removed: string[] = [];
+  const filters = plan.filters.filter((filter) => {
+    const compatible = columnTypes.get(filter.columnId) === filter.scalarType;
+    if (!compatible) removed.push(`filter on ${filter.columnId}`);
+    return compatible;
+  });
+  const sort = plan.sort.filter((entry) => {
+    const compatible = columnTypes.has(entry.columnId);
+    if (!compatible) removed.push(`sort on ${entry.columnId}`);
+    return compatible;
+  });
+  const projection = plan.projection.filter((columnId) => {
+    const compatible = columnTypes.has(columnId);
+    if (!compatible) removed.push(`projection ${columnId}`);
+    return compatible;
+  });
+  let search = plan.search;
+  if (search) {
+    const targetColumnIds = search.targetColumnIds.filter(
+      (columnId) => columnTypes.has(columnId) && columnTypes.get(columnId) !== "other",
+    );
+    const removedTargets = search.targetColumnIds.filter(
+      (columnId) => !targetColumnIds.includes(columnId),
+    );
+    removed.push(...removedTargets.map((columnId) => `search target ${columnId}`));
+    if (search.targetColumnIds.length > 0 && targetColumnIds.length === 0) {
+      search = null;
+    } else if (
+      search.targetColumnIds.length === 0 &&
+      ![...columnTypes.values()].some((type) => type !== "other")
+    ) {
+      removed.push("search across all columns");
+      search = null;
+    } else {
+      search = { ...search, targetColumnIds };
+    }
+  }
+  return {
+    plan: { filters, search, sort, projection },
+    adjustmentReason:
+      removed.length > 0
+        ? `Removed incompatible query conditions after the CSV profile changed: ${removed.join(", ")}.`
+        : null,
+  };
+}
+
+function queryPlanHasWork(plan: QueryPlan): boolean {
+  return Boolean(
+    plan.filters.length > 0 ||
+    plan.search?.text.trim() ||
+    plan.sort.length > 0 ||
+    plan.projection.length > 0,
+  );
+}
+
+function replaceQueryUiSession(
+  state: QueryUiState | undefined,
+  documentId: string,
+  sessionId: string,
+  compatiblePlan: QueryPlan,
+): QueryUiState {
+  const current = state ?? createQueryUiState(documentId, sessionId);
+  const replaced = documentQueryReducer(current, {
+    type: "replaceSession",
+    sessionId,
+    compatiblePlan,
+  });
+  return { ...createQueryUiState(documentId, sessionId), ...replaced };
+}
+
 function normalizedOpenResponse(value: OpenDataResponse | LegacyOpenedDataFile): OpenDataResponse {
   if ("opened" in value) return value;
   const documentId = `legacy-${value.summary.sessionId}`;
@@ -598,14 +954,37 @@ function normalizedSummaryResponse(
 
 function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapter }: AppProps) {
   const [backendState, setBackendState] = useState<BackendState>({ kind: "checking" });
+  const [formatCatalog, setFormatCatalog] = useState<FormatDescriptor[]>([]);
   const [emptyActiveTab, setEmptyActiveTab] = useState<WorkspaceTab>("data");
   const [documents, setDocuments] = useState<ViewerDocument[]>([]);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [openingCount, setOpeningCount] = useState(0);
   const [globalError, setGlobalError] = useState<OpenFileError | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettingsV1>(() => defaultAppSettings());
+  const [settingsWarning, setSettingsWarning] = useState<string | null>(null);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [copySettingsOpen, setCopySettingsOpen] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaveError, setSettingsSaveError] = useState<string | null>(null);
+  const [copyPresetSaveError, setCopyPresetSaveError] = useState<string | null>(null);
+  const [copyPresetSaving, setCopyPresetSaving] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [csvProfiles, setCsvProfiles] = useState<Record<string, CsvProfileUiState>>({});
+  const [csvProfileDialogDocumentId, setCsvProfileDialogDocumentId] = useState<string | null>(null);
+  const [csvProfileLoadingDocumentId, setCsvProfileLoadingDocumentId] = useState<string | null>(
+    null,
+  );
+  const [csvProfileModes, setCsvProfileModes] = useState<Record<string, CsvProfileMode>>({});
+  const [queryStates, setQueryStates] = useState<Record<string, QueryUiState>>({});
+  const [queryTempUsage, setQueryTempUsage] = useState<QueryTempUsage | null>(null);
+  const [queryTempLoading, setQueryTempLoading] = useState(false);
+  const [queryTempError, setQueryTempError] = useState<string | null>(null);
+  const [queryTempClearMessage, setQueryTempClearMessage] = useState<string | null>(null);
   const documentsRef = useRef(documents);
   documentsRef.current = documents;
+  const queryStatesRef = useRef(queryStates);
+  queryStatesRef.current = queryStates;
   const pathRequestSequence = useRef(0);
   const consumedPathRequestIds = useRef(new Set<string>());
   const pageRequests = useRef(new Map<string, number>());
@@ -621,11 +1000,29 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   const focusAfterClose = useRef(false);
   const tabStripRef = useRef<HTMLDivElement>(null);
   const openButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const csvProfileButtonRef = useRef<HTMLButtonElement>(null);
+  const appSettingsRef = useRef(appSettings);
+  const settingsSavingRef = useRef(false);
+  appSettingsRef.current = appSettings;
+  const csvProfileRequests = useRef(new Map<string, number>());
+  const csvValidationPolls = useRef(new Map<string, number>());
+  const csvDefaultsHandled = useRef(new Set<string>());
+  const queryRequests = useRef(new Map<string, number>());
+  const querySequence = useRef(0);
+  const executeDocumentQueryRef = useRef<
+    (document: ViewerDocument, plan: QueryPlan, skipPreviousCancel?: boolean) => void
+  >(() => undefined);
 
   const activeDocument = documents.find((document) => document.id === activeDocumentId) ?? null;
   const summary = activeDocument?.summary ?? null;
   const page = activeDocument?.page ?? null;
   const activeTab = activeDocument?.activeTab ?? emptyActiveTab;
+  const csvProfileDocument =
+    documents.find((document) => document.id === csvProfileDialogDocumentId) ?? null;
+  const activeCsvProfile = csvProfileDialogDocumentId
+    ? (csvProfiles[csvProfileDialogDocumentId] ?? null)
+    : null;
 
   const updateDocument = useCallback(
     (id: string, update: (document: ViewerDocument) => ViewerDocument) => {
@@ -635,6 +1032,28 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     },
     [],
   );
+
+  useEffect(() => {
+    setQueryStates((current) => {
+      const next: Record<string, QueryUiState> = {};
+      for (const document of documents) {
+        if (
+          document.status !== "ready" ||
+          !document.documentId ||
+          !document.sessionId ||
+          !document.summary ||
+          !hasCapability(document.summary, "queryProvider")
+        )
+          continue;
+        const existing = current[document.id];
+        next[document.id] =
+          existing?.documentId === document.documentId && existing.sessionId === document.sessionId
+            ? existing
+            : createQueryUiState(document.documentId, document.sessionId);
+      }
+      return next;
+    });
+  }, [documents]);
 
   function nextRequest(counter: React.MutableRefObject<Map<string, number>>, id: string): number {
     const next = (counter.current.get(id) ?? 0) + 1;
@@ -689,10 +1108,30 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
 
   useEffect(() => {
     let active = true;
-    backend.healthCheck().then(
-      (health) => active && setBackendState({ kind: "connected", health }),
+    Promise.all([backend.healthCheck(), backend.listSupportedFormats()]).then(
+      ([health, formats]) => {
+        if (!active) return;
+        setFormatCatalog(formats);
+        setBackendState({ kind: "connected", health });
+      },
       (error: unknown) =>
         active && setBackendState({ kind: "error", message: toOpenFileError(error).message }),
+    );
+    backend.getSettings().then(
+      (settings) => {
+        if (!active) return;
+        setAppSettings(settings);
+        setSettingsWarning(null);
+        setSettingsLoaded(true);
+      },
+      (error: unknown) => {
+        if (!active) return;
+        setAppSettings(defaultAppSettings());
+        setSettingsWarning(
+          `Settings could not be loaded. Defaults are in use. ${toOpenFileError(error).message}`,
+        );
+        setSettingsLoaded(true);
+      },
     );
     return () => {
       active = false;
@@ -723,7 +1162,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         !document.documentId ||
         !document.sessionId ||
         !currentSummary ||
-        currentSummary.format !== "csv" ||
+        !hasCapability(currentSummary, "backgroundRowCount") ||
         document.isConfiguringCsv ||
         document.isCancellingCsv ||
         currentSummary.rowCountStatus.state !== "calculating"
@@ -994,15 +1433,18 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         if (active) setGlobalError(toOpenFileError(error));
       },
     );
-    void backend.takePendingOpenRequests().then(
-      (requests) => {
-        if (!active) return;
-        requests.forEach((request) => void openPaths(request));
-      },
-      (error: unknown) => {
-        if (active) setGlobalError(toOpenFileError(error));
-      },
-    );
+    queueMicrotask(() => {
+      if (!active) return;
+      void backend.takePendingOpenRequests().then(
+        (requests) => {
+          if (!active) return;
+          requests.forEach((request) => void openPaths(request));
+        },
+        (error: unknown) => {
+          if (active) setGlobalError(toOpenFileError(error));
+        },
+      );
+    });
     return () => {
       active = false;
       unlisten?.();
@@ -1093,19 +1535,31 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     )
       return;
     const requestId = nextRequest(pageRequests, document.id);
+    const query = queryStates[document.id];
     updateDocument(document.id, (current) => ({ ...current, isPageLoading: true, error: null }));
     try {
-      const nextPage = await backend.readPage({
-        documentId: document.documentId,
-        sessionId: document.sessionId,
-        offset,
-        limit: document.page.limit,
-      });
+      const nextPage = query?.queryId
+        ? (
+            await backend.readQueryPage({
+              documentId: document.documentId,
+              sessionId: document.sessionId,
+              queryId: query.queryId,
+              offset,
+              limit: document.page.limit,
+            })
+          ).page
+        : await backend.readPage({
+            documentId: document.documentId,
+            sessionId: document.sessionId,
+            offset,
+            limit: document.page.limit,
+          });
       if (pageRequests.current.get(document.id) !== requestId) return;
       if (
         nextPage.sessionId !== document.sessionId ||
         nextPage.offset !== offset ||
-        (document.summary.rowCount !== null &&
+        (!query?.queryId &&
+          document.summary.rowCount !== null &&
           nextPage.totalRows !== null &&
           nextPage.totalRows !== document.summary.rowCount)
       ) {
@@ -1129,12 +1583,13 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       !document.documentId ||
       !document.sessionId ||
       !document.summary ||
-      document.summary.format !== "csv" ||
+      !document.summary.csvMetadata ||
       document.summary.csvMetadata?.headerMode === headerMode
     )
       return;
     const requestId = nextRequest(statusRequests, document.id);
     nextRequest(pageRequests, document.id);
+    nextRequest(queryRequests, document.id);
     updateDocument(document.id, (current) => ({ ...current, isConfiguringCsv: true, error: null }));
     try {
       const raw = await backend.configureCsv(document.documentId, document.sessionId, headerMode);
@@ -1144,8 +1599,8 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       if (
         response.documentId !== document.documentId ||
         nextSummary.sessionId !== response.sessionId ||
-        nextSummary.format !== "csv" ||
-        nextSummary.csvMetadata?.headerMode !== headerMode
+        !nextSummary.csvMetadata ||
+        nextSummary.csvMetadata.headerMode !== headerMode
       )
         throw new DataViewerError(
           "InvalidResponse",
@@ -1174,12 +1629,937 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     }
   }
 
+  function csvStructuralError(summary: FileSummary): string | null {
+    const count = summary.csvMetadata?.structureIssueCount ?? 0;
+    return count > 0
+      ? `${count.toLocaleString()} structural CSV row issue${count === 1 ? "" : "s"} must be resolved before applying a typed profile.`
+      : null;
+  }
+
+  async function openCsvProfile(document: ViewerDocument) {
+    if (
+      !document.documentId ||
+      !document.sessionId ||
+      !document.summary ||
+      !hasCapability(document.summary, "parsingProfile")
+    )
+      return;
+    const requestId = nextRequest(csvProfileRequests, `load:${document.id}`);
+    setCsvProfileDialogDocumentId(document.id);
+    setCsvProfileLoadingDocumentId(document.id);
+    try {
+      const response = await backend.getCsvProfile(document.documentId, document.sessionId);
+      if (
+        csvProfileRequests.current.get(`load:${document.id}`) !== requestId ||
+        response.documentId !== document.documentId ||
+        response.sessionId !== document.sessionId
+      )
+        return;
+      setCsvProfileModes((current) => ({ ...current, [document.id]: response.profile.mode }));
+      setCsvProfiles((current) => ({
+        ...current,
+        [document.id]: {
+          identity: { documentId: response.documentId, sessionId: response.sessionId },
+          wireProfile: response.profile,
+          columns: wireProfileToColumns(response.profile),
+          preview: null,
+          validation: null,
+          validationWire: null,
+          isApplying: false,
+          error: null,
+          structuralError: csvStructuralError(document.summary!),
+        },
+      }));
+    } catch (error) {
+      if (csvProfileRequests.current.get(`load:${document.id}`) === requestId) {
+        setCsvProfileDialogDocumentId(null);
+        updateDocument(document.id, (current) => ({ ...current, error: toOpenFileError(error) }));
+      }
+    } finally {
+      if (csvProfileRequests.current.get(`load:${document.id}`) === requestId) {
+        setCsvProfileLoadingDocumentId(null);
+      }
+    }
+  }
+
+  function closeCsvProfile(documentId: string) {
+    csvProfileRequests.current.set(
+      `preview:${documentId}`,
+      (csvProfileRequests.current.get(`preview:${documentId}`) ?? 0) + 1,
+    );
+    csvValidationPolls.current.set(
+      documentId,
+      (csvValidationPolls.current.get(documentId) ?? 0) + 1,
+    );
+    const profile = csvProfiles[documentId];
+    if (
+      profile?.validationWire &&
+      (profile.validationWire.state === "queued" || profile.validationWire.state === "running")
+    ) {
+      void backend
+        .cancelCsvProfileValidation(
+          profile.identity.documentId,
+          profile.identity.sessionId,
+          profile.validationWire.taskId,
+        )
+        .catch(() => undefined);
+    }
+    setCsvProfileDialogDocumentId(null);
+    setCsvProfileLoadingDocumentId(null);
+    setCsvProfiles((current) => {
+      const next = { ...current };
+      delete next[documentId];
+      return next;
+    });
+  }
+
+  async function previewCsvProfile(documentId: string, request: CsvProfileRequest) {
+    const state = csvProfiles[documentId];
+    if (!state || request.sessionId !== state.identity.sessionId) return;
+    const requestId = nextRequest(csvProfileRequests, `preview:${documentId}`);
+    try {
+      const response = await backend.previewCsvProfile({
+        documentId: state.identity.documentId,
+        sessionId: state.identity.sessionId,
+        generation: request.generation,
+        profile: uiRequestToWireProfile(request, state.wireProfile),
+      });
+      if (
+        csvProfileRequests.current.get(`preview:${documentId}`) !== requestId ||
+        csvProfileDialogDocumentId !== documentId ||
+        response.documentId !== state.identity.documentId ||
+        response.sessionId !== state.identity.sessionId ||
+        response.preview.generation !== request.generation
+      )
+        return;
+      setCsvProfiles((current) => {
+        const active = current[documentId];
+        if (!active || active.identity.sessionId !== response.sessionId) return current;
+        return {
+          ...current,
+          [documentId]: {
+            ...active,
+            preview: wirePreviewToUi(response),
+            error: null,
+          },
+        };
+      });
+    } catch (error) {
+      if (csvProfileRequests.current.get(`preview:${documentId}`) === requestId) {
+        setCsvProfiles((current) =>
+          current[documentId]
+            ? {
+                ...current,
+                [documentId]: {
+                  ...current[documentId],
+                  error: toOpenFileError(error).message,
+                },
+              }
+            : current,
+        );
+      }
+    }
+  }
+
+  function scheduleCsvValidationPoll(
+    documentId: string,
+    identity: { documentId: string; sessionId: string },
+    taskId: string,
+    generation: number,
+    token: number,
+  ) {
+    window.setTimeout(() => {
+      if (csvValidationPolls.current.get(documentId) !== token) return;
+      void backend
+        .getCsvProfileValidationStatus(identity.documentId, identity.sessionId, taskId)
+        .then(
+          (status) => {
+            if (
+              csvValidationPolls.current.get(documentId) !== token ||
+              status.documentId !== identity.documentId ||
+              status.sessionId !== identity.sessionId ||
+              status.generation !== generation
+            )
+              return;
+            setCsvProfiles((current) =>
+              current[documentId]
+                ? {
+                    ...current,
+                    [documentId]: {
+                      ...current[documentId],
+                      validation: wireValidationToUi(status),
+                      validationWire: status,
+                    },
+                  }
+                : current,
+            );
+            if (status.state === "queued" || status.state === "running") {
+              scheduleCsvValidationPoll(documentId, identity, taskId, generation, token);
+            }
+          },
+          (error: unknown) => {
+            if (csvValidationPolls.current.get(documentId) !== token) return;
+            setCsvProfiles((current) =>
+              current[documentId]
+                ? {
+                    ...current,
+                    [documentId]: {
+                      ...current[documentId],
+                      error: toOpenFileError(error).message,
+                    },
+                  }
+                : current,
+            );
+          },
+        );
+    }, 150);
+  }
+
+  async function validateCsvProfile(documentId: string, request: CsvProfileRequest) {
+    const state = csvProfiles[documentId];
+    if (!state || request.sessionId !== state.identity.sessionId) return;
+    const taskId = `frontend-csv-validation-${Date.now()}-${++pathRequestSequence.current}`;
+    const token = (csvValidationPolls.current.get(documentId) ?? 0) + 1;
+    csvValidationPolls.current.set(documentId, token);
+    try {
+      const status = await backend.validateCsvProfile({
+        taskId,
+        documentId: state.identity.documentId,
+        sessionId: state.identity.sessionId,
+        generation: request.generation,
+        profile: uiRequestToWireProfile(request, state.wireProfile),
+      });
+      if (csvValidationPolls.current.get(documentId) !== token) return;
+      setCsvProfiles((current) =>
+        current[documentId]
+          ? {
+              ...current,
+              [documentId]: {
+                ...current[documentId],
+                validation: wireValidationToUi(status),
+                validationWire: status,
+                error: null,
+              },
+            }
+          : current,
+      );
+      if (status.state === "queued" || status.state === "running") {
+        scheduleCsvValidationPoll(documentId, state.identity, taskId, request.generation, token);
+      }
+    } catch (error) {
+      setCsvProfiles((current) =>
+        current[documentId]
+          ? {
+              ...current,
+              [documentId]: { ...current[documentId], error: toOpenFileError(error).message },
+            }
+          : current,
+      );
+    }
+  }
+
+  async function cancelCsvProfileValidation(documentId: string) {
+    const state = csvProfiles[documentId];
+    const status = state?.validationWire;
+    if (!state || !status) return;
+    csvValidationPolls.current.set(
+      documentId,
+      (csvValidationPolls.current.get(documentId) ?? 0) + 1,
+    );
+    try {
+      const cancelled = await backend.cancelCsvProfileValidation(
+        state.identity.documentId,
+        state.identity.sessionId,
+        status.taskId,
+      );
+      setCsvProfiles((current) =>
+        current[documentId]
+          ? {
+              ...current,
+              [documentId]: {
+                ...current[documentId],
+                validation: wireValidationToUi(cancelled),
+                validationWire: cancelled,
+              },
+            }
+          : current,
+      );
+    } catch (error) {
+      setCsvProfiles((current) =>
+        current[documentId]
+          ? {
+              ...current,
+              [documentId]: { ...current[documentId], error: toOpenFileError(error).message },
+            }
+          : current,
+      );
+    }
+  }
+
+  async function commitCsvProfile(
+    document: ViewerDocument,
+    wireProfile: CsvParsingProfileWire,
+    mode: CsvProfileMode,
+  ) {
+    if (!document.documentId || !document.sessionId) return;
+    const previousQuery = queryStatesRef.current[document.id];
+    const requestId = nextRequest(statusRequests, document.id);
+    nextRequest(pageRequests, document.id);
+    nextRequest(queryRequests, document.id);
+    setCsvProfiles((current) =>
+      current[document.id]
+        ? {
+            ...current,
+            [document.id]: { ...current[document.id], isApplying: true, error: null },
+          }
+        : current,
+    );
+    try {
+      const response = await backend.applyCsvProfile({
+        documentId: document.documentId,
+        sessionId: document.sessionId,
+        profile: wireProfile,
+      });
+      if (
+        statusRequests.current.get(document.id) !== requestId ||
+        response.documentId !== document.documentId ||
+        response.sessionId === document.sessionId
+      )
+        return;
+      const nextPage = await backend.readPage({
+        documentId: response.documentId,
+        sessionId: response.sessionId,
+        offset: 0,
+        limit: document.page?.limit ?? 200,
+      });
+      if (statusRequests.current.get(document.id) !== requestId) return;
+      validateInitialPage(response.summary, nextPage);
+      const compatibility = compatibleQueryPlan(
+        previousQuery?.draftPlan ?? EMPTY_QUERY_PLAN,
+        response.summary,
+      );
+      const nextDocument: ViewerDocument = {
+        ...document,
+        sessionId: response.sessionId,
+        summary: response.summary,
+        page: nextPage,
+        error: compatibility.adjustmentReason
+          ? {
+              code: "QueryPlanAdjusted",
+              message: compatibility.adjustmentReason,
+              retry: { kind: "open" },
+            }
+          : null,
+      };
+      setQueryStates((current) => ({
+        ...current,
+        [document.id]: replaceQueryUiSession(
+          current[document.id] ?? previousQuery,
+          response.documentId,
+          response.sessionId,
+          compatibility.plan,
+        ),
+      }));
+      updateDocument(document.id, (current) => ({
+        ...current,
+        sessionId: response.sessionId,
+        summary: response.summary,
+        page: nextPage,
+        error: nextDocument.error,
+      }));
+      setCsvProfileModes((current) => ({ ...current, [document.id]: mode }));
+      setCsvProfileDialogDocumentId(null);
+      setCsvProfiles((current) => {
+        const next = { ...current };
+        delete next[document.id];
+        return next;
+      });
+      if (previousQuery && queryPlanHasWork(compatibility.plan)) {
+        window.setTimeout(() => executeDocumentQuery(nextDocument, compatibility.plan, true), 0);
+      }
+    } catch (error) {
+      if (statusRequests.current.get(document.id) === requestId) {
+        setCsvProfiles((current) =>
+          current[document.id]
+            ? {
+                ...current,
+                [document.id]: {
+                  ...current[document.id],
+                  isApplying: false,
+                  error: toOpenFileError(error).message,
+                },
+              }
+            : current,
+        );
+        updateDocument(document.id, (current) => ({ ...current, error: toOpenFileError(error) }));
+      }
+    }
+  }
+
+  function applyCsvProfile(document: ViewerDocument, request: CsvProfileRequest) {
+    const state = csvProfiles[document.id];
+    if (!state) return;
+    const validation = state.validation;
+    if (
+      matchesCurrentGeneration(validation, state.identity, request.generation) &&
+      (validation!.state === "running" ||
+        (validation!.invalid > 0 && !request.validationAcknowledged))
+    ) {
+      setCsvProfiles((current) => ({
+        ...current,
+        [document.id]: {
+          ...current[document.id],
+          error:
+            validation!.state === "running"
+              ? "Wait for full-file validation to finish before applying."
+              : "Review and acknowledge the full-file validation failures before applying.",
+        },
+      }));
+      return;
+    }
+    void commitCsvProfile(document, uiRequestToWireProfile(request, state.wireProfile), "custom");
+  }
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    for (const document of documents) {
+      if (
+        document.status !== "ready" ||
+        !document.documentId ||
+        !document.sessionId ||
+        !document.summary ||
+        !hasCapability(document.summary, "parsingProfile") ||
+        csvDefaultsHandled.current.has(document.id)
+      )
+        continue;
+      csvDefaultsHandled.current.add(document.id);
+      const mode = appSettingsRef.current.csvDefaultParsingMode;
+      if (mode === "auto") {
+        setCsvProfileModes((current) => ({ ...current, [document.id]: "auto" }));
+        continue;
+      }
+      const requestId = nextRequest(statusRequests, document.id);
+      if (mode === "askEveryTime") {
+        setCsvProfileDialogDocumentId(document.id);
+        setCsvProfileLoadingDocumentId(document.id);
+        void backend.getCsvProfile(document.documentId, document.sessionId).then(
+          (response) => {
+            if (
+              statusRequests.current.get(document.id) !== requestId ||
+              response.documentId !== document.documentId ||
+              response.sessionId !== document.sessionId
+            )
+              return;
+            setCsvProfileModes((current) => ({ ...current, [document.id]: "auto" }));
+            setCsvProfiles((current) => ({
+              ...current,
+              [document.id]: {
+                identity: { documentId: response.documentId, sessionId: response.sessionId },
+                wireProfile: response.profile,
+                columns: wireProfileToColumns(response.profile),
+                preview: null,
+                validation: null,
+                validationWire: null,
+                isApplying: false,
+                error: null,
+                structuralError: csvStructuralError(document.summary!),
+              },
+            }));
+            setCsvProfileLoadingDocumentId(null);
+          },
+          (error: unknown) => {
+            if (statusRequests.current.get(document.id) !== requestId) return;
+            setCsvProfileDialogDocumentId(null);
+            setCsvProfileLoadingDocumentId(null);
+            updateDocument(document.id, (current) => ({
+              ...current,
+              error: toOpenFileError(error),
+            }));
+          },
+        );
+        continue;
+      }
+      nextRequest(pageRequests, document.id);
+      void backend
+        .getCsvProfile(document.documentId, document.sessionId)
+        .then(
+          async (response) => {
+            if (
+              statusRequests.current.get(document.id) !== requestId ||
+              response.documentId !== document.documentId ||
+              response.sessionId !== document.sessionId
+            )
+              return;
+            const profile: CsvParsingProfileWire = {
+              ...response.profile,
+              mode: "allText",
+              generation: response.profile.generation + 1,
+              columns: response.profile.columns.map((column) => ({
+                ...column,
+                targetType: "text",
+              })),
+            };
+            const applied = await backend.applyCsvProfile({
+              documentId: response.documentId,
+              sessionId: response.sessionId,
+              profile,
+            });
+            if (
+              statusRequests.current.get(document.id) !== requestId ||
+              applied.documentId !== document.documentId ||
+              applied.sessionId === document.sessionId
+            )
+              return;
+            const nextPage = await backend.readPage({
+              documentId: applied.documentId,
+              sessionId: applied.sessionId,
+              offset: 0,
+              limit: document.page?.limit ?? 200,
+            });
+            if (statusRequests.current.get(document.id) !== requestId) return;
+            validateInitialPage(applied.summary, nextPage);
+            const previousQuery = queryStatesRef.current[document.id];
+            nextRequest(queryRequests, document.id);
+            const compatibility = compatibleQueryPlan(
+              previousQuery?.draftPlan ?? EMPTY_QUERY_PLAN,
+              applied.summary,
+            );
+            const nextDocument: ViewerDocument = {
+              ...document,
+              sessionId: applied.sessionId,
+              summary: applied.summary,
+              page: nextPage,
+              error: compatibility.adjustmentReason
+                ? {
+                    code: "QueryPlanAdjusted",
+                    message: compatibility.adjustmentReason,
+                    retry: { kind: "open" },
+                  }
+                : null,
+            };
+            setQueryStates((current) => ({
+              ...current,
+              [document.id]: replaceQueryUiSession(
+                current[document.id] ?? previousQuery,
+                applied.documentId,
+                applied.sessionId,
+                compatibility.plan,
+              ),
+            }));
+            updateDocument(document.id, (current) => ({
+              ...current,
+              sessionId: applied.sessionId,
+              summary: applied.summary,
+              page: nextPage,
+              error: nextDocument.error,
+            }));
+            setCsvProfileModes((current) => ({ ...current, [document.id]: "allText" }));
+            if (previousQuery && queryPlanHasWork(compatibility.plan)) {
+              window.setTimeout(
+                () => executeDocumentQueryRef.current(nextDocument, compatibility.plan, true),
+                0,
+              );
+            }
+          },
+          (error: unknown) => {
+            if (statusRequests.current.get(document.id) === requestId) {
+              updateDocument(document.id, (current) => ({
+                ...current,
+                error: toOpenFileError(error),
+              }));
+            }
+          },
+        )
+        .catch((error: unknown) => {
+          if (statusRequests.current.get(document.id) === requestId) {
+            updateDocument(document.id, (current) => ({
+              ...current,
+              error: toOpenFileError(error),
+            }));
+          }
+        });
+    }
+  }, [backend, documents, settingsLoaded, updateDocument]);
+
+  function updateQueryState(documentId: string, update: (state: QueryUiState) => QueryUiState) {
+    setQueryStates((current) =>
+      current[documentId] ? { ...current, [documentId]: update(current[documentId]) } : current,
+    );
+  }
+
+  function queryProgress(status: QueryStatusResponse): QueryProgress {
+    return { ...status.progress };
+  }
+
+  function queryResponseIsCurrent(
+    documentId: string,
+    token: number,
+    identity: { documentId: string; sessionId: string },
+  ): boolean {
+    const document = documentsRef.current.find((candidate) => candidate.id === documentId);
+    return Boolean(
+      queryRequests.current.get(documentId) === token &&
+      document?.documentId === identity.documentId &&
+      document.sessionId === identity.sessionId,
+    );
+  }
+
+  async function handleQueryStatus(
+    document: ViewerDocument,
+    plan: QueryPlan,
+    queryId: string,
+    taskId: string,
+    token: number,
+    status: QueryStatusResponse,
+  ) {
+    const identity = { documentId: document.documentId!, sessionId: document.sessionId! };
+    if (
+      !queryResponseIsCurrent(document.id, token, identity) ||
+      status.documentId !== identity.documentId ||
+      status.sessionId !== identity.sessionId ||
+      status.queryId !== queryId ||
+      status.taskId !== taskId
+    )
+      return;
+    if (status.state === "queued" || status.state === "running" || status.state === "cancelling") {
+      updateQueryState(document.id, (current) => ({
+        ...current,
+        status:
+          status.state === "queued"
+            ? "queued"
+            : status.state === "cancelling"
+              ? "cancelling"
+              : "running",
+        progress: queryProgress(status),
+      }));
+      window.setTimeout(() => {
+        if (!queryResponseIsCurrent(document.id, token, identity)) return;
+        void backend.getQueryStatus(identity.documentId, identity.sessionId, queryId, taskId).then(
+          (next) => void handleQueryStatus(document, plan, queryId, taskId, token, next),
+          (error: unknown) => {
+            if (!queryResponseIsCurrent(document.id, token, identity)) return;
+            const normalized = toOpenFileError(error);
+            updateQueryState(document.id, (current) => ({
+              ...current,
+              taskId: null,
+              pendingQueryId: null,
+              status: "failed",
+              progress: null,
+              errorCode: normalized.code,
+              error: normalized.message,
+            }));
+          },
+        );
+      }, 150);
+      return;
+    }
+    if (status.state === "complete") {
+      try {
+        const response = await backend.readQueryPage({
+          ...identity,
+          queryId,
+          offset: 0,
+          limit: document.page?.limit ?? 200,
+        });
+        if (!queryResponseIsCurrent(document.id, token, identity)) return;
+        updateDocument(document.id, (current) => ({
+          ...current,
+          page: response.page,
+          error: current.error?.code === "QueryPlanAdjusted" ? current.error : null,
+        }));
+        updateQueryState(document.id, (current) => ({
+          ...current,
+          draftPlan: plan,
+          committedPlan: plan,
+          queryId,
+          pendingQueryId: null,
+          taskId: null,
+          status: "idle",
+          progress: null,
+          error: null,
+          errorCode: null,
+          findMatchCount: status.findMatchCount,
+          findTarget: null,
+          distinct: {},
+        }));
+      } catch (error) {
+        if (!queryResponseIsCurrent(document.id, token, identity)) return;
+        const normalized = toOpenFileError(error);
+        updateQueryState(document.id, (current) => ({
+          ...current,
+          taskId: null,
+          pendingQueryId: null,
+          status: "failed",
+          progress: null,
+          errorCode: normalized.code,
+          error: normalized.message,
+        }));
+      }
+      return;
+    }
+    if (status.state === "failed") {
+      updateQueryState(document.id, (current) => ({
+        ...current,
+        taskId: null,
+        pendingQueryId: null,
+        status: "failed",
+        progress: null,
+        errorCode: status.error?.code ?? "QueryFailed",
+        error: status.error?.message ?? "The query failed.",
+      }));
+      return;
+    }
+    updateQueryState(document.id, (current) => ({
+      ...current,
+      taskId: null,
+      pendingQueryId: null,
+      status: "idle",
+      progress: null,
+      error: null,
+      errorCode: null,
+    }));
+  }
+
+  function executeDocumentQuery(
+    document: ViewerDocument,
+    plan: QueryPlan,
+    skipPreviousCancel = false,
+  ) {
+    if (!document.documentId || !document.sessionId || !document.summary) return;
+    const current = queryStatesRef.current[document.id];
+    if (!current && !skipPreviousCancel) return;
+    if (!skipPreviousCancel && current.taskId && current.pendingQueryId) {
+      void backend
+        .cancelQuery(current.documentId, current.sessionId, current.pendingQueryId, current.taskId)
+        .catch(() => undefined);
+    }
+    const queryId = `frontend-query-${Date.now()}-${++querySequence.current}`;
+    const taskId = `frontend-query-task-${Date.now()}-${querySequence.current}`;
+    const token = nextRequest(queryRequests, document.id);
+    updateQueryState(document.id, (state) => ({
+      ...state,
+      draftPlan: plan,
+      pendingQueryId: queryId,
+      taskId,
+      status: "queued",
+      progress: null,
+      error: null,
+      errorCode: null,
+      findTarget: null,
+    }));
+    void backend
+      .executeQuery({
+        documentId: document.documentId,
+        sessionId: document.sessionId,
+        queryId,
+        taskId,
+        plan,
+      })
+      .then(
+        (status) => void handleQueryStatus(document, plan, queryId, taskId, token, status),
+        (error: unknown) => {
+          const identity = { documentId: document.documentId!, sessionId: document.sessionId! };
+          if (!queryResponseIsCurrent(document.id, token, identity)) return;
+          const normalized = toOpenFileError(error);
+          updateQueryState(document.id, (state) => ({
+            ...state,
+            taskId: null,
+            pendingQueryId: null,
+            status: "failed",
+            progress: null,
+            errorCode: normalized.code,
+            error: normalized.message,
+          }));
+        },
+      );
+  }
+
+  executeDocumentQueryRef.current = executeDocumentQuery;
+
+  function cancelDocumentQuery(document: ViewerDocument) {
+    const state = queryStates[document.id];
+    if (!state?.taskId || !state.pendingQueryId) return;
+    const token = queryRequests.current.get(document.id) ?? 0;
+    updateQueryState(document.id, (current) => ({ ...current, status: "cancelling" }));
+    void backend
+      .cancelQuery(state.documentId, state.sessionId, state.pendingQueryId, state.taskId)
+      .then(
+        (status) =>
+          void handleQueryStatus(
+            document,
+            state.draftPlan,
+            state.pendingQueryId!,
+            state.taskId!,
+            token,
+            status,
+          ),
+        (error: unknown) => {
+          const normalized = toOpenFileError(error);
+          updateQueryState(document.id, (current) => ({
+            ...current,
+            status: "failed",
+            taskId: null,
+            pendingQueryId: null,
+            errorCode: normalized.code,
+            error: normalized.message,
+          }));
+        },
+      );
+  }
+
+  function loadDistinctValues(
+    document: ViewerDocument,
+    columnId: string,
+    search: string,
+    append: boolean,
+  ) {
+    const state = queryStates[document.id];
+    if (!state) return;
+    const existing = state.distinct[columnId];
+    const offset = append && existing?.search === search ? existing.values.length : 0;
+    const requestId = (existing?.requestId ?? 0) + 1;
+    updateQueryState(document.id, (current) => ({
+      ...current,
+      distinct: {
+        ...current.distinct,
+        [columnId]: {
+          values: append && existing?.search === search ? existing.values : [],
+          search,
+          loading: true,
+          error: null,
+          hasMore: existing?.hasMore ?? false,
+          requestId,
+        },
+      },
+    }));
+    void backend
+      .listDistinctValues({
+        documentId: state.documentId,
+        sessionId: state.sessionId,
+        queryId: state.queryId,
+        columnId,
+        search: search.trim() || null,
+        offset,
+        limit: 100,
+      })
+      .then(
+        (response) => {
+          updateQueryState(document.id, (current) => {
+            const active = current.distinct[columnId];
+            if (
+              !active ||
+              active.requestId !== requestId ||
+              current.sessionId !== response.sessionId ||
+              current.queryId !== response.queryId
+            )
+              return current;
+            const nextValues = response.values
+              .filter((value) => !value.isNull && !value.isInvalid && value.value !== null)
+              .map((value) => ({ value: value.value!, count: value.count }));
+            return {
+              ...current,
+              distinct: {
+                ...current.distinct,
+                [columnId]: {
+                  ...active,
+                  values: append ? [...active.values, ...nextValues] : nextValues,
+                  loading: false,
+                  hasMore: response.hasMore,
+                },
+              },
+            };
+          });
+        },
+        (error: unknown) =>
+          updateQueryState(document.id, (current) => {
+            const active = current.distinct[columnId];
+            return !active || active.requestId !== requestId
+              ? current
+              : {
+                  ...current,
+                  distinct: {
+                    ...current.distinct,
+                    [columnId]: {
+                      ...active,
+                      loading: false,
+                      error: toOpenFileError(error).message,
+                    },
+                  },
+                };
+          }),
+      );
+  }
+
+  function distinctValuesState(document: ViewerDocument, columnId: string): DistinctValuesState {
+    const current = queryStates[document.id]?.distinct[columnId];
+    return {
+      values: current?.values ?? [],
+      loading: current?.loading ?? false,
+      error: current?.error ?? null,
+      hasMore: current?.hasMore ?? false,
+      onSearch: (search) => loadDistinctValues(document, columnId, search, false),
+      onLoadMore: () => loadDistinctValues(document, columnId, current?.search ?? "", true),
+    };
+  }
+
+  function findDocumentMatch(document: ViewerDocument, direction: "next" | "previous") {
+    const state = queryStates[document.id];
+    if (!state?.queryId || state.committedPlan.search?.mode !== "find" || !document.page) return;
+    const fromResultOffset = state.findTarget?.row ?? document.page.offset;
+    const fromMatchIndex = state.findTarget?.matchIndex ?? null;
+    const token = queryRequests.current.get(document.id) ?? 0;
+    void backend
+      .findQueryMatch({
+        documentId: state.documentId,
+        sessionId: state.sessionId,
+        queryId: state.queryId,
+        fromResultOffset,
+        fromMatchIndex,
+        direction,
+        wrap: true,
+      })
+      .then(async (response) => {
+        if (!response.match || queryRequests.current.get(document.id) !== token) return;
+        const offset =
+          Math.floor(response.match.rowOffset / document.page!.limit) * document.page!.limit;
+        const pageResponse = await backend.readQueryPage({
+          documentId: state.documentId,
+          sessionId: state.sessionId,
+          queryId: state.queryId!,
+          offset,
+          limit: document.page!.limit,
+        });
+        if (queryRequests.current.get(document.id) !== token) return;
+        updateDocument(document.id, (current) => ({ ...current, page: pageResponse.page }));
+        updateQueryState(document.id, (current) => ({
+          ...current,
+          findTarget: {
+            row: response.match!.rowOffset,
+            columnId: response.match!.columnId,
+            matchIndex: response.match!.matchIndex,
+            key: `${state.queryId}:${response.match!.matchIndex}:${Date.now()}`,
+          },
+          findMatchCount: response.match!.totalMatches,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (queryRequests.current.get(document.id) !== token) return;
+        const normalized = toOpenFileError(error);
+        updateQueryState(document.id, (current) => ({
+          ...current,
+          status: "failed",
+          errorCode: normalized.code,
+          error: normalized.message,
+        }));
+      });
+  }
+
   async function cancelCsvScan(document: ViewerDocument) {
     if (
       !document.documentId ||
       !document.sessionId ||
       !document.summary ||
-      document.summary.format !== "csv" ||
+      !hasCapability(document.summary, "backgroundRowCount") ||
       document.summary.rowCountStatus.state !== "calculating"
     )
       return;
@@ -1233,10 +2613,30 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             )
           : [closing];
       const closingIds = new Set(closingDocuments.map((document) => document.id));
+      closingIds.forEach((documentId) => {
+        csvDefaultsHandled.current.delete(documentId);
+        csvValidationPolls.current.set(
+          documentId,
+          (csvValidationPolls.current.get(documentId) ?? 0) + 1,
+        );
+      });
+      setCsvProfiles((current) =>
+        Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
+      );
+      setCsvProfileModes((current) =>
+        Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
+      );
+      setQueryStates((current) =>
+        Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
+      );
+      setCsvProfileDialogDocumentId((current) =>
+        current && closingIds.has(current) ? null : current,
+      );
       for (const document of closingDocuments) {
         pageRequests.current.set(document.id, (pageRequests.current.get(document.id) ?? 0) + 1);
         statusRequests.current.set(document.id, (statusRequests.current.get(document.id) ?? 0) + 1);
         pollRequests.current.set(document.id, (pollRequests.current.get(document.id) ?? 0) + 1);
+        queryRequests.current.set(document.id, (queryRequests.current.get(document.id) ?? 0) + 1);
         if (document.status === "loading") closedPendingIds.current.add(document.id);
       }
       if (closing.status === "loading" && closing.openRequestId) {
@@ -1326,6 +2726,110 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     document.getElementById(`document-tab-${target.id}`)?.focus();
   }
 
+  async function applySettings(nextSettings: AppSettingsV1, source: "app" | "copy" | "preset") {
+    if (settingsSavingRef.current) {
+      if (source === "preset") {
+        setCopyPresetSaveError("Another settings change is still being saved.");
+      }
+      return;
+    }
+    settingsSavingRef.current = true;
+    setSettingsSaving(true);
+    if (source === "preset") {
+      setCopyPresetSaving(true);
+      setCopyPresetSaveError(null);
+    } else {
+      setSettingsSaveError(null);
+    }
+    try {
+      const saved = await backend.updateSettings(parseAppSettings(nextSettings));
+      setAppSettings(saved);
+      setCopyPresetSaveError(null);
+      if (source === "app") setSettingsDialogOpen(false);
+      else if (source === "copy") setCopySettingsOpen(false);
+    } catch (error) {
+      const message = toOpenFileError(error).message;
+      if (source === "preset") {
+        setCopyPresetSaveError(`Copy preset was not changed. ${message}`);
+      } else {
+        setSettingsSaveError(message);
+      }
+    } finally {
+      settingsSavingRef.current = false;
+      setSettingsSaving(false);
+      if (source === "preset") setCopyPresetSaving(false);
+    }
+  }
+
+  function applyCopySettings(value: CopySettingsValue) {
+    void applySettings(
+      parseAppSettings({
+        ...appSettings,
+        copyPreset: value.preset,
+        copyCustomOptions: value.customOptions,
+      }),
+      "copy",
+    );
+  }
+
+  function selectCopyPreset(preset: CopyPreset) {
+    void applySettings(
+      parseAppSettings({
+        ...appSettings,
+        copyPreset: preset,
+      }),
+      "preset",
+    );
+  }
+
+  function openApplicationSettings() {
+    setSettingsSaveError(null);
+    setQueryTempLoading(true);
+    setQueryTempError(null);
+    setQueryTempClearMessage(null);
+    void backend.getQueryTempUsage().then(
+      (usage) => {
+        setQueryTempUsage(usage);
+        setQueryTempLoading(false);
+      },
+      (error: unknown) => {
+        setQueryTempError(toOpenFileError(error).message);
+        setQueryTempLoading(false);
+      },
+    );
+    setSettingsDialogOpen(true);
+  }
+
+  function clearQueryTemp() {
+    if (queryTempLoading) return;
+    setQueryTempLoading(true);
+    setQueryTempError(null);
+    setQueryTempClearMessage(null);
+    void backend.clearQueryTemp().then(
+      (result) => {
+        setQueryTempUsage(result.remainingUsage);
+        setQueryTempClearMessage(
+          `Inactive query data cleared. ${result.deletedBytes.toLocaleString()} bytes deleted; ${result.remainingUsage.processBytes.toLocaleString()} bytes remain in use.`,
+        );
+        if (result.orphanFailureCount > 0) {
+          setQueryTempError(
+            `${result.orphanFailureCount.toLocaleString()} inactive item${result.orphanFailureCount === 1 ? "" : "s"} could not be removed. ${result.cleanupFailures.join(" ")}`,
+          );
+        }
+        setQueryTempLoading(false);
+      },
+      (error: unknown) => {
+        setQueryTempError(toOpenFileError(error).message);
+        setQueryTempLoading(false);
+      },
+    );
+  }
+
+  function openCopySettings() {
+    setSettingsSaveError(null);
+    setCopySettingsOpen(true);
+  }
+
   return (
     <div className="app-shell">
       <header className="app-toolbar" data-testid="toolbar">
@@ -1338,20 +2842,32 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             </span>
           )}
         </div>
-        <button
-          className="open-file-button"
-          ref={openButtonRef}
-          type="button"
-          onClick={() => void openFile()}
-          disabled={openingCount > 0}
-        >
-          {openingCount > 0 ? (
-            <LoaderCircle className="button-spinner" aria-hidden="true" />
-          ) : (
-            <FolderOpen aria-hidden="true" />
-          )}
-          <span>{openingCount > 0 ? "Opening..." : "Open file"}</span>
-        </button>
+        <div className="app-toolbar__actions">
+          <button
+            aria-label="Settings"
+            className="toolbar-icon-button"
+            onClick={openApplicationSettings}
+            ref={settingsButtonRef}
+            title="Settings"
+            type="button"
+          >
+            <SettingsIcon aria-hidden="true" />
+          </button>
+          <button
+            className="open-file-button"
+            ref={openButtonRef}
+            type="button"
+            onClick={() => void openFile()}
+            disabled={openingCount > 0}
+          >
+            {openingCount > 0 ? (
+              <LoaderCircle className="button-spinner" aria-hidden="true" />
+            ) : (
+              <FolderOpen aria-hidden="true" />
+            )}
+            <span>{openingCount > 0 ? "Opening..." : "Open file"}</span>
+          </button>
+        </div>
       </header>
 
       <nav className="document-tabs" aria-label="Open files">
@@ -1444,13 +2960,39 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         </div>
         {summary && (
           <div className="file-summary" aria-label="Current file summary">
-            <span>{summary.format === "csv" ? "CSV" : "Parquet"}</span>
+            <span>{formatDisplayName(summary)}</span>
             <span>
               {summary.rowCount === null
                 ? `${summary.rowCountStatus.rowsScanned.toLocaleString()}+ rows`
                 : `${summary.rowCount.toLocaleString()} rows`}
             </span>
             <span>{summary.columnCount.toLocaleString()} columns</span>
+            {activeDocument && hasCapability(summary, "parsingProfile") && (
+              <>
+                <span className="csv-profile-mode">
+                  CSV:{" "}
+                  {csvProfileModes[activeDocument.id] === "allText"
+                    ? "All Text"
+                    : csvProfileModes[activeDocument.id] === "custom"
+                      ? "Custom"
+                      : "Auto"}
+                  {csvProfileDialogDocumentId === activeDocument.id &&
+                  appSettings.csvDefaultParsingMode === "askEveryTime"
+                    ? " (choice pending)"
+                    : ""}
+                </span>
+                <button
+                  className="csv-profile-command"
+                  disabled={csvProfileLoadingDocumentId === activeDocument.id}
+                  onClick={() => void openCsvProfile(activeDocument)}
+                  ref={csvProfileButtonRef}
+                  type="button"
+                >
+                  <SlidersHorizontal aria-hidden="true" />
+                  CSV Parsing Profile
+                </button>
+              </>
+            )}
           </div>
         )}
       </nav>
@@ -1458,7 +3000,10 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       <main
         aria-labelledby={`tab-${activeTab}`}
         aria-busy={
-          openingCount > 0 || activeDocument?.isPageLoading || activeDocument?.isConfiguringCsv
+          openingCount > 0 ||
+          activeDocument?.isPageLoading ||
+          activeDocument?.isConfiguringCsv ||
+          activeCsvProfile?.isApplying
         }
         className={`workspace${dropTarget ? " workspace--drop-active" : ""}`}
         data-testid="workspace"
@@ -1466,6 +3011,21 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         role="tabpanel"
         tabIndex={0}
       >
+        {settingsWarning && (
+          <div className="settings-warning" role="status">
+            <TriangleAlert aria-hidden="true" />
+            <span>{settingsWarning}</span>
+            <button
+              aria-label="Dismiss settings warning"
+              className="icon-button"
+              onClick={() => setSettingsWarning(null)}
+              title="Dismiss settings warning"
+              type="button"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        )}
         {globalError && (
           <div className="error-banner" role="alert">
             <TriangleAlert aria-hidden="true" />
@@ -1488,7 +3048,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             </button>
           </div>
         )}
-        {documents.length === 0 && <EmptyState tab={emptyActiveTab} />}
+        {documents.length === 0 && <EmptyState formats={formatCatalog} tab={emptyActiveTab} />}
         {openingCount > 0 && (
           <span className="opening-announcement" role="status" aria-live="polite">
             Opening data file
@@ -1554,10 +3114,26 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                 <div className="document-view" hidden={document.activeTab !== "data"}>
                   <DataView
                     active={activeDocumentId === document.id && document.activeTab === "data"}
+                    copyOptions={activeCopyOptions(appSettings)}
+                    copyPresetError={copyPresetSaveError}
+                    copyPresetSaving={copyPresetSaving}
+                    distinctValuesForColumn={(columnId) => distinctValuesState(document, columnId)}
                     isCancelling={document.isCancellingCsv}
                     isLoading={document.isPageLoading}
                     onCancel={() => void cancelCsvScan(document)}
+                    onCancelQuery={() => cancelDocumentQuery(document)}
+                    onFindMatch={(direction) => findDocumentMatch(document, direction)}
+                    onOpenDistinctValues={(columnId) =>
+                      loadDistinctValues(document, columnId, "", false)
+                    }
+                    onRetryQuery={() => {
+                      const state = queryStates[document.id];
+                      if (state) executeDocumentQuery(document, state.draftPlan);
+                    }}
                     onPageChange={(offset) => void loadPage(document, offset)}
+                    onCopyPresetChange={selectCopyPreset}
+                    onOpenCopySettings={openCopySettings}
+                    onQueryPlanChange={(plan) => executeDocumentQuery(document, plan)}
                     onReadError={(error, offset) =>
                       updateDocument(document.id, (current) => ({
                         ...current,
@@ -1565,9 +3141,41 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                       }))
                     }
                     page={document.page}
-                    readPage={(request) =>
-                      backend.readPage({ ...request, documentId: document.documentId! })
-                    }
+                    queryState={queryStates[document.id] ?? null}
+                    readPage={(request) => {
+                      const query = queryStates[document.id];
+                      return query?.queryId
+                        ? backend
+                            .readQueryPage({
+                              documentId: document.documentId!,
+                              sessionId: document.sessionId!,
+                              queryId: query.queryId,
+                              offset: request.offset,
+                              limit: request.limit,
+                            })
+                            .then((response) => {
+                              if (!request.columns) return response.page;
+                              const indexes = request.columns.map((column) =>
+                                response.page.columns.indexOf(column),
+                              );
+                              if (indexes.some((index) => index < 0)) {
+                                throw new Error(
+                                  "The query result no longer contains a selected column.",
+                                );
+                              }
+                              return {
+                                ...response.page,
+                                columns: [...request.columns],
+                                rows: response.page.rows.map((row) =>
+                                  indexes.map((index) => row[index]),
+                                ),
+                              };
+                            })
+                        : backend.readPage({
+                            ...request,
+                            documentId: document.documentId!,
+                          });
+                    }}
                     summary={document.summary}
                   />
                 </div>
@@ -1585,7 +3193,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             )}
           </section>
         ))}
-        {dropTarget && <DropTarget state={dropTarget} />}
+        {dropTarget && <DropTarget formats={formatCatalog} state={dropTarget} />}
       </main>
 
       <footer
@@ -1597,6 +3205,75 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         <BackendStatus state={backendState} />
         {summary && page && activeTab !== "data" && <PageStatus page={page} />}
       </footer>
+
+      {csvProfileDialogDocumentId && csvProfileLoadingDocumentId === csvProfileDialogDocumentId && (
+        <div className="dialog-backdrop">
+          <div className="csv-profile-loading" role="status">
+            <LoaderCircle aria-hidden="true" />
+            <strong>Loading CSV parsing profile</strong>
+          </div>
+        </div>
+      )}
+      {csvProfileDialogDocumentId &&
+        csvProfileDocument &&
+        activeCsvProfile &&
+        csvProfileLoadingDocumentId !== csvProfileDialogDocumentId && (
+          <div className="dialog-backdrop dialog-backdrop--profile">
+            <CsvProfileDialog
+              columns={activeCsvProfile.columns}
+              identity={activeCsvProfile.identity}
+              initialGeneration={activeCsvProfile.wireProfile.generation}
+              isApplying={activeCsvProfile.isApplying}
+              onApply={(request) => applyCsvProfile(csvProfileDocument, request)}
+              onCancel={() => closeCsvProfile(csvProfileDialogDocumentId)}
+              onCancelValidation={() => void cancelCsvProfileValidation(csvProfileDialogDocumentId)}
+              onPreviewRequest={(request) =>
+                void previewCsvProfile(csvProfileDialogDocumentId, request)
+              }
+              onValidate={(request) => void validateCsvProfile(csvProfileDialogDocumentId, request)}
+              preview={activeCsvProfile.preview}
+              requestError={activeCsvProfile.error}
+              restoreFocusTo={csvProfileButtonRef.current}
+              structuralError={activeCsvProfile.structuralError}
+              validation={activeCsvProfile.validation}
+            />
+          </div>
+        )}
+
+      {settingsDialogOpen && (
+        <AppSettingsDialog
+          initialSettings={appSettings}
+          isObscured={copySettingsOpen}
+          isSaving={settingsSaving}
+          onApply={(nextSettings) => void applySettings(nextSettings, "app")}
+          onCancel={() => {
+            setSettingsDialogOpen(false);
+            setSettingsSaveError(null);
+          }}
+          onOpenCopySettings={openCopySettings}
+          saveError={settingsSaveError}
+          tempUsage={queryTempUsage}
+          tempUsageError={queryTempError}
+          tempClearMessage={queryTempClearMessage}
+          tempUsageLoading={queryTempLoading}
+          onClearTemp={clearQueryTemp}
+        />
+      )}
+      {copySettingsOpen && (
+        <CopySettingsDialog
+          applyError={settingsSaveError}
+          headers={page?.columns}
+          initialCustomOptions={appSettings.copyCustomOptions}
+          initialPreset={appSettings.copyPreset}
+          isApplying={settingsSaving}
+          onApply={applyCopySettings}
+          onCancel={() => {
+            setCopySettingsOpen(false);
+            setSettingsSaveError(null);
+          }}
+          sampleRows={page?.rows ?? []}
+        />
+      )}
     </div>
   );
 }

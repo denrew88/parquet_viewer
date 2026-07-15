@@ -1,0 +1,9 @@
+boolean_value,int64_value,uint64_value,float64_value,decimal_value,date_value,timestamp_value,text_value
+true,0,0,0.0,0.00,2026-01-01,2026-01-01T00:00:00Z,alpha
+maybe,12.5,-1,not-a-float,12.3.4,2026-02-30,2026-01-01T25:00:00Z,invalid row
+false,9223372036854775808,18446744073709551616,1.5,1.25,not-a-date,not-a-timestamp,bounds
+NULL,NULL,NULL,NULL,NULL,NULL,NULL,null tokens
+1,-9223372036854775808,18446744073709551615,-1.25e3,-999999.99,2024-02-29,2024-02-29T23:59:59.999Z,valid limits
+0,9223372036854775807,42,3.141592653589793,123456789.01,2026-12-31,2026-12-31T23:59:59+00:00,valid max
+TRUE,+17,+17,+2.5,+2.50,2026-06-15,2026-06-15T10:30:00Z,explicit plus
+FALSE, 7 , 7 , 7.0 , 7.00 , 2026-07-01 , 2026-07-01T01:02:03Z ,trimmed

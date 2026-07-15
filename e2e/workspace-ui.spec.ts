@@ -1,0 +1,142 @@
+import { expect, test } from "@playwright/test";
+import { openMockFile, setMockScenario } from "./helpers";
+
+test("opens multiple browserMock documents and retains independent view tabs", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "No file open" })).toBeVisible();
+  await expect(page.getByText("No files open")).toBeVisible();
+
+  await openMockFile(page, "csv", "quoted-multiline.csv");
+  await expect(page.getByText("Kim, Mina")).toBeVisible();
+  await page.getByRole("tab", { name: "Metadata" }).click();
+  await expect(page.getByRole("heading", { name: "CSV parsing" })).toBeVisible();
+
+  await openMockFile(page, "parquet", "typed-row-groups.parquet");
+  await expect(page.getByRole("tab", { name: "typed-row-groups.parquet" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("tab", { name: "Schema" }).click();
+  await expect(page.getByRole("table", { name: "File schema" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "quoted-multiline.csv" }).click();
+  await expect(page.getByRole("tab", { name: "Metadata" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "CSV parsing" })).toBeVisible();
+});
+
+test("changes copy presets without copying and saves the major custom copy controls", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await openMockFile(page, "parquet", "typed-row-groups.parquet");
+  await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
+
+  await page.getByRole("button", { name: "Copy options" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Excel" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.getByRole("menuitemradio", { name: "CSV" }).click();
+  await expect(page.getByRole("button", { name: "Copy selection" })).toContainText("Copy (CSV)");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("unchanged");
+
+  await page.getByRole("button", { name: "Copy options" }).click();
+  await page.getByRole("menuitem", { name: "Copy settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Copy settings" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Custom" }).click();
+  await dialog.getByLabel("Delimiter").selectOption("semicolon");
+  await dialog.getByRole("checkbox", { name: "Include column headers" }).check();
+  await dialog.getByLabel("Quote mode").selectOption("always");
+  await dialog.getByLabel("Quote character").fill("'");
+  await dialog.getByLabel("Escape").selectOption("backslash");
+  await dialog.getByRole("button", { name: "LF", exact: true }).click();
+  await dialog.getByLabel("Null representation").fill("NULL");
+  await dialog.getByLabel("Empty string representation").selectOption("quoted-empty");
+  await dialog.getByLabel("Boolean representation").selectOption("numeric");
+  await dialog.getByLabel("Date and timestamp representation").selectOption("custom");
+  await dialog.getByLabel("Date and timestamp format").fill("YYYY/MM/DD HH:mm:ss");
+  await expect(dialog.getByLabel("Copy preview")).toContainText(";");
+  await dialog.getByRole("button", { name: "Apply" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy selection" })).toContainText("Copy (CUSTOM)");
+});
+
+test("runs global find and filter, cycles sort, and applies a column filter popover", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openMockFile(page, "parquet", "typed-row-groups.parquet");
+
+  const search = page.getByRole("searchbox", { name: "Search data" });
+  await page.getByRole("button", { name: "Find" }).click();
+  await search.fill("9007199254740993");
+  await expect(page.getByText(/2 matches/)).toBeVisible();
+  await page.getByRole("button", { name: "Next match" }).click();
+  await page.getByRole("button", { name: "Previous match" }).click();
+
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await search.fill("1234567890");
+  await expect(page.getByRole("grid", { name: "Data preview" })).toBeVisible();
+  const queryTools = page.getByLabel("Query tools");
+  await expect(queryTools.getByText(/Query queued|Scanning/)).toBeVisible();
+  await expect(queryTools.getByText(/Query queued|Scanning/)).toHaveCount(0);
+
+  const filterButton = page.getByRole("button", { name: "Filter id", exact: true });
+  await filterButton.click();
+  const popover = page.getByRole("dialog", { name: "Filter id" });
+  await expect(popover).toBeVisible();
+  await popover.getByLabel("Filter operator").selectOption("greaterThan");
+  await popover.getByRole("textbox", { name: "Value", exact: true }).fill("9007199254740993");
+  await popover.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByLabel("Active filters")).toContainText("id > 9007199254740993");
+
+  await filterButton.click();
+  await popover.press("Escape");
+  await expect(popover).toHaveCount(0);
+  await expect(filterButton).toBeFocused();
+  await page.getByRole("button", { name: "Remove filter id" }).click();
+  await expect(page.getByLabel("Active filters")).not.toContainText("9007199254740993");
+
+  const sort = page.getByRole("button", { name: "Sort id: not sorted" });
+  await sort.click();
+  await expect(page.getByRole("button", { name: /Sort id: ascending/ })).toBeVisible();
+  await page.getByRole("button", { name: /Sort id: ascending/ }).click();
+  await expect(page.getByRole("button", { name: /Sort id: descending/ })).toBeVisible();
+  await page.getByRole("button", { name: /Sort id: descending/ }).click();
+  await expect(sort).toBeVisible();
+});
+
+test("validates application settings and temporary-storage controls", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Application settings" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/0 B used/)).toBeVisible();
+  await expect(dialog.getByText(/20\.00 GiB available on disk/)).toBeVisible();
+
+  const limit = dialog.getByRole("spinbutton", { name: "Query temporary storage limit" });
+  await limit.fill("0.01");
+  await expect(dialog.getByRole("alert")).toContainText("64 MiB");
+  await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
+  await limit.fill("0.125");
+  await dialog.getByRole("button", { name: "Clear inactive query data" }).click();
+  await expect(dialog.getByText(/Inactive query data cleared/)).toBeVisible();
+  await dialog.getByRole("button", { name: "All Text" }).click();
+  await expect(dialog.getByText(/Keep every column as text/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Apply" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Application settings" }).getByRole("button", {
+      name: "All Text",
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await setMockScenario(page, "parquet");
+});

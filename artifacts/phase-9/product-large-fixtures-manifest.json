@@ -1,0 +1,889 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase9-large-v1",
+  "generatedAtUtc": "2026-07-15T03:36:58.377519+00:00",
+  "generator": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\scripts\\generate_phase9_large_fixtures.py",
+  "generatorSha256": "1dfb9ffefedd4f905eda512ea19921c8dffc347d850658a4b5306e01a0651991",
+  "seed": 20260715,
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "numpy": "2.3.5",
+    "pyarrow": "22.0.0"
+  },
+  "configuration": {
+    "rows": 10000000,
+    "rowGroupSize": 100000,
+    "profiles": [
+      "full40"
+    ],
+    "cardinalities": [
+      "low",
+      "high"
+    ],
+    "compression": "zstd",
+    "compressionLevel": 3
+  },
+  "preflight": {
+    "outputDirectory": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-product-large",
+    "capacityBytes": 491993952256,
+    "freeBytesBefore": 164545286144,
+    "expectedUpperBytes": 21474836480,
+    "reserveBytes": 5368709120,
+    "requiredFreeBytes": 26843545600,
+    "result": "PASS"
+  },
+  "freeBytesAfter": 161653260288,
+  "cleanedBeforeGeneration": [],
+  "determinism": {
+    "rows": 20000,
+    "result": "PASS",
+    "pairs": {
+      "full40/low": {
+        "firstSha256": "25385e3c4fcaad7a84dd66d333b1f29772c6b73b06f3875aeec190df54ee6f9b",
+        "secondSha256": "25385e3c4fcaad7a84dd66d333b1f29772c6b73b06f3875aeec190df54ee6f9b",
+        "equal": true
+      },
+      "full40/high": {
+        "firstSha256": "a5bd17df49a4fda9425a0a2840e9c0881966d4f8ff785756ada90ba5ca3998eb",
+        "secondSha256": "a5bd17df49a4fda9425a0a2840e9c0881966d4f8ff785756ada90ba5ca3998eb",
+        "equal": true
+      },
+      "repeated10/low": {
+        "firstSha256": "07de293da30adeb27237c5dd05dff376468a0400a1e8bcf38d2644ef3415fe93",
+        "secondSha256": "07de293da30adeb27237c5dd05dff376468a0400a1e8bcf38d2644ef3415fe93",
+        "equal": true
+      },
+      "repeated10/high": {
+        "firstSha256": "3c5844611743acfd1e53dba576f83897aa4ca74f95412621bfb9d53e40b15fd1",
+        "secondSha256": "3c5844611743acfd1e53dba576f83897aa4ca74f95412621bfb9d53e40b15fd1",
+        "equal": true
+      }
+    }
+  },
+  "fixtures": [
+    {
+      "id": "query-low-10000000-rows-40-columns",
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-product-large\\query-low-10m-40c.parquet",
+      "profile": "full40",
+      "cardinality": "low",
+      "rows": 10000000,
+      "columns": 40,
+      "rowGroupSize": 100000,
+      "rowGroups": 100,
+      "rowGroupRows": {
+        "first": 100000,
+        "last": 100000,
+        "minimum": 100000,
+        "maximum": 100000
+      },
+      "bytes": 15502401,
+      "sha256": "2cd3a04b476377039fcabaca77e4d7872ab5603e54a34b43f50b9070908d4eb1",
+      "schemaFingerprintSha256": "3c83af5d9edb409bee2835825f97cc7f17b7026011e38ee58b8bc4ba8e2bea1e",
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "int64_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_05",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_06",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_07",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_08",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_09",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "float64_00",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_01",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_02",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_03",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_04",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_05",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_06",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_07",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_08",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_09",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "int32_00",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_01",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_02",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_03",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_04",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_05",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_06",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_07",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_08",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_09",
+          "type": "int32",
+          "nullable": false
+        }
+      ],
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 15132899,
+        "uncompressedBytes": 2464640112,
+        "compressedToUncompressedRatio": 0.00614
+      },
+      "encodings": {
+        "row_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "category": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "group_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "active": [
+          "RLE"
+        ],
+        "optional_value": [
+          "PLAIN",
+          "RLE"
+        ],
+        "event_time": [
+          "PLAIN",
+          "RLE"
+        ],
+        "amount": [
+          "PLAIN",
+          "RLE"
+        ],
+        "label": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "score": [
+          "PLAIN",
+          "RLE"
+        ],
+        "code": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "int64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_09": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_09": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_09": [
+          "PLAIN",
+          "RLE"
+        ]
+      },
+      "cardinalitySample": {
+        "rowGroups": [
+          0,
+          50,
+          99
+        ],
+        "rows": 12288,
+        "distinct": {
+          "row_id": 12288,
+          "category": 16,
+          "group_id": 128,
+          "label": 256,
+          "score": 512,
+          "code": 64
+        },
+        "categoryUniqueRate": 0.00130208,
+        "checksumSha256": "7eadd746749375f57db2bf872cd36c65e12000e524b9743f701edaa13452a1af"
+      },
+      "validation": "PASS"
+    },
+    {
+      "id": "query-high-10000000-rows-40-columns",
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-product-large\\query-high-10m-40c.parquet",
+      "profile": "full40",
+      "cardinality": "high",
+      "rows": 10000000,
+      "columns": 40,
+      "rowGroupSize": 100000,
+      "rowGroups": 100,
+      "rowGroupRows": {
+        "first": 100000,
+        "last": 100000,
+        "minimum": 100000,
+        "maximum": 100000
+      },
+      "bytes": 2561128881,
+      "sha256": "37cb4b1b5264b537985251baec3e618ecb93acf5fb92814b503a1517e8b005ca",
+      "schemaFingerprintSha256": "3c83af5d9edb409bee2835825f97cc7f17b7026011e38ee58b8bc4ba8e2bea1e",
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "int64_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_05",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_06",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_07",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_08",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_09",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "float64_00",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_01",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_02",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_03",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_04",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_05",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_06",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_07",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_08",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_09",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "int32_00",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_01",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_02",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_03",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_04",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_05",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_06",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_07",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_08",
+          "type": "int32",
+          "nullable": false
+        },
+        {
+          "name": "int32_09",
+          "type": "int32",
+          "nullable": false
+        }
+      ],
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 2560740147,
+        "uncompressedBytes": 3265703712,
+        "compressedToUncompressedRatio": 0.78413119
+      },
+      "encodings": {
+        "row_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "category": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "group_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "active": [
+          "RLE"
+        ],
+        "optional_value": [
+          "PLAIN",
+          "RLE"
+        ],
+        "event_time": [
+          "PLAIN",
+          "RLE"
+        ],
+        "amount": [
+          "PLAIN",
+          "RLE"
+        ],
+        "label": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "score": [
+          "PLAIN",
+          "RLE"
+        ],
+        "code": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "int64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_09": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_09": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_02": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_03": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_04": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_05": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_06": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_07": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_08": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_09": [
+          "PLAIN",
+          "RLE"
+        ]
+      },
+      "cardinalitySample": {
+        "rowGroups": [
+          0,
+          50,
+          99
+        ],
+        "rows": 12288,
+        "distinct": {
+          "row_id": 12288,
+          "category": 12288,
+          "group_id": 12288,
+          "label": 12288,
+          "score": 12288,
+          "code": 12288
+        },
+        "categoryUniqueRate": 1.0,
+        "checksumSha256": "7dced0235f3c90085b3851fbda0ae4fb5136342ee05276c9e1b014a996542a64"
+      },
+      "validation": "PASS"
+    }
+  ],
+  "validation": "PASS"
+}

@@ -1,0 +1,2006 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-15T12:56:02.184741+00:00",
+  "status": "PASS",
+  "executable": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "configuration": {
+    "instances": 5,
+    "cycles": 20,
+    "totalInvocations": 100,
+    "holdSeconds": 2.0
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 27968,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 15796278,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 19335778,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 12156,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5115774,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 18048,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8914806,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 27808,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10619888,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11471994,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 19604,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23661522,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20844018,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 24584,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 17040080,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17302068,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 8448,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9964384,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 10084,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7737074,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7278052,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 24444,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3411598,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 6084,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5508996,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 25136,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3608238,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 43385074,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 22156,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 34211606,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 3936160,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 21076,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27069720,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 464,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7343588,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 1773400,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 4868,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 16715166,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 4,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 5212,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14027814,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 29980,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7409124,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12192846,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 12888,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27135256,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17105582,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 17336,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11668090,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11078636,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 20132,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 24447530,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 5,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 29484,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10555228,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 11796,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6950170,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6557470,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 10104,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3608206,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 13296,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4853580,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 29408,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14487110,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 19794530,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 6,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 5832,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8130290,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 4919220,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 30248,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5312406,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 25396,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4919116,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17893304,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 4984,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4132768,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 27463018,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 9080,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 19860066,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 7,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 10664,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 17498832,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 19228,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 21302770,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 29689974,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 26004,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5443506,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11275248,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 2720,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27462672,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 8220,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18221590,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 8,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 30712,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18024376,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 13831640,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 8892,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27528208,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 13356,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18287126,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 24872,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7933746,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 30020,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5509042,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12845464,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 9,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 1600,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6295496,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 29540,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3870350,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 2708,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 17826356,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 5516,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18352662,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12911000,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 17832,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14159000,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 13110638,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 10,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 8300,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9831356,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17301572,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 5972,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12323450,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 29648,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 24382418,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20187164,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 20264,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18220984,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 4228,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 34735894,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10619744,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 11,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 3328,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 30083190,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 11756,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14355938,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 7280,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 21695986,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 8808,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14290072,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8457970,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 14492,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11733996,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 3935896,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 12,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 18564,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27790616,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 5008,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 25298432,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 10892,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9768650,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9441088,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 23844,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11799532,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5443508,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 23828,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9899772,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 13,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 12260,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 13242268,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 24292,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12913742,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 12524,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9965308,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 16816,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7278366,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 15142470,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 14096,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8589042,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 16320942,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 14,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 27612,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6164350,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 14568,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4329310,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 17780,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6623152,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 16386478,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 28096,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8064510,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7343622,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 20096,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12190112,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9572160,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 15,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 30088,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 13700462,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 4784,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18088656,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 29168,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12255648,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 29332,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 24906706,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11996140,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 23004,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 17892014,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17041462,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 16,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 12368,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 20843106,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8523236,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 13264,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 17106998,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6754224,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 25300,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4525710,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 10364,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9703232,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17957550,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 22792,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 26545096,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 17,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 29828,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 16846408,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12192752,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 14440,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5181256,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 11984,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7081928,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 13668,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 28183832,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12127212,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 26476,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 20973596,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 18,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 4976,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 30539832,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 1296,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 21039132,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 23820,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18350800,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 12032,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7278442,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 18876344,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 26128,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 16648622,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11800412,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 19,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 27348,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12517792,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 17948,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 35522326,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 29188,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 16387820,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7409608,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 1928,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11931484,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9965376,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 24376,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11209568,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 20,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 27200,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7016252,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 15564,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5836710,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 13894040,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 29492,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11275104,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 18196,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10291062,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 7432,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6360906,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 13044858,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Process and top-level window independence only; no native UI interaction is performed.",
+    "Cleanup closes only processes launched by this harness."
+  ]
+}

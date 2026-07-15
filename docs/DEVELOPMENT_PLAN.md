@@ -3,21 +3,26 @@
 ## 2026-07-15 최신 실행 상태
 
 - Phase 0~8 제품 구현과 실행 가능한 자동 gate를 모두 실행했다.
-- frontend 124 tests, Rust 78 tests, format/lint/typecheck/clippy/build가 PASS했다.
+- frontend 266 tests, Playwright 24 tests, Rust 127 tests, format/lint/typecheck/clippy/build가 PASS했다.
 - Phase 8은 single-instance를 제거하고 5개 프로세스 x 20 cycle의 총 100 invocation을
   같은 파일로 실행해 독립 PID/window를 확인했다.
 - 저·고카디널리티 1,000만 행 x 10열 Parquet fixture 생성·감사, Rust 데이터 계층
   release benchmark와 100회 open/read/close soak가 PASS했다.
 - 실제 Tauri에서 다중 탭, 8-tab overflow, 컨텍스트 메뉴, Windows clipboard 복사를 확인했다.
-- in-app Browser backend, 150% DPI, 실제 Excel, clean VM installer/association 검증은 환경 원인 BLOCKED다.
+- browser mock과 Playwright Chromium의 24개 시나리오가 1440x900, 1024x768, 800x600에서
+  PASS했다. 150% DPI, 실제 Excel, clean VM installer/association 검증은 아직 BLOCKED다.
 - 제품 코드와 자동 테스트의 알려진 FAIL은 없다. 각 단계의 최신 판정은 `artifacts/phase-N/90-review.md`를 따른다.
+- Phase 9의 9A~9F 제품 구현, 10M 저·고카디널리티 제품 query, 100 invocation
+  multi-process와 최종 release/NSIS build가 PASS했다.
+- Phase 9 구현과 실행 가능한 Browser/Rust/native gate는 PASS다. 일부 OS/8-tab 필수 gate
+  미실행 때문에 전체 완료 판정은 BLOCKED다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 8까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 9까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -43,11 +48,13 @@
 | Phase 6 | 구현 및 자동 검증 완료 | Excel 방식 선택과 클립보드 |
 | Phase 7 | 구현 및 자동 검증 완료, 일부 native/UI gate BLOCKED | 성능, 안정성, 패키징 |
 | Phase 8 | 구현 및 자동/native 검증 완료, 일부 UI·설치 gate BLOCKED | 컨텍스트 메뉴, 다중 실행, 다중 문서 탭 |
+| Phase 9 | 구현 완료, 필수 UI·soak gate BLOCKED | 포맷 registry, copy 설정, CSV profile, filter·search·sort |
 
-Phase 0~7의 제품 코드와 자동 검증은 완료했지만 in-app Browser backend, visible native UI,
-실제 Excel, clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
+Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
+clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
 `artifacts/phase-N/90-review.md`를 따른다. Phase 8의 확정 범위와 테스트 기준은
 `artifacts/phase-8/00-scope.md`와 `artifacts/phase-8/10-test-plan.md`를 따른다.
+Phase 9 결과는 `artifacts/phase-9/50-integration.md`와 `90-review.md`를 따른다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -340,3 +347,53 @@ Phase 0~7의 제품 코드와 자동 검증은 완료했지만 in-app Browser ba
   성능·메모리 예산 안에서 탐색한다.
 - `artifacts/phase-8/10-test-plan.md`의 자동, Browser, native, installer 증거가 모두 존재한다.
   필수 환경 때문에 실행하지 못한 항목은 완료로 표시하지 않고 `BLOCKED`로 기록한다.
+
+## Phase 9. 입력 포맷 구조, CSV profile과 전체 query
+
+**목표:** 입력 포맷을 확장 가능한 공통 source 계약으로 정리하고, configurable copy, CSV typed
+profile과 전체 파일 대상 filter·search·stable sort를 bounded memory/disk로 제공한다.
+
+**상태:** 구현 완료, 필수 UI·soak gate BLOCKED (2026-07-15)
+
+구현은 `artifacts/phase-9/40-implementation-plan.md`의 9A~9F 순서를 따른다. 제품 기본값과
+세부 동작은 `00-scope.md`, UI는 `20-ux-design.md`, source/query/temp 계약은
+`30-query-engine-design.md`를 따른다.
+
+### 해야 할 일
+
+- compile-time `FormatRegistry`, `FormatDescriptor`, `TabularSource`와 capability 계약 구현
+- CSV/Parquet handler 이전, generic metadata fallback과 runtime supported-format 목록 연결
+- Excel/TSV/CSV/Custom clipboard preset, preview와 atomic 전역 settings 구현
+- CSV Auto/All Text/Ask 기본 열기와 사후 Parsing Profile 변경
+- profile column 다중 선택, bulk apply/undo, sample preview와 전체 파일 검증
+- invalid 원문, source null과 empty string을 구별하는 typed CSV 변환 계층 구현
+- engine-neutral QueryPlan/QueryResult/QueryBudget와 document/session/query/task generation 구현
+- 동일 fixture로 DataFusion/DuckDB/direct spike 후 query engine 선택과 dependency 승인
+- 전체 source/result 대상 typed filter, global/column search와 distinct paging 구현
+- nulls-last multi-column stable sort, result paging, progress와 cancel 구현
+- app-local-data의 process/document/query temp, owner lock, startup janitor와 disk budget 구현
+- 세 viewport UI, 실제 Tauri, 8-tab/5-process와 10M low/high cardinality 통합 검증
+
+### 테스트
+
+- 모든 format handler의 공통 summary/schema/page/projection/precision/error contract
+- test-only handler가 DocumentRegistry/query/grid 핵심 분기 변경 없이 generic UI에 표시되는지 확인
+- copy preset/custom serializer round-trip, null/empty/정밀도와 실제 clipboard
+- CSV inference, bulk selection, invalid/null, preview generation, validation cancel과 apply rollback
+- filter/search/sort가 현재 page가 아닌 전체 결과에 적용되는지 cross-format checksum으로 검증
+- 늦은 preview/query/page/status의 wrong-document/session/result 적용 0
+- forced spill, disk cap/free-space, 정상/취소/실패/crash cleanup과 다른 process temp 보호
+- 1,000만 행 x 10열 저·고카디널리티 Parquet와 대용량 CSV 성능/resource budget
+- frontend/Rust 전체 gate, release/NSIS build와 Phase 1~8 regression
+- Playwright Chromium으로 1440x900, 1024x768, 800x600 interaction·geometry·screenshot
+- `docs/UI_VALIDATION.md`의 Browser interaction, geometry, screenshot과 실제 Tauri/native gate
+
+### 완료 조건
+
+- `artifacts/phase-9/10-test-plan.md`의 필수 FMT/CPY/CSV/QRY/LIFE/TMP/PERF/UI 테스트가 PASS다.
+- 새 tabular handler 추가가 reader, registry, 선택적 metadata renderer와 contract fixture로 제한된다.
+- CSV profile 변경이 원본을 수정하지 않고 invalid/null/empty와 typed precision을 보존한다.
+- filter/search/sort가 10M low/high fixture에서 정확하고 memory/spill/cancel budget 안에 동작한다.
+- query/profile/tab/process 종료 후 active resource와 temporary data가 누적되지 않는다.
+- query engine 선택, dependency 승인과 측정 결과가 `engine-spike.md`와 최종 설계에 기록된다.
+- HIGH/MEDIUM 결함과 필수 BLOCKED가 없고 `50-integration.md`, `90-review.md`, UI 증거가 완성된다.

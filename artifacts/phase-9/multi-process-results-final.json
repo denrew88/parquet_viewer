@@ -1,0 +1,2270 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-15T04:07:50.120601+00:00",
+  "status": "FAIL",
+  "executable": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "configuration": {
+    "instances": 5,
+    "cycles": 20,
+    "totalInvocations": 100,
+    "holdSeconds": 1.0
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 1140,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4656110,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10816044,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 16572,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 19925450,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10423566,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 27588,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6885054,
+              "title": ""
+            },
+            {
+              "handle": 6490346,
+              "title": ""
+            },
+            {
+              "handle": 23727378,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 18743662,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 4,
+          "pid": 3328,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10357290,
+              "title": "Data Viewer"
+            }
+          ],
+          "cleanup": {
+            "method": "already-exited",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 5,
+          "pid": 4156,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7802064,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8389482,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 13252,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 2,
+          "pid": 28272,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": false,
+          "exitCodeAfterHold": 101,
+          "visibleWindows": [],
+          "cleanup": {
+            "method": "already-exited",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 3,
+          "pid": 26820,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": false,
+          "exitCodeAfterHold": 101,
+          "visibleWindows": [],
+          "cleanup": {
+            "method": "already-exited",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 4,
+          "pid": 20012,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 18809198,
+              "title": "Data Viewer"
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        },
+        {
+          "instance": 5,
+          "pid": 30712,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [],
+          "cleanup": {
+            "method": "already-exited",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 29180,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 27594284,
+              "title": ""
+            },
+            {
+              "handle": 10356896,
+              "title": ""
+            },
+            {
+              "handle": 34408956,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 18874734,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 4136,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9308688,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 34147488,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 20868,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10029260,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20319006,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 9220,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 22872306,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 984808,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 15720,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11141410,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8718900,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 4,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 14308,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11273468,
+              "title": ""
+            },
+            {
+              "handle": 8784436,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11206946,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 23736,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 20122058,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7343184,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 22696,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5049326,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 4853264,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 18172,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23989522,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10029008,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 30132,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11733988,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 21104412,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 5,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 26296,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 34344096,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11865060,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 7420,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9046580,
+              "title": ""
+            },
+            {
+              "handle": 22743630,
+              "title": ""
+            },
+            {
+              "handle": 12126340,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 21235484,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 22816,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4981814,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12061462,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 19124,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4918800,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20317974,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 2588,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 2098476,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10160332,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 6,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 14864,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10029262,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 2229548,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 23784,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23134450,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 22613572,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 27380,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7212734,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6948666,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 25684,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5047350,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 4984336,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 24872,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7474256,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20383510,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 7,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 19292,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7866202,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11406282,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 27052,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9898512,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11078994,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 24916,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7539792,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5243958,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 30176,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11078926,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9044842,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 15884,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6753384,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 24186130,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 8,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 12964,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7997274,
+              "title": ""
+            },
+            {
+              "handle": 10619084,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11012650,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 19068,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9175914,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6884456,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 20756,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10029584,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10356688,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 17756,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7605328,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10225870,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 21176,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7474878,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 34998780,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 9,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 29736,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10291406,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5375030,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 24364,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23071310,
+              "title": ""
+            },
+            {
+              "handle": 24317202,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 35064316,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 9000,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11210066,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 34737312,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 21448,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11665698,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7670864,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 5212,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8062810,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6949992,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 10,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 17844,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3607644,
+              "title": ""
+            },
+            {
+              "handle": 8654032,
+              "title": ""
+            },
+            {
+              "handle": 7015528,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 15664662,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 1136,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11275534,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8128346,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 30332,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5246480,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 2688300,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 15828,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10027162,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 15600044,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 14172,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 34802848,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8260562,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 11,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 30248,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3345060,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8326098,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 29080,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11927842,
+              "title": ""
+            },
+            {
+              "handle": 11406674,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 19988846,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 21268,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 2753836,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 21956380,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 30060,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10291728,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10092698,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 19248,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5702710,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11995712,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "already-exited",
+            "exitCode": 101
+          },
+          "stderr": "\nthread 'main' panicked at C:\\Users\\denrew88\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tauri-2.11.5\\src\\app.rs:1425:11:\nFailed to setup app: error encountered during setup hook: Query temporary storage failed at C:\\Users\\denrew88\\AppData\\Local\\com.denrew88.data-viewer\\query-temp: 액세스가 거부되었습니다. (os error 5)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        }
+      ]
+    },
+    {
+      "cycle": 12,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 24144,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5768246,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10357264,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 12680,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8457170,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 16711854,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 13236,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12389348,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10158234,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 21712,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 2819372,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 13698092,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 7496,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23789810,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7737022,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 13,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 18912,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 3607204,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12716822,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 21816,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 4722176,
+              "title": ""
+            },
+            {
+              "handle": 11471052,
+              "title": ""
+            },
+            {
+              "handle": 28249644,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12520420,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 13696,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23203396,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 23855346,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 22792,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10422254,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11799822,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 25684,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 5705232,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12061642,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 14,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 22728,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 16320796,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 19925110,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 17708,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10487790,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5639582,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 10204,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23268932,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5770768,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 9384,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 13894700,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 31392726,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 26480,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12323392,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 2098920,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 15,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 6900,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14683274,
+              "title": ""
+            },
+            {
+              "handle": 10946766,
+              "title": ""
+            },
+            {
+              "handle": 1508404,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 2164456,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 11076,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 15993260,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12388928,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 14612,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 19598352,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 1773232,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 28736,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 10553908,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 23595598,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 4480,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 31458262,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10684398,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 16,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 18704,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8063524,
+              "title": ""
+            },
+            {
+              "handle": 10619444,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 17170606,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 28340,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14025772,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8718170,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 8700,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8719314,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 31523798,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 3840,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 1838768,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12518652,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 12172,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12061966,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10749934,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 17,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 4756,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14879882,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10815470,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 7424,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12584188,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9896810,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 19272,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 21366550,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 21564190,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 11040,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23726670,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 19729424,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 22980,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8849242,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 1445232,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 18,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 20220,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11929760,
+              "title": ""
+            },
+            {
+              "handle": 11930962,
+              "title": ""
+            },
+            {
+              "handle": 1510768,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11536336,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 9564,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 23792206,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10093418,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 20524,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 14353452,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8260132,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 25908,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 22480668,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11405798,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 10984,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 7931706,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 8914778,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 19,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 15860,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 6098334,
+              "title": ""
+            },
+            {
+              "handle": 8719440,
+              "title": ""
+            },
+            {
+              "handle": 8980314,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 12846332,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 1620,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 11010202,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 7997242,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 2588,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 24317060,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 11471334,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 1892,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 20709742,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 6291640,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 30716,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9637072,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 4983900,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 20,
+      "instances": [
+        {
+          "instance": 1,
+          "pid": 8288,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8850512,
+              "title": ""
+            },
+            {
+              "handle": 15273098,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 10290026,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 2,
+          "pid": 8076,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12257484,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5049436,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 3,
+          "pid": 23092,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 9636624,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 9702608,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 4,
+          "pid": 15168,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.parquet",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 12126762,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 20775278,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        },
+        {
+          "instance": 5,
+          "pid": 28372,
+          "file": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-9\\query-small.csv",
+          "aliveAfterHold": true,
+          "exitCodeAfterHold": null,
+          "visibleWindows": [
+            {
+              "handle": 8392382,
+              "title": "Data Viewer"
+            },
+            {
+              "handle": 5312000,
+              "title": ""
+            }
+          ],
+          "cleanup": {
+            "method": "terminate",
+            "exitCode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Process and top-level window independence only; no native UI interaction is performed.",
+    "Cleanup closes only processes launched by this harness."
+  ]
+}

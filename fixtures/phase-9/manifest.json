@@ -1,0 +1,2414 @@
+{
+  "schemaVersion": 1,
+  "generatorRevision": "phase9-small-fixtures-v1",
+  "seed": 20260715,
+  "toolchain": {
+    "pyarrow": "22.0.0"
+  },
+  "csvDialect": {
+    "encoding": "UTF-8",
+    "delimiter": ",",
+    "quote": "\"",
+    "lineTerminator": "LF",
+    "header": true,
+    "nullTokens": [
+      "NULL"
+    ]
+  },
+  "fixtures": [
+    {
+      "path": "fixtures/phase-9/profile-ambiguous.csv",
+      "format": "csv",
+      "rows": 12,
+      "columns": 9,
+      "columnNames": [
+        "leading_zero_id",
+        "huge_unsigned",
+        "signed_int",
+        "mixed_numeric",
+        "precise_decimal",
+        "mixed_date",
+        "event_time",
+        "boolean_token",
+        "free_text"
+      ],
+      "schema": [
+        {
+          "name": "leading_zero_id",
+          "expectedType": "Text"
+        },
+        {
+          "name": "huge_unsigned",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "signed_int",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "mixed_numeric",
+          "expectedType": "Text"
+        },
+        {
+          "name": "precise_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "mixed_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "event_time",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "boolean_token",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "free_text",
+          "expectedType": "Text"
+        }
+      ],
+      "bytes": 1002,
+      "sha256": "442cd509812f0b895705625b2aa5e4b57b97af15833ebde05dc0fc5998686c9e",
+      "expected": {
+        "nullTokens": [
+          "NULL"
+        ],
+        "recommendedTypes": {
+          "leading_zero_id": "Text",
+          "huge_unsigned": "UInt64",
+          "signed_int": "Int64",
+          "mixed_numeric": "Text",
+          "precise_decimal": "Decimal",
+          "mixed_date": "Date",
+          "event_time": "Timestamp",
+          "boolean_token": "Boolean",
+          "free_text": "Text"
+        },
+        "confidence": {
+          "leading_zero_id": "conservative-text",
+          "mixed_numeric": "mixed-values-text",
+          "mixed_date": "multi-format"
+        },
+        "acceptedDateFormats": [
+          "%Y-%m-%d",
+          "%d/%m/%Y",
+          "%Y%m%d"
+        ],
+        "precisionStrings": [
+          "18446744073709551615",
+          "12345678901234567890",
+          "123456789.01"
+        ]
+      }
+    },
+    {
+      "path": "fixtures/phase-9/profile-invalid.csv",
+      "format": "csv",
+      "rows": 8,
+      "columns": 8,
+      "columnNames": [
+        "boolean_value",
+        "int64_value",
+        "uint64_value",
+        "float64_value",
+        "decimal_value",
+        "date_value",
+        "timestamp_value",
+        "text_value"
+      ],
+      "schema": [
+        {
+          "name": "boolean_value",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "int64_value",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "uint64_value",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "float64_value",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "decimal_value",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "date_value",
+          "expectedType": "Date"
+        },
+        {
+          "name": "timestamp_value",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "text_value",
+          "expectedType": "Text"
+        }
+      ],
+      "bytes": 731,
+      "sha256": "10a4584bf44f3655098b0fc50df920f066b234614350db55a41d5ccf31e70aa0",
+      "expected": {
+        "rowIndexBase": 0,
+        "trim": true,
+        "nullTokens": [
+          "NULL"
+        ],
+        "configuredTypes": {
+          "boolean_value": "Boolean",
+          "int64_value": "Int64",
+          "uint64_value": "UInt64",
+          "float64_value": "Float64",
+          "decimal_value": "Decimal",
+          "date_value": "Date",
+          "timestamp_value": "Timestamp",
+          "text_value": "Text"
+        },
+        "invalidRows": {
+          "boolean_value": [
+            1
+          ],
+          "int64_value": [
+            1,
+            2
+          ],
+          "uint64_value": [
+            1,
+            2
+          ],
+          "float64_value": [
+            1
+          ],
+          "decimal_value": [
+            1
+          ],
+          "date_value": [
+            1,
+            2
+          ],
+          "timestamp_value": [
+            1,
+            2
+          ],
+          "text_value": []
+        },
+        "nullRows": {
+          "boolean_value": [
+            3
+          ],
+          "int64_value": [
+            3
+          ],
+          "uint64_value": [
+            3
+          ],
+          "float64_value": [
+            3
+          ],
+          "decimal_value": [
+            3
+          ],
+          "date_value": [
+            3
+          ],
+          "timestamp_value": [
+            3
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/phase-9/profile-wide.csv",
+      "format": "csv",
+      "rows": 16,
+      "columns": 256,
+      "columnNames": [
+        "column_000_text",
+        "column_001_int64",
+        "column_002_float64",
+        "column_003_boolean",
+        "column_004_decimal",
+        "column_005_date",
+        "column_006_timestamp",
+        "column_007_uint64",
+        "column_008_text",
+        "column_009_int64",
+        "column_010_float64",
+        "column_011_boolean",
+        "column_012_decimal",
+        "column_013_date",
+        "column_014_timestamp",
+        "column_015_uint64",
+        "column_016_text",
+        "column_017_int64",
+        "column_018_float64",
+        "column_019_boolean",
+        "column_020_decimal",
+        "column_021_date",
+        "column_022_timestamp",
+        "column_023_uint64",
+        "column_024_text",
+        "column_025_int64",
+        "column_026_float64",
+        "column_027_boolean",
+        "column_028_decimal",
+        "column_029_date",
+        "column_030_timestamp",
+        "column_031_uint64",
+        "column_032_text",
+        "column_033_int64",
+        "column_034_float64",
+        "column_035_boolean",
+        "column_036_decimal",
+        "column_037_date",
+        "column_038_timestamp",
+        "column_039_uint64",
+        "column_040_text",
+        "column_041_int64",
+        "column_042_float64",
+        "column_043_boolean",
+        "column_044_decimal",
+        "column_045_date",
+        "column_046_timestamp",
+        "column_047_uint64",
+        "column_048_text",
+        "column_049_int64",
+        "column_050_float64",
+        "column_051_boolean",
+        "column_052_decimal",
+        "column_053_date",
+        "column_054_timestamp",
+        "column_055_uint64",
+        "column_056_text",
+        "column_057_int64",
+        "column_058_float64",
+        "column_059_boolean",
+        "column_060_decimal",
+        "column_061_date",
+        "column_062_timestamp",
+        "column_063_uint64",
+        "column_064_text",
+        "column_065_int64",
+        "column_066_float64",
+        "column_067_boolean",
+        "column_068_decimal",
+        "column_069_date",
+        "column_070_timestamp",
+        "column_071_uint64",
+        "column_072_text",
+        "column_073_int64",
+        "column_074_float64",
+        "column_075_boolean",
+        "column_076_decimal",
+        "column_077_date",
+        "column_078_timestamp",
+        "column_079_uint64",
+        "column_080_text",
+        "column_081_int64",
+        "column_082_float64",
+        "column_083_boolean",
+        "column_084_decimal",
+        "column_085_date",
+        "column_086_timestamp",
+        "column_087_uint64",
+        "column_088_text",
+        "column_089_int64",
+        "column_090_float64",
+        "column_091_boolean",
+        "column_092_decimal",
+        "column_093_date",
+        "column_094_timestamp",
+        "column_095_uint64",
+        "column_096_text",
+        "column_097_int64",
+        "column_098_float64",
+        "column_099_boolean",
+        "column_100_decimal",
+        "column_101_date",
+        "column_102_timestamp",
+        "column_103_uint64",
+        "column_104_text",
+        "column_105_int64",
+        "column_106_float64",
+        "column_107_boolean",
+        "column_108_decimal",
+        "column_109_date",
+        "column_110_timestamp",
+        "column_111_uint64",
+        "column_112_text",
+        "column_113_int64",
+        "column_114_float64",
+        "column_115_boolean",
+        "column_116_decimal",
+        "column_117_date",
+        "column_118_timestamp",
+        "column_119_uint64",
+        "column_120_text",
+        "column_121_int64",
+        "column_122_float64",
+        "column_123_boolean",
+        "column_124_decimal",
+        "column_125_date",
+        "column_126_timestamp",
+        "column_127_uint64",
+        "column_128_text",
+        "column_129_int64",
+        "column_130_float64",
+        "column_131_boolean",
+        "column_132_decimal",
+        "column_133_date",
+        "column_134_timestamp",
+        "column_135_uint64",
+        "column_136_text",
+        "column_137_int64",
+        "column_138_float64",
+        "column_139_boolean",
+        "column_140_decimal",
+        "column_141_date",
+        "column_142_timestamp",
+        "column_143_uint64",
+        "column_144_text",
+        "column_145_int64",
+        "column_146_float64",
+        "column_147_boolean",
+        "column_148_decimal",
+        "column_149_date",
+        "column_150_timestamp",
+        "column_151_uint64",
+        "column_152_text",
+        "column_153_int64",
+        "column_154_float64",
+        "column_155_boolean",
+        "column_156_decimal",
+        "column_157_date",
+        "column_158_timestamp",
+        "column_159_uint64",
+        "column_160_text",
+        "column_161_int64",
+        "column_162_float64",
+        "column_163_boolean",
+        "column_164_decimal",
+        "column_165_date",
+        "column_166_timestamp",
+        "column_167_uint64",
+        "column_168_text",
+        "column_169_int64",
+        "column_170_float64",
+        "column_171_boolean",
+        "column_172_decimal",
+        "column_173_date",
+        "column_174_timestamp",
+        "column_175_uint64",
+        "column_176_text",
+        "column_177_int64",
+        "column_178_float64",
+        "column_179_boolean",
+        "column_180_decimal",
+        "column_181_date",
+        "column_182_timestamp",
+        "column_183_uint64",
+        "column_184_text",
+        "column_185_int64",
+        "column_186_float64",
+        "column_187_boolean",
+        "column_188_decimal",
+        "column_189_date",
+        "column_190_timestamp",
+        "column_191_uint64",
+        "column_192_text",
+        "column_193_int64",
+        "column_194_float64",
+        "column_195_boolean",
+        "column_196_decimal",
+        "column_197_date",
+        "column_198_timestamp",
+        "column_199_uint64",
+        "column_200_text",
+        "column_201_int64",
+        "column_202_float64",
+        "column_203_boolean",
+        "column_204_decimal",
+        "column_205_date",
+        "column_206_timestamp",
+        "column_207_uint64",
+        "column_208_text",
+        "column_209_int64",
+        "column_210_float64",
+        "column_211_boolean",
+        "column_212_decimal",
+        "column_213_date",
+        "column_214_timestamp",
+        "column_215_uint64",
+        "column_216_text",
+        "column_217_int64",
+        "column_218_float64",
+        "column_219_boolean",
+        "column_220_decimal",
+        "column_221_date",
+        "column_222_timestamp",
+        "column_223_uint64",
+        "column_224_text",
+        "column_225_int64",
+        "column_226_float64",
+        "column_227_boolean",
+        "column_228_decimal",
+        "column_229_date",
+        "column_230_timestamp",
+        "column_231_uint64",
+        "column_232_text",
+        "column_233_int64",
+        "column_234_float64",
+        "column_235_boolean",
+        "column_236_decimal",
+        "column_237_date",
+        "column_238_timestamp",
+        "column_239_uint64",
+        "column_240_text",
+        "column_241_int64",
+        "column_242_float64",
+        "column_243_boolean",
+        "column_244_decimal",
+        "column_245_date",
+        "column_246_timestamp",
+        "column_247_uint64",
+        "column_248_text",
+        "column_249_int64",
+        "column_250_float64",
+        "column_251_boolean",
+        "column_252_decimal",
+        "column_253_date",
+        "column_254_timestamp",
+        "column_255_uint64"
+      ],
+      "schema": [
+        {
+          "name": "column_000_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_001_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_002_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_003_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_004_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_005_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_006_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_007_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_008_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_009_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_010_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_011_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_012_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_013_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_014_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_015_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_016_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_017_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_018_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_019_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_020_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_021_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_022_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_023_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_024_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_025_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_026_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_027_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_028_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_029_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_030_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_031_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_032_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_033_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_034_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_035_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_036_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_037_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_038_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_039_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_040_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_041_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_042_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_043_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_044_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_045_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_046_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_047_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_048_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_049_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_050_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_051_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_052_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_053_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_054_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_055_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_056_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_057_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_058_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_059_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_060_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_061_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_062_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_063_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_064_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_065_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_066_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_067_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_068_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_069_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_070_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_071_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_072_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_073_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_074_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_075_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_076_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_077_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_078_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_079_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_080_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_081_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_082_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_083_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_084_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_085_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_086_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_087_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_088_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_089_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_090_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_091_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_092_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_093_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_094_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_095_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_096_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_097_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_098_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_099_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_100_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_101_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_102_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_103_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_104_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_105_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_106_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_107_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_108_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_109_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_110_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_111_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_112_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_113_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_114_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_115_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_116_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_117_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_118_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_119_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_120_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_121_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_122_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_123_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_124_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_125_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_126_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_127_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_128_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_129_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_130_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_131_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_132_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_133_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_134_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_135_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_136_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_137_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_138_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_139_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_140_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_141_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_142_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_143_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_144_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_145_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_146_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_147_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_148_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_149_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_150_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_151_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_152_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_153_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_154_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_155_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_156_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_157_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_158_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_159_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_160_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_161_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_162_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_163_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_164_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_165_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_166_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_167_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_168_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_169_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_170_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_171_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_172_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_173_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_174_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_175_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_176_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_177_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_178_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_179_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_180_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_181_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_182_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_183_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_184_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_185_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_186_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_187_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_188_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_189_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_190_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_191_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_192_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_193_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_194_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_195_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_196_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_197_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_198_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_199_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_200_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_201_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_202_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_203_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_204_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_205_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_206_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_207_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_208_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_209_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_210_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_211_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_212_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_213_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_214_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_215_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_216_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_217_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_218_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_219_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_220_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_221_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_222_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_223_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_224_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_225_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_226_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_227_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_228_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_229_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_230_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_231_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_232_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_233_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_234_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_235_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_236_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_237_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_238_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_239_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_240_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_241_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_242_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_243_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_244_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_245_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_246_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_247_uint64",
+          "expectedType": "UInt64"
+        },
+        {
+          "name": "column_248_text",
+          "expectedType": "Text"
+        },
+        {
+          "name": "column_249_int64",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "column_250_float64",
+          "expectedType": "Float64"
+        },
+        {
+          "name": "column_251_boolean",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "column_252_decimal",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "column_253_date",
+          "expectedType": "Date"
+        },
+        {
+          "name": "column_254_timestamp",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "column_255_uint64",
+          "expectedType": "UInt64"
+        }
+      ],
+      "bytes": 44033,
+      "sha256": "49b4303353d75e545d7b4bbac3cd040188be711fa5da2fdd70d0ba60ba8e26ed",
+      "expected": {
+        "nullTokens": [
+          "NULL"
+        ],
+        "boundedRows": 16,
+        "typePattern": [
+          "Text",
+          "Int64",
+          "Float64",
+          "Boolean",
+          "Decimal",
+          "Date",
+          "Timestamp",
+          "UInt64"
+        ],
+        "recommendedTypes": {
+          "column_000_text": "Text",
+          "column_001_int64": "Int64",
+          "column_002_float64": "Float64",
+          "column_003_boolean": "Boolean",
+          "column_004_decimal": "Decimal",
+          "column_005_date": "Date",
+          "column_006_timestamp": "Timestamp",
+          "column_007_uint64": "UInt64",
+          "column_008_text": "Text",
+          "column_009_int64": "Int64",
+          "column_010_float64": "Float64",
+          "column_011_boolean": "Boolean",
+          "column_012_decimal": "Decimal",
+          "column_013_date": "Date",
+          "column_014_timestamp": "Timestamp",
+          "column_015_uint64": "UInt64",
+          "column_016_text": "Text",
+          "column_017_int64": "Int64",
+          "column_018_float64": "Float64",
+          "column_019_boolean": "Boolean",
+          "column_020_decimal": "Decimal",
+          "column_021_date": "Date",
+          "column_022_timestamp": "Timestamp",
+          "column_023_uint64": "UInt64",
+          "column_024_text": "Text",
+          "column_025_int64": "Int64",
+          "column_026_float64": "Float64",
+          "column_027_boolean": "Boolean",
+          "column_028_decimal": "Decimal",
+          "column_029_date": "Date",
+          "column_030_timestamp": "Timestamp",
+          "column_031_uint64": "UInt64",
+          "column_032_text": "Text",
+          "column_033_int64": "Int64",
+          "column_034_float64": "Float64",
+          "column_035_boolean": "Boolean",
+          "column_036_decimal": "Decimal",
+          "column_037_date": "Date",
+          "column_038_timestamp": "Timestamp",
+          "column_039_uint64": "UInt64",
+          "column_040_text": "Text",
+          "column_041_int64": "Int64",
+          "column_042_float64": "Float64",
+          "column_043_boolean": "Boolean",
+          "column_044_decimal": "Decimal",
+          "column_045_date": "Date",
+          "column_046_timestamp": "Timestamp",
+          "column_047_uint64": "UInt64",
+          "column_048_text": "Text",
+          "column_049_int64": "Int64",
+          "column_050_float64": "Float64",
+          "column_051_boolean": "Boolean",
+          "column_052_decimal": "Decimal",
+          "column_053_date": "Date",
+          "column_054_timestamp": "Timestamp",
+          "column_055_uint64": "UInt64",
+          "column_056_text": "Text",
+          "column_057_int64": "Int64",
+          "column_058_float64": "Float64",
+          "column_059_boolean": "Boolean",
+          "column_060_decimal": "Decimal",
+          "column_061_date": "Date",
+          "column_062_timestamp": "Timestamp",
+          "column_063_uint64": "UInt64",
+          "column_064_text": "Text",
+          "column_065_int64": "Int64",
+          "column_066_float64": "Float64",
+          "column_067_boolean": "Boolean",
+          "column_068_decimal": "Decimal",
+          "column_069_date": "Date",
+          "column_070_timestamp": "Timestamp",
+          "column_071_uint64": "UInt64",
+          "column_072_text": "Text",
+          "column_073_int64": "Int64",
+          "column_074_float64": "Float64",
+          "column_075_boolean": "Boolean",
+          "column_076_decimal": "Decimal",
+          "column_077_date": "Date",
+          "column_078_timestamp": "Timestamp",
+          "column_079_uint64": "UInt64",
+          "column_080_text": "Text",
+          "column_081_int64": "Int64",
+          "column_082_float64": "Float64",
+          "column_083_boolean": "Boolean",
+          "column_084_decimal": "Decimal",
+          "column_085_date": "Date",
+          "column_086_timestamp": "Timestamp",
+          "column_087_uint64": "UInt64",
+          "column_088_text": "Text",
+          "column_089_int64": "Int64",
+          "column_090_float64": "Float64",
+          "column_091_boolean": "Boolean",
+          "column_092_decimal": "Decimal",
+          "column_093_date": "Date",
+          "column_094_timestamp": "Timestamp",
+          "column_095_uint64": "UInt64",
+          "column_096_text": "Text",
+          "column_097_int64": "Int64",
+          "column_098_float64": "Float64",
+          "column_099_boolean": "Boolean",
+          "column_100_decimal": "Decimal",
+          "column_101_date": "Date",
+          "column_102_timestamp": "Timestamp",
+          "column_103_uint64": "UInt64",
+          "column_104_text": "Text",
+          "column_105_int64": "Int64",
+          "column_106_float64": "Float64",
+          "column_107_boolean": "Boolean",
+          "column_108_decimal": "Decimal",
+          "column_109_date": "Date",
+          "column_110_timestamp": "Timestamp",
+          "column_111_uint64": "UInt64",
+          "column_112_text": "Text",
+          "column_113_int64": "Int64",
+          "column_114_float64": "Float64",
+          "column_115_boolean": "Boolean",
+          "column_116_decimal": "Decimal",
+          "column_117_date": "Date",
+          "column_118_timestamp": "Timestamp",
+          "column_119_uint64": "UInt64",
+          "column_120_text": "Text",
+          "column_121_int64": "Int64",
+          "column_122_float64": "Float64",
+          "column_123_boolean": "Boolean",
+          "column_124_decimal": "Decimal",
+          "column_125_date": "Date",
+          "column_126_timestamp": "Timestamp",
+          "column_127_uint64": "UInt64",
+          "column_128_text": "Text",
+          "column_129_int64": "Int64",
+          "column_130_float64": "Float64",
+          "column_131_boolean": "Boolean",
+          "column_132_decimal": "Decimal",
+          "column_133_date": "Date",
+          "column_134_timestamp": "Timestamp",
+          "column_135_uint64": "UInt64",
+          "column_136_text": "Text",
+          "column_137_int64": "Int64",
+          "column_138_float64": "Float64",
+          "column_139_boolean": "Boolean",
+          "column_140_decimal": "Decimal",
+          "column_141_date": "Date",
+          "column_142_timestamp": "Timestamp",
+          "column_143_uint64": "UInt64",
+          "column_144_text": "Text",
+          "column_145_int64": "Int64",
+          "column_146_float64": "Float64",
+          "column_147_boolean": "Boolean",
+          "column_148_decimal": "Decimal",
+          "column_149_date": "Date",
+          "column_150_timestamp": "Timestamp",
+          "column_151_uint64": "UInt64",
+          "column_152_text": "Text",
+          "column_153_int64": "Int64",
+          "column_154_float64": "Float64",
+          "column_155_boolean": "Boolean",
+          "column_156_decimal": "Decimal",
+          "column_157_date": "Date",
+          "column_158_timestamp": "Timestamp",
+          "column_159_uint64": "UInt64",
+          "column_160_text": "Text",
+          "column_161_int64": "Int64",
+          "column_162_float64": "Float64",
+          "column_163_boolean": "Boolean",
+          "column_164_decimal": "Decimal",
+          "column_165_date": "Date",
+          "column_166_timestamp": "Timestamp",
+          "column_167_uint64": "UInt64",
+          "column_168_text": "Text",
+          "column_169_int64": "Int64",
+          "column_170_float64": "Float64",
+          "column_171_boolean": "Boolean",
+          "column_172_decimal": "Decimal",
+          "column_173_date": "Date",
+          "column_174_timestamp": "Timestamp",
+          "column_175_uint64": "UInt64",
+          "column_176_text": "Text",
+          "column_177_int64": "Int64",
+          "column_178_float64": "Float64",
+          "column_179_boolean": "Boolean",
+          "column_180_decimal": "Decimal",
+          "column_181_date": "Date",
+          "column_182_timestamp": "Timestamp",
+          "column_183_uint64": "UInt64",
+          "column_184_text": "Text",
+          "column_185_int64": "Int64",
+          "column_186_float64": "Float64",
+          "column_187_boolean": "Boolean",
+          "column_188_decimal": "Decimal",
+          "column_189_date": "Date",
+          "column_190_timestamp": "Timestamp",
+          "column_191_uint64": "UInt64",
+          "column_192_text": "Text",
+          "column_193_int64": "Int64",
+          "column_194_float64": "Float64",
+          "column_195_boolean": "Boolean",
+          "column_196_decimal": "Decimal",
+          "column_197_date": "Date",
+          "column_198_timestamp": "Timestamp",
+          "column_199_uint64": "UInt64",
+          "column_200_text": "Text",
+          "column_201_int64": "Int64",
+          "column_202_float64": "Float64",
+          "column_203_boolean": "Boolean",
+          "column_204_decimal": "Decimal",
+          "column_205_date": "Date",
+          "column_206_timestamp": "Timestamp",
+          "column_207_uint64": "UInt64",
+          "column_208_text": "Text",
+          "column_209_int64": "Int64",
+          "column_210_float64": "Float64",
+          "column_211_boolean": "Boolean",
+          "column_212_decimal": "Decimal",
+          "column_213_date": "Date",
+          "column_214_timestamp": "Timestamp",
+          "column_215_uint64": "UInt64",
+          "column_216_text": "Text",
+          "column_217_int64": "Int64",
+          "column_218_float64": "Float64",
+          "column_219_boolean": "Boolean",
+          "column_220_decimal": "Decimal",
+          "column_221_date": "Date",
+          "column_222_timestamp": "Timestamp",
+          "column_223_uint64": "UInt64",
+          "column_224_text": "Text",
+          "column_225_int64": "Int64",
+          "column_226_float64": "Float64",
+          "column_227_boolean": "Boolean",
+          "column_228_decimal": "Decimal",
+          "column_229_date": "Date",
+          "column_230_timestamp": "Timestamp",
+          "column_231_uint64": "UInt64",
+          "column_232_text": "Text",
+          "column_233_int64": "Int64",
+          "column_234_float64": "Float64",
+          "column_235_boolean": "Boolean",
+          "column_236_decimal": "Decimal",
+          "column_237_date": "Date",
+          "column_238_timestamp": "Timestamp",
+          "column_239_uint64": "UInt64",
+          "column_240_text": "Text",
+          "column_241_int64": "Int64",
+          "column_242_float64": "Float64",
+          "column_243_boolean": "Boolean",
+          "column_244_decimal": "Decimal",
+          "column_245_date": "Date",
+          "column_246_timestamp": "Timestamp",
+          "column_247_uint64": "UInt64",
+          "column_248_text": "Text",
+          "column_249_int64": "Int64",
+          "column_250_float64": "Float64",
+          "column_251_boolean": "Boolean",
+          "column_252_decimal": "Decimal",
+          "column_253_date": "Date",
+          "column_254_timestamp": "Timestamp",
+          "column_255_uint64": "UInt64"
+        },
+        "selectionCases": {
+          "firstRange": [
+            "column_000_text",
+            "column_001_int64",
+            "column_002_float64",
+            "column_003_boolean",
+            "column_004_decimal",
+            "column_005_date",
+            "column_006_timestamp",
+            "column_007_uint64",
+            "column_008_text",
+            "column_009_int64",
+            "column_010_float64",
+            "column_011_boolean",
+            "column_012_decimal",
+            "column_013_date",
+            "column_014_timestamp",
+            "column_015_uint64",
+            "column_016_text",
+            "column_017_int64",
+            "column_018_float64",
+            "column_019_boolean",
+            "column_020_decimal",
+            "column_021_date",
+            "column_022_timestamp",
+            "column_023_uint64",
+            "column_024_text",
+            "column_025_int64",
+            "column_026_float64",
+            "column_027_boolean",
+            "column_028_decimal",
+            "column_029_date",
+            "column_030_timestamp",
+            "column_031_uint64"
+          ],
+          "filteredDateColumns": [
+            "column_005_date",
+            "column_013_date",
+            "column_021_date",
+            "column_029_date",
+            "column_037_date",
+            "column_045_date",
+            "column_053_date",
+            "column_061_date",
+            "column_069_date",
+            "column_077_date",
+            "column_085_date",
+            "column_093_date",
+            "column_101_date",
+            "column_109_date",
+            "column_117_date",
+            "column_125_date",
+            "column_133_date",
+            "column_141_date",
+            "column_149_date",
+            "column_157_date",
+            "column_165_date",
+            "column_173_date",
+            "column_181_date",
+            "column_189_date",
+            "column_197_date",
+            "column_205_date",
+            "column_213_date",
+            "column_221_date",
+            "column_229_date",
+            "column_237_date",
+            "column_245_date",
+            "column_253_date"
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/phase-9/query-small.csv",
+      "format": "csv",
+      "rows": 24,
+      "columns": 8,
+      "columnNames": [
+        "row_id",
+        "category",
+        "group_id",
+        "active",
+        "optional_value",
+        "event_time",
+        "amount",
+        "label"
+      ],
+      "schema": [
+        {
+          "name": "row_id",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "category",
+          "expectedType": "Text"
+        },
+        {
+          "name": "group_id",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "active",
+          "expectedType": "Boolean"
+        },
+        {
+          "name": "optional_value",
+          "expectedType": "Int64"
+        },
+        {
+          "name": "event_time",
+          "expectedType": "Timestamp"
+        },
+        {
+          "name": "amount",
+          "expectedType": "Decimal"
+        },
+        {
+          "name": "label",
+          "expectedType": "Text"
+        }
+      ],
+      "bytes": 1454,
+      "sha256": "e76233e9c5a4468f51b63aa126ecb6ef4281cc26ee6cec4984f372160c9ba10c",
+      "expected": {
+        "nullTokens": [
+          "NULL"
+        ],
+        "typedSchema": [
+          {
+            "name": "row_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "category",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "group_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "nullable": false
+          },
+          {
+            "name": "optional_value",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "event_time",
+            "type": "timestamp[ms, tz=UTC]",
+            "nullable": false
+          },
+          {
+            "name": "amount",
+            "type": "decimal128(12, 2)",
+            "nullable": false
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "nullable": false
+          }
+        ],
+        "configuredTypes": {
+          "row_id": "Int64",
+          "category": "Text",
+          "group_id": "Int64",
+          "active": "Boolean",
+          "optional_value": "Int64",
+          "event_time": "Timestamp",
+          "amount": "Decimal",
+          "label": "Text"
+        },
+        "logicalChecksum": "d790002cacbe151db55595816671b060d8b5130ae2e1435d6583574082c4a1ed",
+        "queries": [
+          {
+            "id": "category-beta",
+            "plan": {
+              "filter": {
+                "column": "category",
+                "operator": "equals",
+                "value": "beta"
+              }
+            },
+            "rowIds": [
+              1,
+              3,
+              5,
+              7,
+              9,
+              11,
+              13,
+              15,
+              17,
+              19,
+              21,
+              23
+            ],
+            "rowIdChecksum": "2abefa67957a7d1f77b97f879b6cb05335e9a11ee1a1620b2534723a0b8458f1"
+          },
+          {
+            "id": "label-contains-needle",
+            "plan": {
+              "search": {
+                "columns": [
+                  "label"
+                ],
+                "mode": "contains",
+                "value": "needle"
+              }
+            },
+            "rowIds": [
+              2,
+              7,
+              19
+            ],
+            "rowIdChecksum": "2a025928f4b9e49302e3c9808b1c72774be80da156d3ec607f189e25ebf84249"
+          },
+          {
+            "id": "combined-filter-stable-sort",
+            "plan": {
+              "filter": {
+                "active": true,
+                "categoryIn": [
+                  "beta",
+                  "gamma"
+                ]
+              },
+              "sort": [
+                {
+                  "column": "group_id",
+                  "direction": "asc"
+                },
+                {
+                  "column": "amount",
+                  "direction": "desc"
+                },
+                {
+                  "column": "row_id",
+                  "direction": "asc",
+                  "stableIdentity": true
+                }
+              ]
+            },
+            "rowIds": [
+              5,
+              10,
+              23,
+              13,
+              1,
+              11,
+              19,
+              14,
+              7,
+              2,
+              22,
+              17
+            ],
+            "rowIdChecksum": "c30bb856ad6286042071f484488ad798fed514427e709bf69d07630dbeabdfa5"
+          },
+          {
+            "id": "optional-ascending-nulls-last",
+            "plan": {
+              "sort": [
+                {
+                  "column": "optional_value",
+                  "direction": "asc",
+                  "nulls": "last"
+                },
+                {
+                  "column": "row_id",
+                  "direction": "asc",
+                  "stableIdentity": true
+                }
+              ]
+            },
+            "rowIds": [
+              17,
+              4,
+              21,
+              8,
+              12,
+              16,
+              3,
+              7,
+              11,
+              2,
+              19,
+              6,
+              23,
+              14,
+              1,
+              18,
+              22,
+              9,
+              13,
+              0,
+              5,
+              10,
+              15,
+              20
+            ],
+            "rowIdChecksum": "1b3ac23597ae9a8286cf89cf4401fc15dfef397d466e942a383b03cb58666678"
+          }
+        ]
+      }
+    },
+    {
+      "path": "fixtures/phase-9/query-small.parquet",
+      "format": "parquet",
+      "rows": 24,
+      "columns": 8,
+      "rowGroups": 3,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(12, 2)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "bytes": 5377,
+      "sha256": "5b34199c7b0989055a0bc8014f256cd5c947ca36d4069816722f42621e41f4d1",
+      "expected": {
+        "nullTokens": [
+          "NULL"
+        ],
+        "typedSchema": [
+          {
+            "name": "row_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "category",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "group_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "nullable": false
+          },
+          {
+            "name": "optional_value",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "event_time",
+            "type": "timestamp[ms, tz=UTC]",
+            "nullable": false
+          },
+          {
+            "name": "amount",
+            "type": "decimal128(12, 2)",
+            "nullable": false
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "nullable": false
+          }
+        ],
+        "configuredTypes": {
+          "row_id": "Int64",
+          "category": "Text",
+          "group_id": "Int64",
+          "active": "Boolean",
+          "optional_value": "Int64",
+          "event_time": "Timestamp",
+          "amount": "Decimal",
+          "label": "Text"
+        },
+        "logicalChecksum": "d790002cacbe151db55595816671b060d8b5130ae2e1435d6583574082c4a1ed",
+        "queries": [
+          {
+            "id": "category-beta",
+            "plan": {
+              "filter": {
+                "column": "category",
+                "operator": "equals",
+                "value": "beta"
+              }
+            },
+            "rowIds": [
+              1,
+              3,
+              5,
+              7,
+              9,
+              11,
+              13,
+              15,
+              17,
+              19,
+              21,
+              23
+            ],
+            "rowIdChecksum": "2abefa67957a7d1f77b97f879b6cb05335e9a11ee1a1620b2534723a0b8458f1"
+          },
+          {
+            "id": "label-contains-needle",
+            "plan": {
+              "search": {
+                "columns": [
+                  "label"
+                ],
+                "mode": "contains",
+                "value": "needle"
+              }
+            },
+            "rowIds": [
+              2,
+              7,
+              19
+            ],
+            "rowIdChecksum": "2a025928f4b9e49302e3c9808b1c72774be80da156d3ec607f189e25ebf84249"
+          },
+          {
+            "id": "combined-filter-stable-sort",
+            "plan": {
+              "filter": {
+                "active": true,
+                "categoryIn": [
+                  "beta",
+                  "gamma"
+                ]
+              },
+              "sort": [
+                {
+                  "column": "group_id",
+                  "direction": "asc"
+                },
+                {
+                  "column": "amount",
+                  "direction": "desc"
+                },
+                {
+                  "column": "row_id",
+                  "direction": "asc",
+                  "stableIdentity": true
+                }
+              ]
+            },
+            "rowIds": [
+              5,
+              10,
+              23,
+              13,
+              1,
+              11,
+              19,
+              14,
+              7,
+              2,
+              22,
+              17
+            ],
+            "rowIdChecksum": "c30bb856ad6286042071f484488ad798fed514427e709bf69d07630dbeabdfa5"
+          },
+          {
+            "id": "optional-ascending-nulls-last",
+            "plan": {
+              "sort": [
+                {
+                  "column": "optional_value",
+                  "direction": "asc",
+                  "nulls": "last"
+                },
+                {
+                  "column": "row_id",
+                  "direction": "asc",
+                  "stableIdentity": true
+                }
+              ]
+            },
+            "rowIds": [
+              17,
+              4,
+              21,
+              8,
+              12,
+              16,
+              3,
+              7,
+              11,
+              2,
+              19,
+              6,
+              23,
+              14,
+              1,
+              18,
+              22,
+              9,
+              13,
+              0,
+              5,
+              10,
+              15,
+              20
+            ],
+            "rowIdChecksum": "1b3ac23597ae9a8286cf89cf4401fc15dfef397d466e942a383b03cb58666678"
+          }
+        ]
+      }
+    },
+    {
+      "path": "fixtures/phase-9/valid-zero-row.parquet",
+      "format": "parquet",
+      "rows": 0,
+      "columns": 8,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "decimal128(12, 2)",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "bytes": 1262,
+      "sha256": "9a6711e89e02de8ef542eccd9603cedb962e769ad896d2b6f0e247012daddf9f",
+      "expected": {
+        "outcome": "accepted",
+        "firstPageRows": 0,
+        "schemaPreserved": true
+      }
+    },
+    {
+      "path": "fixtures/phase-9/zero-byte.parquet",
+      "format": "parquet",
+      "rows": null,
+      "columns": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expected": {
+        "outcome": "rejected",
+        "errorCategory": "InvalidParquet",
+        "panic": false
+      }
+    }
+  ]
+}

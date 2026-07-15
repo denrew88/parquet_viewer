@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DataPage, DataValue, FileSummary, ReadPageRequest } from "./backend";
@@ -8,6 +9,9 @@ import {
   GRID_ROW_OVERSCAN,
   VirtualDataGrid,
 } from "./VirtualDataGrid";
+import { COPY_PRESETS } from "./copy/presets";
+import { EMPTY_QUERY_PLAN, type QueryPlan } from "./query/model";
+import type { DistinctValuesState } from "./query/ColumnFilterPopover";
 
 const columns = Array.from({ length: 120 }, (_, index) => `column_${index}`);
 
@@ -64,6 +68,26 @@ const summary: FileSummary = {
   csvMetadata: null,
 };
 
+const queryColumns = columns.slice(0, 4);
+const queryPage: DataPage = {
+  ...makePage(),
+  limit: 8,
+  totalRows: 8,
+  hasMore: false,
+  columns: queryColumns,
+  rows: Array.from({ length: 8 }, (_, row) =>
+    queryColumns.map(
+      (_, column) => ({ kind: "string", display: `R${row}C${column}` }) as DataValue,
+    ),
+  ),
+};
+const querySummary: FileSummary = {
+  ...summary,
+  rowCount: 8,
+  columnCount: queryColumns.length,
+  columns: summary.columns.slice(0, queryColumns.length),
+};
+
 function renderGrid(
   readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
   writeClipboardText = vi.fn(async () => undefined),
@@ -89,6 +113,36 @@ function renderGrid(
   };
 }
 
+function QueryGridHarness({
+  initialPlan = EMPTY_QUERY_PLAN,
+  distinct,
+  page = queryPage,
+  summaryValue = querySummary,
+}: {
+  initialPlan?: QueryPlan;
+  distinct?: DistinctValuesState;
+  page?: DataPage;
+  summaryValue?: FileSummary;
+}) {
+  const [plan, setPlan] = useState(initialPlan);
+  return (
+    <div style={{ width: 1024, height: 600 }}>
+      <output data-testid="query-plan">{JSON.stringify(plan)}</output>
+      <VirtualDataGrid
+        distinctValuesForColumn={(columnId) => (columnId === "column_0" ? distinct : undefined)}
+        isLoading={false}
+        onPageChange={vi.fn()}
+        onQueryPlanChange={setPlan}
+        onReadError={vi.fn()}
+        page={page}
+        queryPlan={plan}
+        readPage={vi.fn(async () => page)}
+        summary={summaryValue}
+      />
+    </div>
+  );
+}
+
 describe("VirtualDataGrid", () => {
   it("virtualizes a 10k x 120 dataset within the fixed DOM budget", () => {
     const { grid } = renderGrid();
@@ -103,6 +157,137 @@ describe("VirtualDataGrid", () => {
     expect(mountedColumns).toBeGreaterThan(GRID_COLUMN_OVERSCAN);
     expect(grid).toHaveAttribute("aria-rowcount", "10240");
     expect(within(grid).getByText("R0C0")).toHaveAttribute("data-grid-row", "0");
+    expect(screen.queryByLabelText("Query tools")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Filter column_0" })).not.toBeInTheDocument();
+  });
+
+  it("cycles stable multi-column sorts and exposes their priorities", () => {
+    render(<QueryGridHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_0: not sorted" }));
+    expect(
+      screen.getByRole("button", { name: "Sort column_0: ascending, priority 1" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Sort priority 1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_1: not sorted" }), {
+      shiftKey: true,
+    });
+    expect(screen.getAllByLabelText(/Sort priority/).map((item) => item.textContent)).toEqual([
+      "1",
+      "2",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_0: ascending, priority 1" }), {
+      shiftKey: true,
+    });
+    expect(
+      screen.getByRole("button", { name: "Sort column_0: descending, priority 2" }),
+    ).toBeInTheDocument();
+    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").sort).toEqual([
+      { columnId: "column_1", direction: "ascending", nullsLast: true },
+      { columnId: "column_0", direction: "descending", nullsLast: true },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_0: descending, priority 2" }), {
+      shiftKey: true,
+    });
+    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").sort).toEqual([
+      { columnId: "column_1", direction: "ascending", nullsLast: true },
+    ]);
+  });
+
+  it("builds one OR filter from multiple distinct values", async () => {
+    const distinct: DistinctValuesState = {
+      values: [
+        { value: "alpha", count: 4 },
+        { value: "beta", count: 3 },
+      ],
+      loading: false,
+      error: null,
+      hasMore: false,
+      onSearch: vi.fn(),
+      onLoadMore: vi.fn(),
+    };
+    render(<QueryGridHarness distinct={distinct} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter column_0" }));
+    const dialog = screen.getByRole("dialog", { name: "Filter column_0" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /alpha/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /beta/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").filters).toEqual([
+      {
+        id: "filter:column_0",
+        columnId: "column_0",
+        scalarType: "text",
+        operator: "oneOf",
+        values: ["alpha", "beta"],
+      },
+    ]);
+    expect(screen.getByRole("button", { name: "Filter column_0" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("clamps the filter popover and restores trigger focus on Escape", async () => {
+    render(<QueryGridHarness />);
+    const trigger = screen.getByRole("button", { name: "Filter column_0" });
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      x: window.innerWidth + 100,
+      y: window.innerHeight + 100,
+      left: window.innerWidth + 100,
+      right: window.innerWidth + 122,
+      top: window.innerHeight + 100,
+      bottom: window.innerHeight + 122,
+      width: 22,
+      height: 22,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "Filter column_0" });
+    const host = dialog.parentElement;
+    await waitFor(() =>
+      expect(Number.parseFloat(host?.style.left ?? "Infinity")).toBeLessThan(window.innerWidth),
+    );
+    expect(Number.parseFloat(host?.style.top ?? "Infinity")).toBeLessThan(window.innerHeight);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("shows a query-aware empty state and clears only filter/search conditions", () => {
+    const emptyPage = { ...queryPage, totalRows: 0, rows: [] };
+    const initialPlan: QueryPlan = {
+      filters: [
+        {
+          id: "filter:column_0",
+          columnId: "column_0",
+          scalarType: "text",
+          operator: "equals",
+          values: ["missing"],
+        },
+      ],
+      search: null,
+      sort: [{ columnId: "column_1", direction: "ascending", nullsLast: true }],
+      projection: ["column_0", "column_1"],
+    };
+    render(
+      <QueryGridHarness initialPlan={initialPlan} page={emptyPage} summaryValue={querySummary} />,
+    );
+
+    expect(screen.getByText("No rows match the current query")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear query" }));
+    const next = JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}") as QueryPlan;
+    expect(next.filters).toEqual([]);
+    expect(next.search).toBeNull();
+    expect(next.sort).toEqual(initialPlan.sort);
+    expect(next.projection).toEqual(initialPlan.projection);
+    expect(screen.getByText("No rows in file")).toBeInTheDocument();
   });
 
   it("searches, hides, and restores columns without changing the data mapping", async () => {
@@ -187,6 +372,98 @@ describe("VirtualDataGrid", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Copied 3 rows");
   });
 
+  it("uses the active copy preset for shortcuts and opens copy settings", async () => {
+    const writeClipboardText = vi.fn(async () => undefined);
+    const onOpenCopySettings = vi.fn();
+    const onCopyPresetChange = vi.fn();
+    render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          copyOptions={{ ...COPY_PRESETS.csv, includeHeaders: true }}
+          isLoading={false}
+          onCopyPresetChange={onCopyPresetChange}
+          onOpenCopySettings={onOpenCopySettings}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={makePage()}
+          readPage={vi.fn(async (request: ReadPageRequest) => makePage(request.offset))}
+          summary={summary}
+          writeClipboardText={writeClipboardText}
+        />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.click(within(grid).getByText("R0C0"));
+    fireEvent.click(within(grid).getByText("R0C1"), { shiftKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
+    expect(writeClipboardText).toHaveBeenCalledWith("column_0,column_1\r\nR0C0,R0C1");
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    expect(onOpenCopySettings).toHaveBeenCalledTimes(1);
+
+    const options = screen.getByRole("button", { name: "Copy options" });
+    fireEvent.click(options);
+    expect(screen.getByRole("menuitem", { name: "Copy with column headers" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "CSV" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "TSV" }));
+    expect(onCopyPresetChange).toHaveBeenCalledWith("tsv");
+    expect(writeClipboardText).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(options);
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Copy options" }), { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "Copy settings" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Copy options" }), { key: "Escape" });
+    expect(options).toHaveFocus();
+  });
+
+  it("CPY-009 keeps an immutable preset snapshot for an in-flight copy", async () => {
+    let releaseFirstWrite: (() => void) | undefined;
+    const writeClipboardText = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseFirstWrite = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const props = {
+      isLoading: false,
+      onPageChange: vi.fn(),
+      onReadError: vi.fn(),
+      page: makePage(),
+      readPage: vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
+      summary,
+      writeClipboardText,
+    };
+    const rendered = render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid {...props} copyOptions={COPY_PRESETS.excel} />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.click(within(grid).getByText("R0C0"));
+    fireEvent.click(within(grid).getByText("R0C1"), { shiftKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith("R0C0\tR0C1"));
+
+    rendered.rerender(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid {...props} copyOptions={COPY_PRESETS.csv} />
+      </div>,
+    );
+    releaseFirstWrite?.();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 rows"));
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(2));
+    expect(writeClipboardText).toHaveBeenLastCalledWith("R0C0,R0C1");
+  });
+
   it("preserves an in-range selection on right click and exposes accessible cell actions", async () => {
     const writeClipboardText = vi.fn(async () => undefined);
     const { grid } = renderGrid(undefined, writeClipboardText);
@@ -260,6 +537,48 @@ describe("VirtualDataGrid", () => {
     release?.(makePage(200));
     await Promise.resolve();
 
+    expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("resets selection and pending copy when the query result key changes", async () => {
+    let release: ((page: DataPage) => void) | undefined;
+    const readPage = vi.fn(
+      () =>
+        new Promise<DataPage>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const writeClipboardText = vi.fn(async () => undefined);
+    const props = {
+      isLoading: false,
+      onPageChange: vi.fn(),
+      onReadError: vi.fn(),
+      page: makePage(),
+      readPage,
+      summary,
+      writeClipboardText,
+    };
+    const rendered = render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid {...props} resultKey="wide-session:query-1" />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.click(within(grid).getByText("R3C2"));
+    expect(grid).toHaveAttribute("data-selection-top", "3");
+    fireEvent.click(within(grid).getByRole("columnheader", { name: "column_0" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
+    await waitFor(() => expect(readPage).toHaveBeenCalled());
+
+    rendered.rerender(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid {...props} resultKey="wide-session:query-2" />
+      </div>,
+    );
+    expect(grid).toHaveAttribute("data-selection-top", "0");
+    expect(grid).toHaveAttribute("data-selection-left", "0");
+    release?.(makePage(200));
+    await Promise.resolve();
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 });

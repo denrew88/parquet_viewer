@@ -1,6 +1,7 @@
 use crate::domain::{
-    ColumnSchema, DataError, DataFormat, DataPage, DataValue, FileSummary, RowCountState,
-    RowCountStatus, RowGroupSummary,
+    ColumnSchema, DataError, DataFormat, DataPage, DataValue, FileSummary, FormatDescriptor,
+    FormatDetailsContent, FormatDetailsSection, RowCountState, RowCountStatus, RowGroupSummary,
+    SourceCapability,
 };
 use arrow_array::RecordBatch;
 use parquet::arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask};
@@ -8,12 +9,47 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 #[cfg(test)]
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
+
+use super::{
+    query_invalid_name, query_quote_identifier, query_quote_literal, query_raw_name, FormatHandler,
+    QueryInputProvider, QueryPrepareContext, QuerySourceSpec, TabularSource,
+};
 
 const PARQUET_MAGIC: &[u8; 4] = b"PAR1";
 pub const MAX_PAGE_SIZE: usize = 200;
 pub const MAX_PROJECTION_COLUMNS: usize = 64;
+const MAX_GENERIC_ROW_GROUPS: usize = 100;
+
+pub const PARQUET_FORMAT_DESCRIPTOR: FormatDescriptor = FormatDescriptor {
+    id: DataFormat::Parquet,
+    display_name: "Parquet",
+    extensions: &["parquet"],
+    mime_types: &["application/vnd.apache.parquet"],
+    capabilities: &[
+        SourceCapability::TypedSchema,
+        SourceCapability::ColumnProjection,
+        SourceCapability::QueryProvider,
+        SourceCapability::RowGroups,
+    ],
+};
+
+#[derive(Debug)]
+pub(crate) struct ParquetFormatHandler;
+
+pub(crate) static PARQUET_FORMAT_HANDLER: ParquetFormatHandler = ParquetFormatHandler;
+
+impl FormatHandler for ParquetFormatHandler {
+    fn descriptor(&self) -> &'static FormatDescriptor {
+        &PARQUET_FORMAT_DESCRIPTOR
+    }
+
+    fn open(&self, path: &Path) -> Result<Box<dyn TabularSource>, DataError> {
+        ParquetSource::open(path).map(|source| Box::new(source) as Box<dyn TabularSource>)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ParquetSource {
@@ -147,6 +183,7 @@ impl ParquetSource {
                 .unwrap_or_default(),
             path: path.to_string_lossy().into_owned(),
             format: DataFormat::Parquet,
+            format_descriptor: PARQUET_FORMAT_DESCRIPTOR,
             file_size: file_metadata.len(),
             row_count: Some(row_count),
             row_count_status: RowCountStatus {
@@ -160,6 +197,7 @@ impl ParquetSource {
             column_count: columns.len(),
             row_group_count: parquet_metadata.num_row_groups(),
             columns,
+            format_details: parquet_format_details(&row_groups),
             row_groups,
             csv_metadata: None,
         };
@@ -354,6 +392,104 @@ impl ParquetSource {
         audit.decoded_rows += rows;
         audit.decoded_columns = audit.decoded_columns.max(columns);
     }
+}
+
+#[derive(Debug)]
+struct ParquetQueryProvider;
+
+impl QueryInputProvider for ParquetQueryProvider {
+    fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
+        if context.cancel.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        let path = query_quote_literal(&context.source.path.to_string_lossy().replace('\\', "/"));
+        let expressions = context
+            .source
+            .columns
+            .iter()
+            .enumerate()
+            .flat_map(|(index, column)| {
+                let identifier = query_quote_identifier(&column.name);
+                [
+                    identifier.clone(),
+                    format!("CAST({identifier} AS VARCHAR) AS {}", query_raw_name(index)),
+                    format!("false AS {}", query_invalid_name(index)),
+                ]
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        context
+            .connection
+            .execute_batch(&format!(
+                "CREATE VIEW dv_source AS SELECT row_number() OVER () - 1 AS __dv_row_id, {expressions} FROM read_parquet({path})"
+            ))
+            .map_err(|error| DataError::query_failed(error.to_string()))?;
+        (context.progress)(0)
+    }
+}
+
+impl TabularSource for ParquetSource {
+    fn descriptor(&self) -> &'static FormatDescriptor {
+        &PARQUET_FORMAT_DESCRIPTOR
+    }
+
+    fn query_source_spec(&self) -> Result<QuerySourceSpec, DataError> {
+        let path =
+            fs::canonicalize(&self.path).map_err(|error| DataError::io(&self.path, error))?;
+        Ok(QuerySourceSpec {
+            path,
+            columns: self.summary.columns.clone(),
+            total_rows: self.summary.row_count,
+            provider: Arc::new(ParquetQueryProvider),
+        })
+    }
+
+    fn summary(&self) -> FileSummary {
+        ParquetSource::summary(self).clone()
+    }
+
+    fn read_page_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: Option<&[String]>,
+    ) -> Result<DataPage, DataError> {
+        ParquetSource::read_page_projected(self, offset, limit, columns)
+    }
+}
+
+fn parquet_format_details(row_groups: &[RowGroupSummary]) -> Vec<FormatDetailsSection> {
+    let rows = row_groups
+        .iter()
+        .take(MAX_GENERIC_ROW_GROUPS)
+        .map(|row_group| {
+            vec![
+                row_group.index.to_string(),
+                row_group.row_count.to_string(),
+                row_group.compressed_size.to_string(),
+                row_group.total_byte_size.to_string(),
+                row_group.compression.join(", "),
+            ]
+        })
+        .collect();
+    vec![FormatDetailsSection {
+        id: String::from("parquet-row-groups"),
+        title: String::from("Row groups"),
+        content: FormatDetailsContent::Table {
+            columns: [
+                "Index",
+                "Rows",
+                "Compressed bytes",
+                "Total bytes",
+                "Compression",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            rows,
+            truncated: row_groups.len() > MAX_GENERIC_ROW_GROUPS,
+        },
+    }]
 }
 
 struct ProjectionPlan {
@@ -637,6 +773,9 @@ mod tests {
         let error = serde_json::to_value(DataError::invalid_request("bad limit")).unwrap();
 
         assert_eq!(summary["format"], "parquet");
+        assert_eq!(summary["formatDescriptor"]["id"], "parquet");
+        assert_eq!(summary["formatDescriptor"]["displayName"], "Parquet");
+        assert_eq!(summary["formatDetails"][0]["kind"], "table");
         assert_eq!(summary["rowCount"], 4);
         assert_eq!(summary["columns"][0]["logicalType"], "Int32");
         assert!(summary.get("row_count").is_none());

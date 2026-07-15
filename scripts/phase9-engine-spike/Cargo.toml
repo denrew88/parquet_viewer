@@ -1,0 +1,12 @@
+[package]
+name = "phase9-engine-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+duckdb = { version = "~1.10504.0", features = ["bundled", "parquet"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[workspace]

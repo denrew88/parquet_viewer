@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 import {
@@ -8,16 +9,37 @@ import {
   type BackendAdapter,
   type DataPage,
   type FileSummary,
+  type FormatDescriptor,
+  type CsvParsingProfileWire,
   type OpenDataRequest,
   type OpenDataResponse,
 } from "./backend";
 import { type DragDropAdapter, type FileDragDropEvent, type FileDragDropHandler } from "./dragDrop";
+import { COPY_PRESETS } from "./copy/presets";
+import { defaultAppSettings, type AppSettingsV1 } from "./settings/model";
+
+const csvDescriptor: FormatDescriptor = {
+  id: "csv",
+  displayName: "CSV",
+  extensions: ["csv"],
+  mimeTypes: ["text/csv"],
+  capabilities: ["columnProjection", "backgroundRowCount", "queryProvider"],
+};
+const parquetDescriptor: FormatDescriptor = {
+  id: "parquet",
+  displayName: "Parquet",
+  extensions: ["parquet"],
+  mimeTypes: ["application/vnd.apache.parquet"],
+  capabilities: ["typedSchema", "columnProjection", "rowGroups"],
+};
+const supportedFormats = [csvDescriptor, parquetDescriptor];
 
 const summary: FileSummary = {
   sessionId: "session-1",
   fileName: "primitive-null.parquet",
   path: "C:\\fixtures\\primitive-null.parquet",
   format: "parquet",
+  formatDescriptor: parquetDescriptor,
   fileSize: 4096,
   rowCount: 4,
   rowCountStatus: {
@@ -55,6 +77,19 @@ const summary: FileSummary = {
     },
   ],
   csvMetadata: null,
+  formatDetails: [
+    {
+      id: "parquet-row-groups",
+      title: "Row groups",
+      kind: "table",
+      columns: ["Index", "Rows"],
+      rows: [
+        ["0", "2"],
+        ["1", "2"],
+      ],
+      truncated: false,
+    },
+  ],
 };
 
 const page: DataPage = {
@@ -98,6 +133,7 @@ function csvSummary(headerMode: "auto" | "present" | "absent" = "auto"): FileSum
     fileName: "quoted.csv",
     path: "C:\\fixtures\\quoted.csv",
     format: "csv",
+    formatDescriptor: csvDescriptor,
     fileSize: 100,
     rowCount: null,
     rowCountStatus: {
@@ -131,6 +167,14 @@ function csvSummary(headerMode: "auto" | "present" | "absent" = "auto"): FileSum
       headerIssueCount: 0,
       headerIssues: [],
     },
+    formatDetails: [
+      {
+        id: "csv-parsing",
+        title: "CSV parsing",
+        kind: "keyValue",
+        entries: [{ label: "Encoding", value: "utf-8" }],
+      },
+    ],
   };
 }
 
@@ -150,9 +194,180 @@ const csvPage: DataPage = {
   ],
 };
 
+const csvProfile: CsvParsingProfileWire = {
+  mode: "auto",
+  generation: 3,
+  columns: ["name", "note", "empty"].map((sourceName, sourceIndex) => ({
+    sourceIndex,
+    sourceName,
+    targetType: "auto",
+    trim: false,
+    nullTokens: ["NULL", "N/A"],
+    trueTokens: ["true", "TRUE", "1"],
+    falseTokens: ["false", "FALSE", "0"],
+    decimalSeparator: ".",
+    thousandSeparator: null,
+    temporalFormats: [],
+    timezonePolicy: "preserve",
+    timezoneOffsetMinutes: null,
+    failurePolicy: "preserveInvalid",
+  })),
+};
+
+function profileCsvSummary(sessionId = "csv-session", structuralIssues = false): FileSummary {
+  const base = csvSummary();
+  return {
+    ...base,
+    sessionId,
+    formatDescriptor: {
+      ...csvDescriptor,
+      capabilities: [...csvDescriptor.capabilities, "parsingProfile"],
+    },
+    csvMetadata: {
+      ...base.csvMetadata!,
+      structureIssueCount: structuralIssues ? 1 : 0,
+      structureIssues: structuralIssues ? [{ row: 4, expectedColumns: 3, actualColumns: 2 }] : [],
+    },
+  };
+}
+
+function csvProfileResponse() {
+  return { documentId: "legacy-csv-session", sessionId: "csv-session", profile: csvProfile };
+}
+
+function profilePreviewResponse(generation = csvProfile.generation) {
+  return {
+    documentId: "legacy-csv-session",
+    sessionId: "csv-session",
+    preview: {
+      generation,
+      stage: "leading" as const,
+      profile: { ...csvProfile, generation },
+      columns: csvProfile.columns.map((column) => ({
+        sourceIndex: column.sourceIndex,
+        sourceName: column.sourceName,
+        recommendedType: "text" as const,
+        confidence: 0.99,
+        targetType: "text" as const,
+        successCount: 1,
+        nullCount: 0,
+        invalidCount: 0,
+      })),
+      rows: [
+        {
+          sourceRow: 0,
+          cells: ["Kim, Mina", "line one\nline two", ""].map((raw) => ({
+            raw,
+            converted: {
+              kind: "string" as const,
+              display: raw,
+              state: raw === "" ? ("empty" as const) : ("valid" as const),
+              rawDisplay: raw,
+              diagnostic: null,
+            },
+          })),
+        },
+      ],
+    },
+  };
+}
+
+function appliedCsvPage(sessionId = "csv-session-profile-4"): DataPage {
+  return {
+    sessionId,
+    offset: 0,
+    limit: 200,
+    totalRows: null,
+    hasMore: true,
+    columns: ["name", "note", "empty"],
+    rows: [
+      [
+        {
+          kind: "int",
+          display: "7",
+          state: "valid",
+          rawDisplay: "0007",
+          diagnostic: null,
+        },
+        { kind: "string", display: "typed" },
+        { kind: "null", display: null },
+      ],
+    ],
+  };
+}
+
+function querySummary(sessionId = "session-1"): FileSummary {
+  return {
+    ...summary,
+    sessionId,
+    formatDescriptor: {
+      ...parquetDescriptor,
+      capabilities: [...parquetDescriptor.capabilities, "queryProvider"],
+    },
+  };
+}
+
+function queryProfileCsvSummary(sessionId = "csv-session"): FileSummary {
+  return profileCsvSummary(sessionId);
+}
+
+function completedQueryProfileCsvSummary(sessionId = "csv-session"): FileSummary {
+  const result = queryProfileCsvSummary(sessionId);
+  return {
+    ...result,
+    rowCount: 1,
+    rowCountStatus: {
+      ...result.rowCountStatus,
+      state: "complete",
+      rowsScanned: 1,
+      bytesScanned: result.fileSize,
+    },
+  };
+}
+
+function queryStatus(
+  request: { documentId: string; sessionId: string; queryId: string; taskId: string },
+  state: "queued" | "running" | "complete" | "cancelled" | "failed" = "queued",
+) {
+  return {
+    ...request,
+    state,
+    progress: {
+      rowsScanned: state === "complete" ? 4 : 0,
+      totalRows: 4,
+      resultRows: state === "complete" ? 1 : 0,
+    },
+    columns: ["id", "label", "score", "active"],
+    elapsedMs: state === "complete" ? 12 : 0,
+    findMatchCount: null,
+    error:
+      state === "failed"
+        ? { code: "QueryTempLimitExceeded", message: "Disk limit reached." }
+        : null,
+  };
+}
+
+function queryResultPage(display = "filtered"): DataPage {
+  return {
+    ...page,
+    totalRows: 1,
+    rows: [
+      [
+        { kind: "int", display: "1" },
+        { kind: "string", display },
+        { kind: "float", display: "98.5" },
+        { kind: "boolean", display: "true" },
+      ],
+    ],
+  };
+}
+
 function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
   const adapter: BackendAdapter = {
     healthCheck: vi.fn().mockResolvedValue({ status: "ok", appVersion: "0.1.0" }),
+    listSupportedFormats: vi.fn().mockResolvedValue(supportedFormats),
+    getSettings: vi.fn().mockResolvedValue(defaultAppSettings()),
+    updateSettings: vi.fn(async (settings) => settings),
     selectDataFile: vi.fn().mockResolvedValue(summary),
     selectDataFilePath: vi.fn(),
     openDataFile: vi.fn(async (request: OpenDataRequest) => ({
@@ -166,6 +381,35 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
     onOpenDataRequest: vi.fn().mockResolvedValue(() => undefined),
     readPage: vi.fn().mockResolvedValue(page),
     configureCsv: vi.fn().mockRejectedValue(new Error("not csv")),
+    getCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
+    previewCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
+    validateCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
+    getCsvProfileValidationStatus: vi.fn().mockRejectedValue(new Error("not csv")),
+    cancelCsvProfileValidation: vi.fn().mockRejectedValue(new Error("not csv")),
+    applyCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
+    executeQuery: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    getQueryStatus: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    readQueryPage: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    listDistinctValues: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    findQueryMatch: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    cancelQuery: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    getQueryTempUsage: vi.fn().mockResolvedValue({
+      processBytes: 0,
+      limitBytes: defaultAppSettings().queryTempLimitBytes,
+      availableBytes: 20 * 1024 ** 3,
+      activeQueries: 0,
+    }),
+    clearQueryTemp: vi.fn().mockResolvedValue({
+      deletedBytes: 0,
+      orphanFailureCount: 0,
+      cleanupFailures: [],
+      remainingUsage: {
+        processBytes: 0,
+        limitBytes: defaultAppSettings().queryTempLimitBytes,
+        availableBytes: 20 * 1024 ** 3,
+        activeQueries: 0,
+      },
+    }),
     getDataFileStatus: vi.fn().mockResolvedValue(summary),
     cancelDataFileTask: vi.fn().mockResolvedValue(summary),
     closeDataFile: vi.fn().mockResolvedValue(undefined),
@@ -326,7 +570,8 @@ describe("App", () => {
 
   it("shows schema and metadata for the selected file", async () => {
     render(<App backend={backend()} />);
-    await openFile();
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("alpha");
 
     fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
     const schemaTable = screen.getByRole("table");
@@ -691,7 +936,9 @@ describe("App", () => {
       expect(screen.queryByText("Calculating CSV row count")).not.toBeInTheDocument(),
     );
     expect(cancelDataFileTask).toHaveBeenCalledWith("legacy-csv-session", "csv-session", 1);
-    expect(screen.getByText("Kim, Mina")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("grid", { name: "Data preview" })).getByText("Kim, Mina"),
+    ).toBeInTheDocument();
   });
 
   it("shows a stable workspace drop target and dismisses it on leave or Escape", async () => {
@@ -714,6 +961,86 @@ describe("App", () => {
 
     unmount();
     await waitFor(() => expect(drag.unlisten).toHaveBeenCalledTimes(1));
+  });
+
+  it("FMT-007 derives drop support and labels from the runtime format catalog", async () => {
+    const drag = dragDropHarness();
+    const arrowDescriptor: FormatDescriptor = {
+      id: "arrow-ipc",
+      displayName: "Arrow IPC",
+      extensions: ["arrow", "feather"],
+      mimeTypes: ["application/vnd.apache.arrow.file"],
+      capabilities: ["typedSchema", "columnProjection"],
+    };
+    render(
+      <App
+        backend={backend({ listSupportedFormats: vi.fn().mockResolvedValue([arrowDescriptor]) })}
+        dragDropAdapter={drag.adapter}
+      />,
+    );
+    await screen.findByText("Backend connected");
+
+    act(() => drag.emit(enter(["C:\\fixtures\\sample.feather"])));
+    expect(screen.getByTestId("drop-target")).toHaveTextContent("Open sample.feather");
+    act(() => drag.emit(enter(["C:\\fixtures\\sample.csv"])));
+    expect(screen.getByTestId("drop-target")).toHaveTextContent("Unsupported file type");
+    expect(screen.getByTestId("drop-target")).toHaveTextContent("Only Arrow IPC files");
+  });
+
+  it("FMT-009 renders unknown format details through the generic metadata fallback", async () => {
+    const arrowDescriptor: FormatDescriptor = {
+      id: "arrow-ipc",
+      displayName: "Arrow IPC",
+      extensions: ["arrow"],
+      mimeTypes: ["application/vnd.apache.arrow.file"],
+      capabilities: ["typedSchema", "columnProjection"],
+    };
+    const arrowSummary: FileSummary = {
+      ...summary,
+      fileName: "sample.arrow",
+      path: "C:\\fixtures\\sample.arrow",
+      format: arrowDescriptor.id,
+      formatDescriptor: arrowDescriptor,
+      rowGroupCount: 0,
+      rowGroups: [],
+      formatDetails: [
+        {
+          id: "arrow-file",
+          title: "Arrow file",
+          kind: "keyValue",
+          entries: [
+            { label: "Endianness", value: "Little" },
+            { label: "Version", value: "V5" },
+          ],
+        },
+        {
+          id: "record-batches",
+          title: "Record batches",
+          kind: "table",
+          columns: ["Batch", "Rows"],
+          rows: [["0", "4"]],
+          truncated: false,
+        },
+      ],
+    };
+    render(
+      <App
+        backend={backend({
+          listSupportedFormats: vi.fn().mockResolvedValue([arrowDescriptor]),
+          selectDataFile: vi.fn().mockResolvedValue(arrowSummary),
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByText("alpha")).toBeInTheDocument();
+    expect(screen.getByLabelText("Current file summary")).toHaveTextContent("Arrow IPC");
+    fireEvent.click(screen.getByRole("tab", { name: "Metadata" }));
+
+    expect(screen.getByText("Little")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Record batches" })).toHaveTextContent("4");
+    expect(screen.queryByRole("heading", { name: "CSV parsing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Row groups" })).not.toBeInTheDocument();
   });
 
   it("opens one dropped file while retaining the current grid until atomic success", async () => {
@@ -885,6 +1212,40 @@ describe("App", () => {
 
     unmount();
     await waitFor(() => expect(unlisten).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not drain and lose a deferred startup request during StrictMode effect replay", async () => {
+    const pending = deferred<OpenDataRequest[]>();
+    const startupRequest: OpenDataRequest = {
+      requestId: "strict-startup-1",
+      origin: "startupArg",
+      paths: ["C:\\fixtures\\strict-startup.parquet"],
+    };
+    const takePendingOpenRequests = vi
+      .fn()
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValueOnce([]);
+    const openDataFile = vi.fn(async (request: OpenDataRequest) =>
+      openedFile(
+        request,
+        `session-${request.requestId}`,
+        "strict-startup.parquet",
+        request.requestId,
+      ),
+    );
+
+    render(
+      <StrictMode>
+        <App backend={backend({ openDataFile, takePendingOpenRequests })} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(takePendingOpenRequests).toHaveBeenCalledTimes(1));
+    pending.resolve([startupRequest]);
+
+    expect(await screen.findByText("strict-startup-1")).toBeInTheDocument();
+    expect(openDataFile).toHaveBeenCalledTimes(1);
+    expect(openDataFile).toHaveBeenCalledWith(startupRequest);
+    expect(takePendingOpenRequests).toHaveBeenCalledTimes(1);
   });
 
   it("keeps view state per document and supports document shortcuts and close", async () => {
@@ -1251,5 +1612,988 @@ describe("App", () => {
     closing.resolve();
     await waitFor(() => expect(openDataFile).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("reopened")).toBeInTheDocument();
+  });
+
+  it("CPY-008 uses the loaded active preset for shortcut and context-menu copy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const customSettings: AppSettingsV1 = {
+      ...defaultAppSettings(),
+      copyPreset: "custom",
+      copyCustomOptions: {
+        ...COPY_PRESETS.custom,
+        delimiter: "|",
+        quoteMode: "always",
+      },
+    };
+    try {
+      render(<App backend={backend({ getSettings: vi.fn().mockResolvedValue(customSettings) })} />);
+      await openFile();
+      const grid = screen.getByRole("grid", { name: "Data preview" });
+      grid.focus();
+      fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+      fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('"1"|"alpha"'));
+
+      fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy cell value" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('"alpha"'));
+
+      fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy with column headers" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('"id"|"label"\r\n"1"|"alpha"'));
+    } finally {
+      if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("CSV-001/004 exposes parsing profiles only for capable CSV documents", async () => {
+    const getCsvProfile = vi.fn().mockResolvedValue(csvProfileResponse());
+    const previewCsvProfile = vi
+      .fn()
+      .mockImplementation(async (request) => profilePreviewResponse(request.generation));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(profileCsvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          getCsvProfile,
+          previewCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    expect(screen.getByText("CSV: Auto")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    expect(await screen.findByRole("dialog", { name: "CSV Parsing Profile" })).toBeInTheDocument();
+    await waitFor(() => expect(previewCsvProfile).toHaveBeenCalled());
+    expect(getCsvProfile).toHaveBeenCalledWith("legacy-csv-session", "csv-session");
+  });
+
+  it("CSV-011 blocks profile apply while structural CSV errors remain", async () => {
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(profileCsvSummary("csv-session", true)),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          previewCsvProfile: vi.fn(async (request) => profilePreviewResponse(request.generation)),
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    const dialog = await screen.findByRole("dialog", { name: "CSV Parsing Profile" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("structural CSV row issue");
+    expect(within(dialog).getByRole("button", { name: "Apply" })).toBeDisabled();
+  });
+
+  it("CSV-012 applies a profile atomically after the new session first page is ready", async () => {
+    const applying = deferred<{
+      documentId: string;
+      sessionId: string;
+      summary: FileSummary;
+    }>();
+    const readingAppliedPage = deferred<DataPage>();
+    const nextSessionId = "csv-session-profile-4";
+    const readPage = vi.fn((request) =>
+      request.sessionId === nextSessionId ? readingAppliedPage.promise : Promise.resolve(csvPage),
+    );
+    const applyCsvProfile = vi.fn(() => applying.promise);
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(profileCsvSummary()),
+          readPage,
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          previewCsvProfile: vi.fn(async (request) => profilePreviewResponse(request.generation)),
+          applyCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    const dialog = await screen.findByRole("dialog", { name: "CSV Parsing Profile" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+    expect(screen.getByText("Kim, Mina")).toBeInTheDocument();
+
+    applying.resolve({
+      documentId: "legacy-csv-session",
+      sessionId: nextSessionId,
+      summary: profileCsvSummary(nextSessionId),
+    });
+    await waitFor(() =>
+      expect(readPage).toHaveBeenCalledWith(expect.objectContaining({ sessionId: nextSessionId })),
+    );
+    expect(
+      within(screen.getByRole("grid", { name: "Data preview" })).getByText("Kim, Mina"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "CSV Parsing Profile" })).toBeInTheDocument();
+
+    readingAppliedPage.resolve(appliedCsvPage());
+    expect(await screen.findByText("7")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "CSV Parsing Profile" })).not.toBeInTheDocument();
+    expect(screen.getByText("CSV: Custom")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search data" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter name" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort name: not sorted" })).toBeInTheDocument();
+  });
+
+  it("CSV-017 reruns a compatible query on the replacement profile session", async () => {
+    const nextSessionId = "csv-session-compatible-profile";
+    const executeQuery = vi.fn(async (request) => queryStatus(request, "complete"));
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: { ...csvPage, sessionId: request.sessionId },
+    }));
+    const readPage = vi.fn(async (request) =>
+      request.sessionId === nextSessionId ? appliedCsvPage(nextSessionId) : csvPage,
+    );
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(completedQueryProfileCsvSummary()),
+          readPage,
+          executeQuery,
+          readQueryPage,
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          previewCsvProfile: vi.fn(async (request) => profilePreviewResponse(request.generation)),
+          applyCsvProfile: vi.fn(async (request) => ({
+            documentId: request.documentId,
+            sessionId: nextSessionId,
+            summary: queryProfileCsvSummary(nextSessionId),
+          })),
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(await screen.findByRole("button", { name: "Filter name" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "Filter name" });
+    fireEvent.change(within(filterDialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "Kim" },
+    });
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    const previousQueryId = executeQuery.mock.calls[0][0].queryId;
+
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    const profileDialog = await screen.findByRole("dialog", { name: "CSV Parsing Profile" });
+    fireEvent.click(within(profileDialog).getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
+    const replacement = executeQuery.mock.calls[1][0];
+    expect(replacement).toMatchObject({
+      sessionId: nextSessionId,
+      plan: { filters: [expect.objectContaining({ columnId: "name" })] },
+    });
+    expect(replacement.queryId).not.toBe(previousQueryId);
+    await waitFor(() =>
+      expect(readQueryPage).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: nextSessionId, queryId: replacement.queryId }),
+      ),
+    );
+    expect(
+      readQueryPage.mock.calls.some(
+        ([request]) => request.sessionId === nextSessionId && request.queryId === previousQueryId,
+      ),
+    ).toBe(false);
+  });
+
+  it("CSV-018 clears incompatible query conditions with a visible reason", async () => {
+    const nextSessionId = "csv-session-incompatible-profile";
+    const executeQuery = vi.fn(async (request) => queryStatus(request, "complete"));
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: { ...csvPage, sessionId: request.sessionId },
+    }));
+    const incompatibleSummary = queryProfileCsvSummary(nextSessionId);
+    incompatibleSummary.columns = incompatibleSummary.columns.map((column, index) =>
+      index === 0 ? { ...column, logicalType: "Int64", physicalType: "Int64" } : column,
+    );
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(completedQueryProfileCsvSummary()),
+          readPage: vi.fn(async (request) =>
+            request.sessionId === nextSessionId ? appliedCsvPage(nextSessionId) : csvPage,
+          ),
+          executeQuery,
+          readQueryPage,
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          previewCsvProfile: vi.fn(async (request) => profilePreviewResponse(request.generation)),
+          applyCsvProfile: vi.fn(async (request) => ({
+            documentId: request.documentId,
+            sessionId: nextSessionId,
+            summary: incompatibleSummary,
+          })),
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(await screen.findByRole("button", { name: "Filter name" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "Filter name" });
+    fireEvent.change(within(filterDialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "Kim" },
+    });
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Sort note: not sorted" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    const profileDialog = await screen.findByRole("dialog", { name: "CSV Parsing Profile" });
+    fireEvent.click(within(profileDialog).getByRole("button", { name: "Apply" }));
+
+    expect(
+      await screen.findByText(/Removed incompatible query conditions.*filter on name/),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(3));
+    expect(executeQuery.mock.calls[2][0]).toMatchObject({
+      sessionId: nextSessionId,
+      plan: { filters: [], sort: [expect.objectContaining({ columnId: "note" })] },
+    });
+    expect(
+      screen.getByText(/Removed incompatible query conditions.*filter on name/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/name contains Kim/)).not.toBeInTheDocument();
+  });
+
+  it("CSV-019 applies the All Text default through a new session", async () => {
+    const nextSessionId = "csv-session-all-text";
+    const applyCsvProfile = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: nextSessionId,
+      summary: profileCsvSummary(nextSessionId),
+    }));
+    const readPage = vi.fn((request) =>
+      Promise.resolve(
+        request.sessionId === nextSessionId ? appliedCsvPage(nextSessionId) : csvPage,
+      ),
+    );
+    render(
+      <App
+        backend={backend({
+          getSettings: vi.fn().mockResolvedValue({
+            ...defaultAppSettings(),
+            csvDefaultParsingMode: "allText",
+          }),
+          selectDataFile: vi.fn().mockResolvedValue(profileCsvSummary()),
+          readPage,
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          applyCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await waitFor(() => expect(applyCsvProfile).toHaveBeenCalled());
+    expect(applyCsvProfile.mock.calls[0][0].profile).toMatchObject({
+      mode: "allText",
+      generation: 4,
+    });
+    expect(
+      applyCsvProfile.mock.calls[0][0].profile.columns.every(
+        (column: { targetType: string }) => column.targetType === "text",
+      ),
+    ).toBe(true);
+    expect(await screen.findByText("CSV: All Text")).toBeInTheDocument();
+    expect(await screen.findByText("7")).toBeInTheDocument();
+  });
+
+  it("CSV-020 preserves a query created while the All Text profile is loading", async () => {
+    const nextSessionId = "csv-session-all-text-race";
+    const pendingProfile = deferred<ReturnType<typeof csvProfileResponse>>();
+    const getCsvProfile = vi.fn(() => pendingProfile.promise);
+    const executeQuery = vi.fn(async (request) => queryStatus(request, "complete"));
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: { ...csvPage, sessionId: request.sessionId },
+    }));
+    render(
+      <App
+        backend={backend({
+          getSettings: vi.fn().mockResolvedValue({
+            ...defaultAppSettings(),
+            csvDefaultParsingMode: "allText",
+          }),
+          selectDataFile: vi.fn().mockResolvedValue(completedQueryProfileCsvSummary()),
+          readPage: vi.fn(async (request) =>
+            request.sessionId === nextSessionId ? appliedCsvPage(nextSessionId) : csvPage,
+          ),
+          getCsvProfile,
+          applyCsvProfile: vi.fn(async (request) => ({
+            documentId: request.documentId,
+            sessionId: nextSessionId,
+            summary: queryProfileCsvSummary(nextSessionId),
+          })),
+          executeQuery,
+          readQueryPage,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await waitFor(() => expect(getCsvProfile).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Filter name" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "Filter name" });
+    fireEvent.change(within(filterDialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "Kim" },
+    });
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    const previousQueryId = executeQuery.mock.calls[0][0].queryId;
+
+    pendingProfile.resolve(csvProfileResponse());
+
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
+    const replacement = executeQuery.mock.calls[1][0];
+    expect(replacement).toMatchObject({
+      sessionId: nextSessionId,
+      plan: { filters: [expect.objectContaining({ columnId: "name" })] },
+    });
+    await waitFor(() =>
+      expect(readQueryPage).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: nextSessionId, queryId: replacement.queryId }),
+      ),
+    );
+    expect(
+      readQueryPage.mock.calls.some(
+        ([request]) => request.sessionId === nextSessionId && request.queryId === previousQueryId,
+      ),
+    ).toBe(false);
+  });
+
+  it("CSV-021 rejects an All Text profile response for another identity", async () => {
+    const applyCsvProfile = vi.fn();
+    render(
+      <App
+        backend={backend({
+          getSettings: vi.fn().mockResolvedValue({
+            ...defaultAppSettings(),
+            csvDefaultParsingMode: "allText",
+          }),
+          selectDataFile: vi.fn().mockResolvedValue(completedQueryProfileCsvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          getCsvProfile: vi.fn().mockResolvedValue({
+            ...csvProfileResponse(),
+            documentId: "another-document",
+          }),
+          applyCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    await act(async () => Promise.resolve());
+    expect(applyCsvProfile).not.toHaveBeenCalled();
+    expect(screen.getByText("CSV: Auto")).toBeInTheDocument();
+    expect(screen.queryByText("CSV: All Text")).not.toBeInTheDocument();
+  });
+
+  it("CSV-022 rejects an All Text apply response for another document", async () => {
+    const nextSessionId = "csv-session-wrong-document";
+    const readPage = vi.fn().mockResolvedValue(csvPage);
+    const applyCsvProfile = vi.fn(async () => ({
+      documentId: "another-document",
+      sessionId: nextSessionId,
+      summary: completedQueryProfileCsvSummary(nextSessionId),
+    }));
+    render(
+      <App
+        backend={backend({
+          getSettings: vi.fn().mockResolvedValue({
+            ...defaultAppSettings(),
+            csvDefaultParsingMode: "allText",
+          }),
+          selectDataFile: vi.fn().mockResolvedValue(completedQueryProfileCsvSummary()),
+          readPage,
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          applyCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await waitFor(() => expect(applyCsvProfile).toHaveBeenCalledTimes(1));
+    await act(async () => Promise.resolve());
+    expect(readPage.mock.calls.some(([request]) => request.sessionId === nextSessionId)).toBe(
+      false,
+    );
+    expect(screen.getByText("CSV: Auto")).toBeInTheDocument();
+    expect(screen.queryByText("CSV: All Text")).not.toBeInTheDocument();
+  });
+
+  it("CSV-010 polls and cancels full-file profile validation", async () => {
+    const queued = {
+      taskId: "task-1",
+      documentId: "legacy-csv-session",
+      sessionId: "csv-session",
+      generation: 3,
+      state: "running" as const,
+      rowsScanned: 0,
+      totalRows: 1,
+      columns: csvProfile.columns.map((column) => ({
+        sourceIndex: column.sourceIndex,
+        sourceName: column.sourceName,
+        successCount: 0,
+        nullCount: 0,
+        invalidCount: 0,
+        firstErrorRow: null,
+        errorSamples: [],
+      })),
+      error: null,
+    };
+    const validateCsvProfile = vi.fn().mockResolvedValue(queued);
+    const getCsvProfileValidationStatus = vi
+      .fn()
+      .mockResolvedValue({ ...queued, state: "running", rowsScanned: 1 });
+    const cancelCsvProfileValidation = vi.fn().mockResolvedValue({ ...queued, state: "cancelled" });
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(profileCsvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          getCsvProfile: vi.fn().mockResolvedValue(csvProfileResponse()),
+          previewCsvProfile: vi.fn(async (request) => profilePreviewResponse(request.generation)),
+          validateCsvProfile,
+          getCsvProfileValidationStatus,
+          cancelCsvProfileValidation,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(screen.getByRole("button", { name: "CSV Parsing Profile" }));
+    const dialog = await screen.findByRole("dialog", { name: "CSV Parsing Profile" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Validate entire file/ }));
+    expect(
+      await within(dialog).findByRole("button", { name: /Cancel validation/ }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(getCsvProfileValidationStatus).toHaveBeenCalled());
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cancel validation/ }));
+    await waitFor(() => expect(cancelCsvProfileValidation).toHaveBeenCalled());
+  });
+
+  it("QRY-003 commits a materialized filter only after its first page is ready", async () => {
+    const resultPage = deferred<{
+      documentId: string;
+      sessionId: string;
+      queryId: string;
+      page: DataPage;
+    }>();
+    const executeQuery = vi.fn(async (request) => queryStatus(request));
+    const getQueryStatus = vi.fn(async (...args: string[]) =>
+      queryStatus(
+        { documentId: args[0], sessionId: args[1], queryId: args[2], taskId: args[3] },
+        "complete",
+      ),
+    );
+    const readQueryPage = vi.fn(() => resultPage.promise);
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          getQueryStatus,
+          readQueryPage,
+        })}
+      />,
+    );
+    await openFile();
+    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.change(search, { target: { value: "alpha" } });
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(readQueryPage).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+
+    const request = executeQuery.mock.calls[0][0];
+    resultPage.resolve({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: queryResultPage(),
+    });
+    expect(await screen.findByText("filtered")).toBeInTheDocument();
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    expect(getQueryStatus).toHaveBeenCalledWith(
+      request.documentId,
+      request.sessionId,
+      request.queryId,
+      request.taskId,
+    );
+  });
+
+  it("QRY-012 ignores task1 late success after task2 commits", async () => {
+    const first = deferred<ReturnType<typeof queryStatus>>();
+    const second = deferred<ReturnType<typeof queryStatus>>();
+    const executeQuery = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const getQueryStatus = vi.fn(async (...args: string[]) =>
+      queryStatus(
+        { documentId: args[0], sessionId: args[1], queryId: args[2], taskId: args[3] },
+        "complete",
+      ),
+    );
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: queryResultPage("task2"),
+    }));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          getQueryStatus,
+          readQueryPage,
+          cancelQuery: vi.fn().mockResolvedValue(undefined),
+        })}
+      />,
+    );
+    await openFile();
+    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.change(search, { target: { value: "first" } });
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    await screen.findByText("Query queued");
+    fireEvent.change(search, { target: { value: "second" } });
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
+
+    second.resolve(queryStatus(executeQuery.mock.calls[1][0]));
+    expect(await screen.findByText("task2")).toBeInTheDocument();
+    first.resolve(queryStatus(executeQuery.mock.calls[0][0]));
+    await act(async () => Promise.resolve());
+    expect(screen.getByText("task2")).toBeInTheDocument();
+    expect(getQueryStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("QRY-009 keeps the committed result when a replacement query is cancelled", async () => {
+    let run = 0;
+    const executeQuery = vi.fn(async (request) => {
+      run += 1;
+      return queryStatus(request, run === 1 ? "complete" : "running");
+    });
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page: queryResultPage("committed"),
+    }));
+    const cancelQuery = vi.fn(async (...args: string[]) =>
+      queryStatus(
+        { documentId: args[0], sessionId: args[1], queryId: args[2], taskId: args[3] },
+        "cancelled",
+      ),
+    );
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          readQueryPage,
+          cancelQuery,
+          getQueryStatus: vi.fn(() => new Promise<ReturnType<typeof queryStatus>>(() => undefined)),
+        })}
+      />,
+    );
+    await openFile();
+    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.change(search, { target: { value: "first" } });
+    expect(await screen.findByText("committed")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "second" } });
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(cancelQuery).toHaveBeenCalled());
+    expect(screen.getByText("committed")).toBeInTheDocument();
+  });
+
+  it("QRY-010 keeps source data and exposes a typed disk-limit failure", async () => {
+    const executeQuery = vi.fn(async (request) => queryStatus(request, "failed"));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+        })}
+      />,
+    );
+    await openFile();
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search data" }), {
+      target: { value: "alpha" },
+    });
+    expect(
+      await screen.findByText(/QueryTempLimitExceeded: Disk limit reached/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("QRY-012 drops a late query response after its document closes", async () => {
+    const pending = deferred<ReturnType<typeof queryStatus>>();
+    const executeQuery = vi.fn((request: Parameters<BackendAdapter["executeQuery"]>[0]) => {
+      void request;
+      return pending.promise;
+    });
+    const readQueryPage = vi.fn();
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          readQueryPage,
+        })}
+      />,
+    );
+    await openFile();
+    fireEvent.click(await screen.findByRole("button", { name: "Filter label" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "Filter label" });
+    fireEvent.change(within(filterDialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "late" },
+    });
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: `Close ${summary.fileName}` }));
+    pending.resolve(queryStatus(executeQuery.mock.calls[0][0], "complete"));
+    await act(async () => Promise.resolve());
+    expect(readQueryPage).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "No file open" })).toBeInTheDocument();
+  });
+
+  it("QRY-012 drops a late query response after CSV session replacement", async () => {
+    const pending = deferred<ReturnType<typeof queryStatus>>();
+    const executeQuery = vi.fn((request: Parameters<BackendAdapter["executeQuery"]>[0]) => {
+      void request;
+      return pending.promise;
+    });
+    const readQueryPage = vi.fn();
+    const nextSession = "csv-session-reconfigured";
+    const configuredSummary = queryProfileCsvSummary(nextSession);
+    const configureCsv = vi.fn().mockResolvedValue({
+      ...configuredSummary,
+      csvMetadata: {
+        ...configuredSummary.csvMetadata!,
+        headerMode: "present",
+        headerUsed: true,
+      },
+    });
+    const getDataFileStatus = vi.fn(async () => queryProfileCsvSummary());
+    const readPage = vi.fn(async (request) =>
+      request.sessionId === nextSession ? { ...csvPage, sessionId: nextSession } : csvPage,
+    );
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(queryProfileCsvSummary()),
+          readPage,
+          executeQuery,
+          readQueryPage,
+          configureCsv,
+          getDataFileStatus,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    fireEvent.click(await screen.findByRole("button", { name: "Filter name" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "Filter name" });
+    fireEvent.change(within(filterDialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "late" },
+    });
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("tab", { name: "Metadata" }));
+    fireEvent.click(screen.getByRole("button", { name: "Present" }));
+    await waitFor(() => expect(configureCsv).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(readPage).toHaveBeenCalledWith(expect.objectContaining({ sessionId: nextSession })),
+    );
+    pending.resolve(queryStatus(executeQuery.mock.calls[0][0], "complete"));
+    await act(async () => Promise.resolve());
+    expect(readQueryPage).not.toHaveBeenCalled();
+  });
+
+  it("QRY-007/008 pages distinct values and moves Find to the backend match coordinate", async () => {
+    const executeQuery = vi.fn(async (request) => ({
+      ...queryStatus(request, "complete"),
+      findMatchCount: request.plan.search?.mode === "find" ? 2 : null,
+    }));
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page,
+    }));
+    const listDistinctValues = vi.fn(async (request) => ({
+      ...request,
+      values: [{ value: "alpha", isNull: false, isInvalid: false, count: 1 }],
+      hasMore: false,
+    }));
+    const findQueryMatch = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      match: {
+        rowOffset: 2,
+        columnId: "label",
+        matchIndex: 1,
+        totalMatches: 2,
+        wrapped: false,
+      },
+    }));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          readQueryPage,
+          listDistinctValues,
+          findQueryMatch,
+        })}
+      />,
+    );
+    await openFile();
+    fireEvent.click(await screen.findByRole("button", { name: "Filter label" }));
+    await waitFor(() => expect(listDistinctValues).toHaveBeenCalled());
+    expect(
+      within(screen.getByRole("dialog", { name: "Filter label" })).getByText("alpha"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close filter" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search data" }), {
+      target: { value: "alpha" },
+    });
+    await waitFor(() => expect(executeQuery).toHaveBeenCalled());
+    await screen.findByText("2 matches");
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    await waitFor(() => expect(findQueryMatch).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole("grid", { name: "Data preview" })).toHaveAttribute(
+        "data-active-row",
+        "2",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    await waitFor(() => expect(findQueryMatch).toHaveBeenCalledTimes(2));
+    expect(findQueryMatch.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ fromResultOffset: 2, fromMatchIndex: 1 }),
+    );
+  });
+
+  it("persists settings before committing them and restores the saved value", async () => {
+    const pending = deferred<AppSettingsV1>();
+    const updateSettings = vi.fn(() => pending.promise);
+    render(<App backend={backend({ updateSettings })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "All Text" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    const saved = { ...defaultAppSettings(), csvDefaultParsingMode: "allText" as const };
+    expect(updateSettings).toHaveBeenCalledWith(saved);
+
+    pending.resolve(saved);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Application settings" }),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "All Text" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("QRY-015 displays and clears process query temporary storage", async () => {
+    const getQueryTempUsage = vi.fn().mockResolvedValue({
+      processBytes: 128 * 1024 * 1024,
+      limitBytes: 10 * 1024 ** 3,
+      availableBytes: 20 * 1024 ** 3,
+      activeQueries: 1,
+    });
+    const clearQueryTemp = vi.fn().mockResolvedValue({
+      deletedBytes: 128 * 1024 * 1024,
+      orphanFailureCount: 0,
+      cleanupFailures: [],
+      remainingUsage: {
+        processBytes: 0,
+        limitBytes: 10 * 1024 ** 3,
+        availableBytes: 20 * 1024 ** 3,
+        activeQueries: 1,
+      },
+    });
+    render(<App backend={backend({ getQueryTempUsage, clearQueryTemp })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByText(/128.0 MiB used/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear inactive query data" }));
+    await waitFor(() => expect(clearQueryTemp).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/0 B used/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Inactive query data cleared. 134,217,728 bytes deleted; 0 bytes remain in use.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("changes the default copy preset without copying immediately", async () => {
+    const pending = deferred<AppSettingsV1>();
+    const updateSettings = vi.fn(() => pending.promise);
+    render(<App backend={backend({ updateSettings })} />);
+    await openFile();
+
+    expect(screen.getByText("Copy (EXCEL)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    expect(screen.getByRole("menuitemradio", { name: "Excel" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "CSV" }));
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ copyPreset: "csv" })),
+    );
+    expect(screen.getByText("Saving copy preset...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy options" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+
+    pending.resolve({ ...defaultAppSettings(), copyPreset: "csv" });
+    expect(await screen.findByText("Copy (CSV)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    expect(screen.getByRole("menuitemradio", { name: "CSV" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("keeps a copy preset save failure visible in the data view and allows retry", async () => {
+    const updateSettings = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Atomic preset write failed."))
+      .mockImplementationOnce(async (settings: AppSettingsV1) => settings);
+    render(<App backend={backend({ updateSettings })} />);
+    await openFile();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Copy preset was not changed. Atomic preset write failed.",
+    );
+    expect(screen.getByText("Copy (EXCEL)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy options" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "CSV" }));
+    expect(await screen.findByText("Copy (CSV)")).toBeInTheDocument();
+    expect(updateSettings).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByText("Copy preset was not changed. Atomic preset write failed."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears a quick preset error after Copy Settings saves persisted settings", async () => {
+    const updateSettings = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Quick preset write failed."))
+      .mockImplementationOnce(async (settings: AppSettingsV1) => settings);
+    render(<App backend={backend({ updateSettings })} />);
+    await openFile();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Copy preset was not changed. Quick preset write failed.",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "TSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Copy (TSV)")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Copy preset was not changed. Quick preset write failed."),
+    ).not.toBeInTheDocument();
+    expect(updateSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the previous copy settings when save fails or the draft is cancelled", async () => {
+    const updateSettings = vi.fn().mockRejectedValue(new Error("Atomic write failed."));
+    render(<App backend={backend({ updateSettings })} />);
+    await openFile();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "CSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Atomic write failed.");
+    expect(screen.getByRole("dialog", { name: "Copy settings" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "TSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("opens Copy settings from application settings and updates its summary after save", async () => {
+    const updateSettings = vi.fn(async (settings: AppSettingsV1) => settings);
+    render(<App backend={backend({ updateSettings })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy settings" }));
+    expect(screen.getByRole("dialog", { name: "Copy settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Application settings" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "CSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByRole("dialog", { name: "Application settings" })).toBeInTheDocument();
+    expect(screen.getByText("Comma delimiter, no headers")).toBeInTheDocument();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ copyPreset: "csv" }));
+  });
+
+  it("CPY-010 recovers settings load failure with defaults and a non-blocking warning", async () => {
+    render(
+      <App
+        backend={backend({ getSettings: vi.fn().mockRejectedValue(new Error("Corrupt JSON")) })}
+      />,
+    );
+
+    expect(await screen.findByText(/Settings could not be loaded/)).toHaveTextContent(
+      "Corrupt JSON",
+    );
+    expect(screen.getByRole("button", { name: "Open file" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "Auto" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Excel")).toBeInTheDocument();
   });
 });

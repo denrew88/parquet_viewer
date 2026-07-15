@@ -12,14 +12,22 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Check,
   ClipboardCopy,
   Columns3,
   Eye,
   EyeOff,
+  Filter,
   LoaderCircle,
   Search,
+  Settings2,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import {
@@ -40,14 +48,30 @@ import {
   type GridBounds,
   type GridCoordinate,
 } from "./gridSelection";
+import { CopyAccumulator, CopyByteLimitExceededError, serializeCopyField } from "./copy/serializer";
+import { COPY_PRESETS } from "./copy/presets";
+import type { CopyOptions, CopyPreset } from "./copy/model";
+import { ColumnFilterPopover, type DistinctValuesState } from "./query/ColumnFilterPopover";
+import {
+  clearFilters,
+  removeFilter,
+  setSearch,
+  toggleSort,
+  upsertFilter,
+  type QueryPlan,
+  type QueryScalarType,
+} from "./query/model";
+import { inferQueryScalarType } from "./query/scalarType";
+import {
+  QueryToolbar,
+  type QuerySearchColumn,
+  type QueryToolbarStatus,
+} from "./query/QueryToolbar";
 import {
   COPY_CHUNK_ROWS,
   COPY_HARD_CELL_LIMIT,
   COPY_SOFT_BYTE_LIMIT,
   COPY_SOFT_CELL_LIMIT,
-  CopyLimitExceededError,
-  TsvAccumulator,
-  serializeTsvField,
 } from "./tsv";
 
 export const GRID_ROW_HEIGHT = 34;
@@ -62,13 +86,30 @@ export const GRID_PREFETCH_DISTANCE = 40;
 const MAX_PAGE_WINDOW = 3;
 const MAX_CONCURRENT_REQUESTS = 2;
 
-interface VirtualDataGridProps {
+export interface VirtualDataGridProps {
   active?: boolean;
+  copyOptions?: CopyOptions;
+  copyPresetError?: string | null;
+  copyPresetSaving?: boolean;
+  distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
+  findTarget?: { row: number; columnId: string; key: string };
   isLoading: boolean;
+  onCancelQuery?(): void;
+  onFindNext?(): void;
+  onFindPrevious?(): void;
+  onOpenDistinctValues?(columnId: string): void;
+  onRetryQuery?(): void;
+  onOpenCopySettings?(): void;
+  onCopyPresetChange?(preset: CopyPreset): void;
   onPageChange(offset: number): void;
+  onQueryPlanChange?(plan: QueryPlan): void;
   onReadError(error: unknown, offset: number): void;
   page: DataPage;
+  queryPlan?: QueryPlan;
+  queryScalarTypes?: Readonly<Record<string, QueryScalarType>>;
+  queryStatus?: QueryToolbarStatus;
   readPage(request: ReadPageRequest): Promise<DataPage>;
+  resultKey?: string;
   summary: FileSummary;
   writeClipboardText?: (text: string) => Promise<void>;
 }
@@ -108,7 +149,7 @@ function cellClass(value: DataValue): string {
       : value.kind === "string" && value.display === ""
         ? " empty-string"
         : ""
-  }`;
+  }${value.state === "invalid" ? " data-value--invalid" : ""}`;
 }
 
 function pageStatus(page: DataPage): string {
@@ -122,18 +163,40 @@ function pageStatus(page: DataPage): string {
 
 export function VirtualDataGrid({
   active = true,
+  copyOptions = COPY_PRESETS.excel,
+  copyPresetError = null,
+  copyPresetSaving = false,
+  distinctValuesForColumn,
+  findTarget,
   isLoading,
+  onCancelQuery,
+  onFindNext,
+  onFindPrevious,
+  onOpenDistinctValues,
+  onRetryQuery,
+  onOpenCopySettings,
+  onCopyPresetChange,
   onPageChange,
+  onQueryPlanChange,
   onReadError,
   page,
+  queryPlan,
+  queryScalarTypes,
+  queryStatus,
   readPage,
+  resultKey,
   summary,
   writeClipboardText = defaultWriteClipboardText,
 }: VirtualDataGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const latestPage = useRef(page);
   latestPage.current = page;
+  const activeResultKey = resultKey ?? summary.sessionId;
+  const latestResultKey = useRef(activeResultKey);
+  latestResultKey.current = activeResultKey;
   const generation = useRef(0);
   const copyGeneration = useRef(0);
   const mounted = useRef(true);
@@ -145,6 +208,10 @@ export function VirtualDataGrid({
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const copyMenuRef = useRef<HTMLDivElement>(null);
+  const copyMenuPanelRef = useRef<HTMLDivElement>(null);
+  const copyMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [searchInput, setSearchInput] = useState("");
   const [columnSearch, setColumnSearch] = useState("");
   const initialBounds = {
@@ -154,7 +221,7 @@ export function VirtualDataGrid({
   };
   const [selection, dispatchSelection] = useReducer(
     selectionReducer,
-    createSelection(summary.sessionId, initialBounds),
+    createSelection(activeResultKey, initialBounds),
   );
   const [copyProgress, setCopyProgress] = useState<CopyProgress | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
@@ -169,6 +236,42 @@ export function VirtualDataGrid({
   } | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 });
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [filterPopover, setFilterPopover] = useState<{
+    columnId: string;
+    left: number;
+    top: number;
+  } | null>(null);
+  const [filterPopoverPosition, setFilterPopoverPosition] = useState({ left: 8, top: 8 });
+  const filterPopoverRef = useRef<HTMLDivElement>(null);
+  const filterTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const queryEnabled = Boolean(queryPlan && onQueryPlanChange);
+
+  const closeFilterPopover = useCallback((restoreFocus = true) => {
+    setFilterPopover(null);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => filterTriggerRef.current?.focus());
+    }
+  }, []);
+
+  const handleSearchChange = useCallback(
+    (search: Parameters<typeof setSearch>[1]) => {
+      if (queryPlan && onQueryPlanChange) onQueryPlanChange(setSearch(queryPlan, search));
+    },
+    [onQueryPlanChange, queryPlan],
+  );
+
+  const handleRemoveFilter = useCallback(
+    (filterId: string) => {
+      if (queryPlan && onQueryPlanChange) {
+        onQueryPlanChange(removeFilter(queryPlan, filterId));
+      }
+    },
+    [onQueryPlanChange, queryPlan],
+  );
+
+  const handleClearFilters = useCallback(() => {
+    if (queryPlan && onQueryPlanChange) onQueryPlanChange(clearFilters(queryPlan));
+  }, [onQueryPlanChange, queryPlan]);
 
   useEffect(
     () => () => {
@@ -199,7 +302,7 @@ export function VirtualDataGrid({
     setCopyMessage(null);
     dispatchSelection({
       type: "reset",
-      sessionId: summary.sessionId,
+      sessionId: activeResultKey,
       bounds: {
         rowCount: Math.max(1, firstPage.totalRows ?? firstPage.rows.length),
         columnCount: Math.max(1, firstPage.columns.length),
@@ -210,7 +313,8 @@ export function VirtualDataGrid({
       scrollRef.current.scrollLeft = 0;
       scrollRef.current.scrollTop = 0;
     }
-  }, [summary.sessionId]);
+    if (activeRef.current) window.requestAnimationFrame(() => gridRef.current?.focus());
+  }, [activeResultKey]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
@@ -223,6 +327,50 @@ export function VirtualDataGrid({
     const first = contextMenuRef.current.querySelector<HTMLButtonElement>("button:not(:disabled)");
     first?.focus();
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!copyMenuOpen) return;
+    const close = (event: PointerEvent) => {
+      if (copyMenuRef.current?.contains(event.target as Node)) return;
+      setCopyMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", close, true);
+    return () => window.removeEventListener("pointerdown", close, true);
+  }, [copyMenuOpen]);
+
+  useLayoutEffect(() => {
+    if (!copyMenuOpen) return;
+    copyMenuPanelRef.current
+      ?.querySelector<HTMLButtonElement>("[role='menuitem'], [role='menuitemradio']")
+      ?.focus();
+  }, [copyMenuOpen]);
+
+  function handleCopyMenuKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setCopyMenuOpen(false);
+      copyMenuTriggerRef.current?.focus();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(
+      copyMenuPanelRef.current?.querySelectorAll<HTMLButtonElement>(
+        "[role='menuitem'], [role='menuitemradio']",
+      ) ?? [],
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (current + 1) % items.length
+            : (current - 1 + items.length) % items.length;
+    items[next]?.focus();
+  }
 
   useEffect(() => {
     if (active || !contextMenu) return;
@@ -244,6 +392,55 @@ export function VirtualDataGrid({
       window.removeEventListener("scroll", close, true);
     };
   }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!filterPopover || !filterPopoverRef.current) return;
+    const host = filterPopoverRef.current;
+    const reposition = () => {
+      const rect = host.getBoundingClientRect();
+      const margin = 8;
+      const next = {
+        left: Math.max(
+          margin,
+          Math.min(filterPopover.left, window.innerWidth - rect.width - margin),
+        ),
+        top: Math.max(
+          margin,
+          Math.min(filterPopover.top, window.innerHeight - rect.height - margin),
+        ),
+      };
+      setFilterPopoverPosition((current) =>
+        current.left === next.left && current.top === next.top ? current : next,
+      );
+    };
+    reposition();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    observer?.observe(host);
+    const first = host.querySelector<HTMLElement>("select, input, button:not(:disabled)");
+    first?.focus();
+    return () => observer?.disconnect();
+  }, [filterPopover]);
+
+  useEffect(() => {
+    if ((active && queryEnabled) || !filterPopover) return;
+    closeFilterPopover(false);
+  }, [active, closeFilterPopover, filterPopover, queryEnabled]);
+
+  useEffect(() => {
+    if (!filterPopover) return;
+    const close = (event?: Event) => {
+      if (event && filterPopoverRef.current?.contains(event.target as Node)) return;
+      closeFilterPopover(false);
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [closeFilterPopover, filterPopover]);
 
   useEffect(() => {
     setPages((current) => {
@@ -290,7 +487,7 @@ export function VirtualDataGrid({
   );
   const totalColumnWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
 
-  const knownCount = summary.rowCount;
+  const knownCount = queryEnabled ? page.totalRows : summary.rowCount;
   const loadedEnd = Math.max(
     ...[...pages.values()].map((loaded) => loaded.offset + loaded.rows.length),
   );
@@ -334,6 +531,18 @@ export function VirtualDataGrid({
   });
 
   useEffect(() => columnVirtualizer.measure(), [columnSizing, columnVirtualizer]);
+
+  useEffect(() => {
+    if (!findTarget) return;
+    const column = page.columns.indexOf(findTarget.columnId);
+    if (column < 0 || findTarget.row < 0 || findTarget.row >= selectionBounds.rowCount) return;
+    const coordinate = { row: findTarget.row, column };
+    dispatchSelection({ type: "click", coordinate, bounds: selectionBounds });
+    scrollToCoordinate(coordinate);
+    window.requestAnimationFrame(() => gridRef.current?.focus());
+    // The key represents a backend match cursor move, including repeated moves to the same cell.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findTarget?.key]);
 
   const trimPageWindow = useCallback((source: Map<number, DataPage>, focusOffset: number) => {
     if (source.size <= MAX_PAGE_WINDOW) return source;
@@ -448,10 +657,11 @@ export function VirtualDataGrid({
     if (visibleIndex >= 0) columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
   }
 
-  async function copySelection(includeColumnHeaders = false) {
+  async function copySelection(includeColumnHeaders?: boolean, options = copyOptions) {
     if (copyProgress || rowCount === 0 || page.columns.length === 0) return;
     const copyId = ++copyGeneration.current;
     const sessionId = summary.sessionId;
+    const copyResultKey = activeResultKey;
     const { top, left, bottom, right } = selection.rect;
     const totalRows = bottom - top + 1;
     const selectedColumns = page.columns.slice(left, right + 1);
@@ -475,7 +685,11 @@ export function VirtualDataGrid({
       return;
     }
 
-    const writer = new TsvAccumulator();
+    const activeCopyOptions = {
+      ...options,
+      includeHeaders: includeColumnHeaders ?? options.includeHeaders,
+    };
+    const writer = new CopyAccumulator(activeCopyOptions);
     let copiedRows = 0;
     let softBytesConfirmed = cellCount > COPY_SOFT_CELL_LIMIT;
     setCopyProgress({ copiedRows, totalRows, state: "copying" });
@@ -484,7 +698,7 @@ export function VirtualDataGrid({
         if (
           !mounted.current ||
           copyId !== copyGeneration.current ||
-          sessionId !== summary.sessionId
+          copyResultKey !== latestResultKey.current
         )
           return;
         const limit = Math.min(COPY_CHUNK_ROWS, bottom - offset + 1);
@@ -516,12 +730,12 @@ export function VirtualDataGrid({
         if (
           !mounted.current ||
           copyId !== copyGeneration.current ||
-          sessionId !== summary.sessionId
+          copyResultKey !== latestResultKey.current
         )
           return;
         writer.appendRows(
           rows,
-          copiedRows === 0 && includeColumnHeaders ? selectedColumns : undefined,
+          copiedRows === 0 && activeCopyOptions.includeHeaders ? selectedColumns : undefined,
         );
         copiedRows += rows.length;
         setCopyProgress({ copiedRows, totalRows, state: "copying" });
@@ -538,16 +752,24 @@ export function VirtualDataGrid({
         return;
       }
       softBytesConfirmed = true;
-      if (!mounted.current || copyId !== copyGeneration.current || sessionId !== summary.sessionId)
+      if (
+        !mounted.current ||
+        copyId !== copyGeneration.current ||
+        copyResultKey !== latestResultKey.current
+      )
         return;
       await writeClipboardText(writer.finish());
-      if (mounted.current && copyId === copyGeneration.current && sessionId === summary.sessionId) {
+      if (
+        mounted.current &&
+        copyId === copyGeneration.current &&
+        copyResultKey === latestResultKey.current
+      ) {
         setCopyMessage(`Copied ${copiedRows.toLocaleString()} rows.`);
       }
     } catch (error) {
       if (copyId !== copyGeneration.current) return;
       setCopyMessage(
-        error instanceof CopyLimitExceededError || error instanceof Error
+        error instanceof CopyByteLimitExceededError || error instanceof Error
           ? error.message
           : "The selection could not be copied.",
       );
@@ -597,7 +819,7 @@ export function VirtualDataGrid({
     const value = valueAt(coordinate.row, coordinate.column);
     if (!value) return;
     try {
-      await writeClipboardText(serializeTsvField(value));
+      await writeClipboardText(serializeCopyField(value, copyOptions));
       setCopyMessage("Copied cell value.");
     } catch (error) {
       setCopyMessage(error instanceof Error ? error.message : "The cell could not be copied.");
@@ -619,7 +841,7 @@ export function VirtualDataGrid({
     const primary = event.ctrlKey || event.metaKey;
     if (primary && event.key.toLocaleLowerCase() === "c") {
       event.preventDefault();
-      void copySelection(false);
+      void copySelection();
       return;
     }
     const handled =
@@ -724,15 +946,49 @@ export function VirtualDataGrid({
     column.id.toLocaleLowerCase().includes(columnSearch.trim().toLocaleLowerCase()),
   );
   const mountedCellCount = virtualRows.length * columnVirtualItems.length;
+  const querySearchColumns: QuerySearchColumn[] = visibleColumns.map((column) => {
+    const columnId = column.id;
+    const scalarType = queryScalarTypes?.[columnId] ?? inferQueryScalarType(summary, columnId);
+    return {
+      id: columnId,
+      label: columnId,
+      searchable: scalarType !== "other",
+      disabledReason:
+        scalarType === "other" ? "Search is unavailable for this column type." : undefined,
+    };
+  });
+  const queryHasConditions = Boolean(
+    queryPlan && (queryPlan.filters.length > 0 || queryPlan.search?.text.trim()),
+  );
 
   return (
-    <div className="virtual-grid-shell">
+    <div
+      className="virtual-grid-shell"
+      style={queryEnabled ? { gridTemplateRows: "38px 38px minmax(0, 1fr) 40px" } : undefined}
+    >
+      {queryEnabled && queryPlan && (
+        <QueryToolbar
+          columns={querySearchColumns}
+          onCancelQuery={onCancelQuery}
+          onClearFilters={handleClearFilters}
+          onFindNext={onFindNext}
+          onFindPrevious={onFindPrevious}
+          onRemoveFilter={handleRemoveFilter}
+          onRetryQuery={onRetryQuery}
+          onSearchChange={handleSearchChange}
+          plan={queryPlan}
+          status={queryStatus}
+        />
+      )}
       <div className="column-toolbar" aria-label="Column tools">
         <div className="column-search">
           <Search aria-hidden="true" />
           <input
             aria-label="Search columns"
-            onChange={(event) => setSearchInput(event.target.value)}
+            onChange={(event) => {
+              setSearchInput(event.target.value);
+              setColumnSearch(event.target.value);
+            }}
             placeholder="Find column"
             type="search"
             value={searchInput}
@@ -751,16 +1007,89 @@ export function VirtualDataGrid({
         <span className="column-count">
           {visibleColumns.length.toLocaleString()} / {allColumns.length.toLocaleString()} columns
         </span>
-        <button
-          aria-label={copyProgress ? "Cancel copy" : "Copy selection"}
-          className="column-tool-button copy-selection-button"
-          disabled={rowCount === 0}
-          onClick={copyProgress ? cancelCopy : () => void copySelection()}
-          title={copyProgress ? "Cancel copy" : "Copy selection"}
-          type="button"
-        >
-          {copyProgress ? <X aria-hidden="true" /> : <ClipboardCopy aria-hidden="true" />}
-        </button>
+        <div className="copy-controls">
+          <button
+            aria-label={copyProgress ? "Cancel copy" : "Copy selection"}
+            className="copy-selection-button"
+            disabled={rowCount === 0}
+            onClick={copyProgress ? cancelCopy : () => void copySelection()}
+            title={copyProgress ? "Cancel copy" : `Copy selection as ${copyOptions.preset}`}
+            type="button"
+          >
+            {copyProgress ? <X aria-hidden="true" /> : <ClipboardCopy aria-hidden="true" />}
+            <span>{copyProgress ? "Cancel" : `Copy (${copyOptions.preset.toUpperCase()})`}</span>
+          </button>
+          <div className="copy-split-menu" ref={copyMenuRef}>
+            <button
+              aria-expanded={copyMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Copy options"
+              className="copy-options-button"
+              disabled={Boolean(copyProgress) || copyPresetSaving}
+              onClick={() => setCopyMenuOpen((open) => !open)}
+              ref={copyMenuTriggerRef}
+              title="Copy options"
+              type="button"
+            >
+              <ChevronDown aria-hidden="true" />
+            </button>
+            {copyMenuOpen && (
+              <div
+                aria-label="Copy options"
+                onKeyDown={handleCopyMenuKeyDown}
+                ref={copyMenuPanelRef}
+                role="menu"
+              >
+                <button
+                  onClick={() => {
+                    setCopyMenuOpen(false);
+                    void copySelection(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Copy with column headers
+                </button>
+                {(["excel", "tsv", "csv", "custom"] as const).map((preset) => (
+                  <button
+                    aria-checked={copyOptions.preset === preset}
+                    disabled={!onCopyPresetChange || copyPresetSaving}
+                    key={preset}
+                    onClick={() => {
+                      setCopyMenuOpen(false);
+                      onCopyPresetChange?.(preset);
+                    }}
+                    role="menuitemradio"
+                    type="button"
+                  >
+                    <span className="copy-preset-check">
+                      {copyOptions.preset === preset ? <Check aria-hidden="true" /> : null}
+                    </span>
+                    <span>
+                      {preset === "excel"
+                        ? "Excel"
+                        : preset === "custom"
+                          ? "Custom"
+                          : preset.toUpperCase()}
+                    </span>
+                  </button>
+                ))}
+                {onOpenCopySettings && (
+                  <button
+                    onClick={() => {
+                      setCopyMenuOpen(false);
+                      onOpenCopySettings();
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Settings2 aria-hidden="true" /> Copy settings
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         {(copyProgress || copyMessage) && (
           <span className="copy-status" role="status" aria-live="polite">
             {copyProgress
@@ -768,6 +1097,15 @@ export function VirtualDataGrid({
               : copyMessage}
           </span>
         )}
+        {copyPresetSaving ? (
+          <span className="copy-status" role="status" aria-live="polite">
+            Saving copy preset...
+          </span>
+        ) : copyPresetError ? (
+          <span className="copy-status copy-status--error" role="alert">
+            {copyPresetError}
+          </span>
+        ) : null}
         {chooserOpen && (
           <div className="column-chooser" role="dialog" aria-label="Column chooser">
             <div className="column-chooser__header">
@@ -843,8 +1181,21 @@ export function VirtualDataGrid({
             All columns are hidden. Use the column chooser to restore them.
           </div>
         ) : rowCount === 0 ? (
-          <div className="virtual-grid__empty" role="status">
-            No rows in file
+          <div
+            className={`virtual-grid__empty${queryHasConditions ? " virtual-grid__empty-query" : ""}`}
+            role="status"
+          >
+            <span>
+              {queryHasConditions ? "No rows match the current query" : "No rows in file"}
+            </span>
+            {queryHasConditions && queryPlan && onQueryPlanChange && (
+              <button
+                onClick={() => onQueryPlanChange({ ...queryPlan, filters: [], search: null })}
+                type="button"
+              >
+                Clear query
+              </button>
+            )}
           </div>
         ) : (
           <div
@@ -864,15 +1215,28 @@ export function VirtualDataGrid({
               {columnVirtualItems.map((virtualColumn) => {
                 const column = visibleColumns[virtualColumn.index];
                 const logicalColumn = visibleColumnIndexes[virtualColumn.index];
+                const columnFilter = queryPlan?.filters.find(
+                  (filter) => filter.columnId === column.id,
+                );
+                const sortIndex = queryPlan?.sort.findIndex((sort) => sort.columnId === column.id);
+                const columnSort =
+                  sortIndex !== undefined && sortIndex >= 0
+                    ? queryPlan?.sort[sortIndex]
+                    : undefined;
                 return (
                   <div
                     aria-colindex={virtualColumn.index + 1}
                     aria-label={column.id}
-                    className={`virtual-grid__column-header${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}`}
+                    className={`virtual-grid__column-header${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}`}
                     data-column-index={logicalColumn}
                     key={column.id}
                     onClick={(event) => {
-                      if ((event.target as HTMLElement).closest(".column-resizer")) return;
+                      if (
+                        (event.target as HTMLElement).closest(
+                          ".column-resizer, .query-column-actions",
+                        )
+                      )
+                        return;
                       dispatchSelection({
                         type: "column",
                         column: logicalColumn,
@@ -888,6 +1252,62 @@ export function VirtualDataGrid({
                     title={column.id}
                   >
                     <span>{column.id}</span>
+                    {queryEnabled && queryPlan && onQueryPlanChange && (
+                      <div className="query-column-actions">
+                        <button
+                          aria-label={`Filter ${column.id}`}
+                          aria-pressed={Boolean(columnFilter)}
+                          className={columnFilter ? "is-active" : undefined}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const trigger = event.currentTarget;
+                            const rect = trigger.getBoundingClientRect();
+                            filterTriggerRef.current = trigger;
+                            onOpenDistinctValues?.(column.id);
+                            setFilterPopover((current) =>
+                              current?.columnId === column.id
+                                ? null
+                                : { columnId: column.id, left: rect.left, top: rect.bottom + 4 },
+                            );
+                          }}
+                          title={`Filter ${column.id}`}
+                          type="button"
+                        >
+                          <Filter aria-hidden="true" />
+                        </button>
+                        <button
+                          aria-label={`Sort ${column.id}: ${
+                            columnSort
+                              ? `${columnSort.direction}, priority ${(sortIndex ?? 0) + 1}`
+                              : "not sorted"
+                          }`}
+                          aria-pressed={Boolean(columnSort)}
+                          className={columnSort ? "is-active" : undefined}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onQueryPlanChange(toggleSort(queryPlan, column.id, event.shiftKey));
+                          }}
+                          title={`Sort ${column.id}${columnSort ? ` (${columnSort.direction})` : ""}`}
+                          type="button"
+                        >
+                          {columnSort?.direction === "ascending" ? (
+                            <ArrowUp aria-hidden="true" />
+                          ) : columnSort?.direction === "descending" ? (
+                            <ArrowDown aria-hidden="true" />
+                          ) : (
+                            <ArrowUpDown aria-hidden="true" />
+                          )}
+                          {columnSort && sortIndex !== undefined && (
+                            <span
+                              aria-label={`Sort priority ${sortIndex + 1}`}
+                              className="query-sort-priority"
+                            >
+                              {sortIndex + 1}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )}
                     <div
                       aria-label={`Resize ${column.id}`}
                       aria-orientation="vertical"
@@ -948,11 +1368,13 @@ export function VirtualDataGrid({
                       <div
                         aria-colindex={virtualColumn.index + 1}
                         aria-label={
-                          value?.kind === "null"
-                            ? "null value"
-                            : value?.kind === "string" && value.display === ""
-                              ? "empty string"
-                              : undefined
+                          value?.state === "invalid"
+                            ? `invalid value${value.diagnostic?.message ? `: ${value.diagnostic.message}` : ""}`
+                            : value?.kind === "null"
+                              ? "null value"
+                              : value?.kind === "string" && value.display === ""
+                                ? "empty string"
+                                : undefined
                         }
                         aria-selected={selected}
                         className={`${
@@ -998,7 +1420,14 @@ export function VirtualDataGrid({
                         title={value?.display ?? undefined}
                       >
                         {value ? (
-                          dataCellText(value)
+                          value.state === "invalid" ? (
+                            <>
+                              <TriangleAlert aria-hidden="true" className="invalid-cell-icon" />
+                              <span>{dataCellText(value)}</span>
+                            </>
+                          ) : (
+                            dataCellText(value)
+                          )
                         ) : pending ? (
                           <span aria-label="Loading row" />
                         ) : null}
@@ -1125,7 +1554,7 @@ export function VirtualDataGrid({
               disabled={Boolean(copyProgress)}
               onClick={() => {
                 closeContextMenu();
-                void copySelection(false);
+                void copySelection();
               }}
               role="menuitem"
               type="button"
@@ -1168,6 +1597,50 @@ export function VirtualDataGrid({
             >
               <span>View full value</span>
             </button>
+          </div>,
+          document.body,
+        )}
+      {filterPopover &&
+        queryPlan &&
+        onQueryPlanChange &&
+        createPortal(
+          <div
+            className="column-filter-popover-host"
+            ref={filterPopoverRef}
+            style={filterPopoverPosition}
+          >
+            {(() => {
+              const initialFilter =
+                queryPlan.filters.find((filter) => filter.columnId === filterPopover.columnId) ??
+                null;
+              const scalarType =
+                queryScalarTypes?.[filterPopover.columnId] ??
+                inferQueryScalarType(summary, filterPopover.columnId);
+              return (
+                <ColumnFilterPopover
+                  columnId={filterPopover.columnId}
+                  columnLabel={filterPopover.columnId}
+                  distinct={distinctValuesForColumn?.(filterPopover.columnId)}
+                  initialFilter={initialFilter}
+                  onApply={(filter) => {
+                    const normalized = {
+                      ...filter,
+                      id: initialFilter?.id ?? `filter:${filterPopover.columnId}`,
+                    };
+                    onQueryPlanChange(upsertFilter(queryPlan, normalized));
+                    closeFilterPopover();
+                  }}
+                  onCancel={() => closeFilterPopover()}
+                  onClear={() => {
+                    if (initialFilter) {
+                      onQueryPlanChange(removeFilter(queryPlan, initialFilter.id));
+                    }
+                    closeFilterPopover();
+                  }}
+                  scalarType={scalarType}
+                />
+              );
+            })()}
           </div>,
           document.body,
         )}

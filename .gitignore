@@ -11,9 +11,30 @@ node_modules
 dist
 dist-ssr
 *.local
-src-tauri/target
+*.tsbuildinfo
+**/target/
 src-tauri/gen
-scripts/phase7-runner/target
+.tmp/
+
+# Playwright local output
+playwright-report/
+test-results/
+blob-report/
+
+# Python caches
+**/__pycache__/
+*.py[cod]
+
+# Generated large fixtures
+fixtures/phase-7/large-csv.csv
+
+# Local UI validation captures and intermediate evidence
+artifacts/bugfix-*/
+artifacts/*-ux/
+artifacts/**/ui/*-pre-final.png
+artifacts/**/ui/*-locked-black.png
+artifacts/**/*-attempt-*
+artifacts/**/*-unsandboxed*
 
 # Editor directories and files
 .vscode/*

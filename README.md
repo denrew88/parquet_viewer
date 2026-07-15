@@ -8,9 +8,11 @@ Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, Rea
 - Data, Schema, Metadata 화면
 - Parquet row group/projection 페이지 조회와 정밀도 보존 값 표시
 - CSV UTF-8/BOM, quoted field, background row count/checkpoint, header mode
+- CSV Auto/All Text/Ask 기본 모드와 다중 컬럼 Parsing Profile, sample preview·전체 검증
 - 행·열 가상화, column 검색·숨김·크기 조절, 전체 값 확인
 - Excel 방식 셀·행·열 선택과 키보드 이동
-- 선택 범위를 TSV로 시스템 clipboard에 복사
+- Excel/TSV/CSV/Custom preset으로 선택 범위를 시스템 clipboard에 복사
+- 전체 파일 대상 typed filter, find/search, distinct 값과 nulls-last stable multi-sort
 
 ## 선택과 복사
 
@@ -41,6 +43,7 @@ Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, Rea
 
 ```powershell
 npm ci
+npm run playwright:install
 npm run tauri dev
 ```
 
@@ -57,12 +60,21 @@ npm run format:check
 npm run lint
 npm run typecheck
 npm test -- --run
+npm run test:e2e
+npm run test:native:build
+npm run test:native:smoke
 npm run build
 
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+Phase 9 제품 10M query 결과와 최종 판정은 다음 문서에 있다.
+
+- `artifacts/phase-9/product-large-test.md`
+- `artifacts/phase-9/50-integration.md`
+- `artifacts/phase-9/90-review.md`
 
 Phase 7 benchmark와 soak:
 
@@ -93,6 +105,7 @@ npm run tauri build
 ## 프로젝트 문서
 
 - `docs/PROJECT_SPEC.md`: 제품·데이터·보안 계약
-- `docs/DEVELOPMENT_PLAN.md`: Phase 0~7 개발 및 테스트 계획
+- `docs/DEVELOPMENT_PLAN.md`: Phase 0~9 개발 및 테스트 계획
 - `docs/UI_VALIDATION.md`: Browser/native UI 검증 계약
+- `docs/PLAYWRIGHT.md`: Playwright 설치, 실행, 테스트 작성 규칙
 - `artifacts/`: 단계별 scope, test plan, 통합 및 review 기록

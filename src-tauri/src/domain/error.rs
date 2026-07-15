@@ -19,6 +19,10 @@ pub enum DataErrorCode {
     StaleSession,
     DuplicateOpenRequest,
     OpenRequestCancelled,
+    SettingsInvalid,
+    QueryNotFound,
+    QueryFailed,
+    QueryTempLimitExceeded,
     Io,
 }
 
@@ -41,10 +45,7 @@ impl DataError {
     pub fn unsupported_format(path: &Path) -> Self {
         Self::new(
             DataErrorCode::UnsupportedFormat,
-            format!(
-                "Only .csv and .parquet files are supported: {}",
-                path.display()
-            ),
+            format!("Unsupported data file format: {}", path.display()),
         )
     }
 
@@ -83,10 +84,7 @@ impl DataError {
     }
 
     pub fn task_cancelled() -> Self {
-        Self::new(
-            DataErrorCode::TaskCancelled,
-            "The CSV indexing task was cancelled.",
-        )
+        Self::new(DataErrorCode::TaskCancelled, "The data task was cancelled.")
     }
 
     pub fn invalid_parquet(path: &Path, reason: impl std::fmt::Display) -> Self {
@@ -98,6 +96,25 @@ impl DataError {
 
     pub fn invalid_request(message: impl Into<String>) -> Self {
         Self::new(DataErrorCode::InvalidRequest, message)
+    }
+
+    pub fn settings_invalid(message: impl Into<String>) -> Self {
+        Self::new(DataErrorCode::SettingsInvalid, message)
+    }
+
+    pub fn query_not_found(query_id: &str) -> Self {
+        Self::new(
+            DataErrorCode::QueryNotFound,
+            format!("Query result not found: {query_id}"),
+        )
+    }
+
+    pub fn query_failed(message: impl Into<String>) -> Self {
+        Self::new(DataErrorCode::QueryFailed, message)
+    }
+
+    pub fn query_temp_limit(message: impl Into<String>) -> Self {
+        Self::new(DataErrorCode::QueryTempLimitExceeded, message)
     }
 
     pub fn too_many_open_documents(limit: usize, open: usize, reserved: usize) -> Self {

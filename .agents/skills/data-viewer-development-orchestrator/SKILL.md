@@ -12,7 +12,7 @@ description: >-
 
 ## 목적
 
-이 Skill은 `docs/DEVELOPMENT_PLAN.md`의 Phase 0~8을 전문 Agent에게 분배하고, 구현 전
+이 Skill은 `docs/DEVELOPMENT_PLAN.md`의 Phase 0~9를 전문 Agent에게 분배하고, 구현 전
 테스트 설계와 구현 후 독립 검증을 연결하며, 파일 충돌을 막는다. Orchestrator는 모든
 코드를 직접 작성하는 역할이 아니라 계약, 순서, 소유권, 통합, 완료 판정을 관리하는 실행
 입구다.
@@ -23,6 +23,7 @@ description: >-
 - `AGENTS.md`
 - `docs/PROJECT_SPEC.md`
 - `docs/DEVELOPMENT_PLAN.md`
+- `docs/AI_WORK_POLICY.md`
 - UI 변경이면 `docs/UI_VALIDATION.md`
 - 현재 작업 트리와 기존 변경
 - 현재 Phase의 기존 `artifacts/phase-N/` 기록
@@ -63,11 +64,17 @@ description: >-
 | 5 가상화 그리드 | `grid_ux_engineer` | `rust_data_engineer` | `quality_gate_reviewer` |
 | 6 선택·클립보드 | `grid_ux_engineer` | `rust_data_engineer`, `tauri_platform_engineer` | `quality_gate_reviewer` |
 | 7 안정화·배포 | `tauri_platform_engineer` | `rust_data_engineer`, `grid_ux_engineer` | `quality_gate_reviewer` |
+| 8 컨텍스트·다중 문서 | `tauri_platform_engineer` | `grid_ux_engineer`, `rust_data_engineer` | `quality_gate_reviewer` |
+| 9 포맷·CSV profile·query | `rust_data_engineer` | `grid_ux_engineer`, `tauri_platform_engineer` | `quality_gate_reviewer` |
 
 Phase 0의 최초 scaffold, 공통 DTO 변경, manifest 변경은 병렬화하지 않는다. 먼저 단일
 소유자가 공유 기반을 고정한 뒤 각 Agent가 분리된 경로에서 작업한다.
 
 ## 실행 절차
+
+실행과 보고의 상세 효율 규칙은 `docs/AI_WORK_POLICY.md`를 따른다. 관련 테스트로 구현을
+수렴시킨 뒤 전체 suite, release build, GUI 증거를 마지막에 각각 한 번 수행한다. 다만 보안,
+데이터 무결성, identity 경쟁, 공통 계약 결함은 필요한 추가 검증을 생략하지 않는다.
 
 1. 현재 Phase와 사용자의 요청이 일치하는지 확인한다.
 2. 작업 트리와 기존 변경을 확인하고 되돌리면 안 되는 사용자 작업을 표시한다.

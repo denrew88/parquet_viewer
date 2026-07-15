@@ -60,6 +60,28 @@ def find_window(process_id: int, timeout: float) -> tuple[int, str]:
     raise TimeoutError(f"No visible window found for process {process_id}")
 
 
+def press_key(name: str) -> None:
+    keys = {
+        "DOWN": 0x28,
+        "END": 0x23,
+        "ENTER": 0x0D,
+        "ESCAPE": 0x1B,
+        "HOME": 0x24,
+        "TAB": 0x09,
+        "UP": 0x26,
+    }
+    key = keys.get(name.upper())
+    if key is None:
+        if len(name) != 1:
+            raise ValueError(f"Unsupported key: {name}")
+        encoded = user32.VkKeyScanW(name)
+        if encoded == -1:
+            raise ValueError(f"Unsupported key: {name}")
+        key = encoded & 0xFF
+    user32.keybd_event(key, 0, 0, 0)
+    user32.keybd_event(key, 0, 0x0002, 0)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("process_id", type=int, nargs="?")
@@ -71,6 +93,16 @@ def main() -> None:
     parser.add_argument("--width", type=int)
     parser.add_argument("--height", type=int)
     parser.add_argument("--right-click", type=int, nargs=2, metavar=("X", "Y"))
+    parser.add_argument(
+        "--left-click", type=int, nargs=2, action="append", default=[], metavar=("X", "Y")
+    )
+    parser.add_argument("--hover", type=int, nargs=2, metavar=("X", "Y"))
+    parser.add_argument(
+        "--action",
+        action="append",
+        default=[],
+        help="Ordered click:X:Y, hover:X:Y, key:NAME, or wait:SECONDS action",
+    )
     parser.add_argument("--click-after-right-click", type=int, nargs=2, metavar=("X", "Y"))
     parser.add_argument("--print-clipboard", action="store_true")
     parser.add_argument("--settle-seconds", type=float, default=2.0)
@@ -120,6 +152,31 @@ def main() -> None:
         if not user32.GetWindowRect(handle, ctypes.byref(rect)):
             raise ctypes.WinError()
 
+        for x, y in args.left_click:
+            user32.SetCursorPos(rect.left + x, rect.top + y)
+            user32.mouse_event(0x0002, 0, 0, 0, 0)
+            user32.mouse_event(0x0004, 0, 0, 0, 0)
+            time.sleep(1)
+
+        for action in args.action:
+            kind, _, payload = action.partition(":")
+            if kind in {"click", "hover"}:
+                x_text, separator, y_text = payload.partition(":")
+                if not separator:
+                    parser.error(f"invalid {kind} action: {action}")
+                user32.SetCursorPos(rect.left + int(x_text), rect.top + int(y_text))
+                if kind == "click":
+                    user32.mouse_event(0x0002, 0, 0, 0, 0)
+                    user32.mouse_event(0x0004, 0, 0, 0, 0)
+                time.sleep(1)
+            elif kind == "key":
+                press_key(payload)
+                time.sleep(0.5)
+            elif kind == "wait":
+                time.sleep(float(payload))
+            else:
+                parser.error(f"invalid action: {action}")
+
         if args.right_click is not None:
             x, y = args.right_click
             user32.SetCursorPos(rect.left + x, rect.top + y)
@@ -132,6 +189,10 @@ def main() -> None:
                 user32.mouse_event(0x0002, 0, 0, 0, 0)
                 user32.mouse_event(0x0004, 0, 0, 0, 0)
                 time.sleep(1)
+        elif args.hover is not None:
+            x, y = args.hover
+            user32.SetCursorPos(rect.left + x, rect.top + y)
+            time.sleep(2)
         else:
             user32.SetCursorPos(rect.right - 12, rect.top + 12)
             time.sleep(2)

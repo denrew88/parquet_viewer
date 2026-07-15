@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-07-15",
+  "status": "PASS",
+  "playwright": {
+    "status": "PASS",
+    "tests": 24,
+    "viewports": [
+      { "width": 1440, "height": 900, "file": "browser-wide.png" },
+      { "width": 1024, "height": 768, "file": "browser-compact.png" },
+      { "width": 800, "height": 600, "file": "browser-minimum.png" }
+    ],
+    "assertions": [
+      "body horizontal overflow is zero",
+      "primary toolbars and status bar remain inside the viewport",
+      "CSV profile, copy settings, app settings, and filter popover stay inside the viewport",
+      "visible dialog controls stay inside their container"
+    ]
+  },
+  "native": {
+    "status": "PASS",
+    "finalRelease": "final-release.png",
+    "remoteDebuggingEnabled": false
+  },
+  "blocked": ["Windows 150% DPI"]
+}

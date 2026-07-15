@@ -1,0 +1,18 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "Data Viewer (Playwright)",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 800,
+        "minHeight": 600,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9333",
+        "dataDirectory": "playwright-cdp"
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

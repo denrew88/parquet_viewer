@@ -1,0 +1,1305 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase9-large-bench-v1",
+  "startedAtUtc": "2026-07-15T02:27:22.725585+00:00",
+  "status": "PASS",
+  "manifest": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\phase-9\\large-fixtures-manifest.json",
+  "manifestSha256": "02eabd2aaf558b3f7bcf2f40b406db562e1814319254270afa535ce1ec02310f",
+  "engine": "duckdb-python",
+  "engineVersion": "1.5.4",
+  "runnerCommandTemplate": null,
+  "configuration": {
+    "warmups": 3,
+    "runs": 10,
+    "pageSize": 200,
+    "randomOffsetSeed": 20260715,
+    "cancelAfterSeconds": 0.25,
+    "deleteFixturesAfterRun": true
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "python": "3.11.14",
+    "logicalCpuCount": 8,
+    "physicalCpuCount": 4,
+    "totalMemoryBytes": 16837525504,
+    "freeDiskBytesBefore": 176090415104
+  },
+  "fixtureVerification": [
+    {
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-low-10m-40c.parquet",
+      "expectedBytes": 15502401,
+      "actualBytes": 15502401,
+      "expectedSha256": "2cd3a04b476377039fcabaca77e4d7872ab5603e54a34b43f50b9070908d4eb1",
+      "actualSha256": "2cd3a04b476377039fcabaca77e4d7872ab5603e54a34b43f50b9070908d4eb1",
+      "schemaFingerprintSha256": "3c83af5d9edb409bee2835825f97cc7f17b7026011e38ee58b8bc4ba8e2bea1e",
+      "cardinalitySampleChecksumSha256": "7eadd746749375f57db2bf872cd36c65e12000e524b9743f701edaa13452a1af",
+      "result": "PASS"
+    },
+    {
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-high-10m-40c.parquet",
+      "expectedBytes": 2561128881,
+      "actualBytes": 2561128881,
+      "expectedSha256": "37cb4b1b5264b537985251baec3e618ecb93acf5fb92814b503a1517e8b005ca",
+      "actualSha256": "37cb4b1b5264b537985251baec3e618ecb93acf5fb92814b503a1517e8b005ca",
+      "schemaFingerprintSha256": "3c83af5d9edb409bee2835825f97cc7f17b7026011e38ee58b8bc4ba8e2bea1e",
+      "cardinalitySampleChecksumSha256": "7dced0235f3c90085b3851fbda0ae4fb5136342ee05276c9e1b014a996542a64",
+      "result": "PASS"
+    }
+  ],
+  "benchmarks": [
+    {
+      "fixtureId": "query-low-10000000-rows-40-columns",
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-low-10m-40c.parquet",
+      "profile": "full40",
+      "cardinality": "low",
+      "rows": 10000000,
+      "columns": 40,
+      "randomOffsets": [
+        2017331,
+        3927294,
+        1199707,
+        3406841,
+        3079924,
+        3648508,
+        5705449,
+        4047457,
+        7683816,
+        585910
+      ],
+      "operations": {
+        "first_result": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 662.556,
+            "medianMs": 714.906,
+            "p95Ms": 1524.592,
+            "maximumMs": 1524.592
+          },
+          "peakRssBytes": 116375552,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 673.9143999293447,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1038.773300126195,
+              "peakRssBytes": 116375552,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 979.9568001180887,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1462.1823001652956,
+              "peakRssBytes": 113618944,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 936.0465998761356,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1440.8040000125766,
+              "peakRssBytes": 110325760,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 736.1174998804927,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1184.0603002347052,
+              "peakRssBytes": 105451520,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 665.0183000601828,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1031.4831999130547,
+              "peakRssBytes": 105451520,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 662.5557001680136,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1022.0369999296963,
+              "peakRssBytes": 106962944,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 688.7368997558951,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1069.3014999851584,
+              "peakRssBytes": 113672192,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1524.5916000567377,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 2123.632499948144,
+              "peakRssBytes": 110411776,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 814.9776998907328,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1416.528900153935,
+              "peakRssBytes": 107204608,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 693.6953999102116,
+              "rows": 200,
+              "checksumSha256": "deb666427a74d6c50db15c1961de6677624879f96ca2ff641cfb99cbe15f6828",
+              "processDurationMs": 1067.8123999387026,
+              "peakRssBytes": 112852992,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "random_page": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 635.836,
+            "medianMs": 647.23,
+            "p95Ms": 808.13,
+            "maximumMs": 808.13
+          },
+          "peakRssBytes": 109719552,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "197d4db4b1bb40650d6eb4e3edfbb0f369222c910b39344c506431398f3e1341",
+            "472c6a7e37eda6b801a98cca9a5dc4f9d78bd2a48ccefe171445d1a9e7a7cfc5",
+            "542153e2257bf80ea587b6beb2dbf1e5a1bcf0bf3562f2b5bebba2a6ff2e44f0",
+            "54db1f426612216520aca63365264eec97429192771c4b5c81f3e36593c9a3ea",
+            "5b60a86649bc67e831b5f7c96e00aa17ea3ef61561940d636335b0a65908a0bb",
+            "b0f3f1dd052b6f4e5491fe185d1c5917fb0ddcf59a9507d4839103500c805dfa",
+            "c1d26e29b55b67afb3b2db3fbcc224ab6335c378103cba353e518ab77d1a7950",
+            "dfca48ff11ac92472cfcd9dc781c33f8609bf65feb5e9e073349aa7fda4e5027",
+            "e611bf9814ced6428ea1cfe72f266df42628e156d5c1267f0c9d242d14805e95",
+            "f065a085a71554fd764c00530133e57b7c0f008a2ff7685a88ad32eb5e65dd3d"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 808.1304002553225,
+              "offset": 2017331,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "c1d26e29b55b67afb3b2db3fbcc224ab6335c378103cba353e518ab77d1a7950",
+              "processDurationMs": 1275.8432999253273,
+              "peakRssBytes": 105963520,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 653.3444002270699,
+              "offset": 3927294,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "542153e2257bf80ea587b6beb2dbf1e5a1bcf0bf3562f2b5bebba2a6ff2e44f0",
+              "processDurationMs": 1031.496699899435,
+              "peakRssBytes": 102375424,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 641.5919000282884,
+              "offset": 1199707,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "b0f3f1dd052b6f4e5491fe185d1c5917fb0ddcf59a9507d4839103500c805dfa",
+              "processDurationMs": 1007.1832002140582,
+              "peakRssBytes": 102940672,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 643.7651999294758,
+              "offset": 3406841,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "5b60a86649bc67e831b5f7c96e00aa17ea3ef61561940d636335b0a65908a0bb",
+              "processDurationMs": 994.5959001779556,
+              "peakRssBytes": 107245568,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 635.8357002027333,
+              "offset": 3079924,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "197d4db4b1bb40650d6eb4e3edfbb0f369222c910b39344c506431398f3e1341",
+              "processDurationMs": 994.3745001219213,
+              "peakRssBytes": 102387712,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 642.692900262773,
+              "offset": 3648508,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "e611bf9814ced6428ea1cfe72f266df42628e156d5c1267f0c9d242d14805e95",
+              "processDurationMs": 997.2284999676049,
+              "peakRssBytes": 102731776,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 666.8592998757958,
+              "offset": 5705449,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "472c6a7e37eda6b801a98cca9a5dc4f9d78bd2a48ccefe171445d1a9e7a7cfc5",
+              "processDurationMs": 1032.596199773252,
+              "peakRssBytes": 109719552,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 645.1480002142489,
+              "offset": 4047457,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "f065a085a71554fd764c00530133e57b7c0f008a2ff7685a88ad32eb5e65dd3d",
+              "processDurationMs": 1005.1070996560156,
+              "peakRssBytes": 106332160,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 692.7153002470732,
+              "offset": 7683816,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "dfca48ff11ac92472cfcd9dc781c33f8609bf65feb5e9e073349aa7fda4e5027",
+              "processDurationMs": 1068.1131002493203,
+              "peakRssBytes": 102899712,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 649.3118996731937,
+              "offset": 585910,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "54db1f426612216520aca63365264eec97429192771c4b5c81f3e36593c9a3ea",
+              "processDurationMs": 993.2438000105321,
+              "peakRssBytes": 107548672,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "simple_filter": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 577.54,
+            "medianMs": 593.315,
+            "p95Ms": 986.826,
+            "maximumMs": 986.826
+          },
+          "peakRssBytes": 108429312,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 659.8950000479817,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 1031.6428001970053,
+              "peakRssBytes": 103235584,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 595.3544001094997,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 929.8355001956224,
+              "peakRssBytes": 106082304,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 591.2752998992801,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 928.4879001788795,
+              "peakRssBytes": 102215680,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 584.8898999392986,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 926.271699834615,
+              "peakRssBytes": 102301696,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 581.033400259912,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 890.5388000421226,
+              "peakRssBytes": 103591936,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 577.5402002036572,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 896.1320999078453,
+              "peakRssBytes": 102137856,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 584.7555003128946,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 896.089400164783,
+              "peakRssBytes": 103858176,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 670.0677000917494,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 1006.5486002713442,
+              "peakRssBytes": 103649280,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 986.8255998007953,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 1436.8240996263921,
+              "peakRssBytes": 106418176,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 890.7751999795437,
+              "rows": 200,
+              "checksumSha256": "d47562f618f3a0ee0df50d2f962867a779d46e7487f5988ac976e4c9d0b2a595",
+              "processDurationMs": 1376.069700345397,
+              "peakRssBytes": 108429312,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "stable_sort": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 859.042,
+            "medianMs": 879.493,
+            "p95Ms": 1142.449,
+            "maximumMs": 1142.449
+          },
+          "peakRssBytes": 125829120,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 898.527099750936,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1287.3015999794006,
+              "peakRssBytes": 125460480,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 877.5078998878598,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1282.7252000570297,
+              "peakRssBytes": 124891136,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 859.8405001685023,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1264.4027997739613,
+              "peakRssBytes": 124035072,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 866.8416002765298,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1259.2989997938275,
+              "peakRssBytes": 123703296,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 881.4775999635458,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1292.1853000298142,
+              "peakRssBytes": 125829120,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1142.448699567467,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1639.3506997264922,
+              "peakRssBytes": 124329984,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 928.349900059402,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1326.5561000443995,
+              "peakRssBytes": 124076032,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 901.5228999778628,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1293.7964000739157,
+              "peakRssBytes": 124030976,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 860.5884998105466,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1247.1449999138713,
+              "peakRssBytes": 124641280,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 859.042199794203,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "ad905782023b40600ac2c4c62ed2cc751654ee78ae017ef5145b80f89cae98c9",
+              "processDurationMs": 1230.864300392568,
+              "peakRssBytes": 124899328,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "cancel": {
+          "warmups": 0,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 21.344,
+            "medianMs": 21.793,
+            "p95Ms": 22.38,
+            "maximumMs": 22.38
+          },
+          "peakRssBytes": 75997184,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [],
+          "samples": [
+            {
+              "elapsedMs": 579.4488000683486,
+              "cancelLatencyMs": 22.05380005761981,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 579.4488000683486,
+              "peakRssBytes": 75534336,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 544.0993001684546,
+              "cancelLatencyMs": 22.380399983376265,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 544.0993001684546,
+              "peakRssBytes": 75026432,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 539.1441998071969,
+              "cancelLatencyMs": 21.768399979919195,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 539.1441998071969,
+              "peakRssBytes": 75321344,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 545.4159001819789,
+              "cancelLatencyMs": 21.71160001307726,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 545.4159001819789,
+              "peakRssBytes": 75538432,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 542.370299808681,
+              "cancelLatencyMs": 21.344299893826246,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 542.370299808681,
+              "peakRssBytes": 75997184,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 550.0392997637391,
+              "cancelLatencyMs": 21.8561002984643,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 550.0392997637391,
+              "peakRssBytes": 75395072,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 542.788699734956,
+              "cancelLatencyMs": 21.444700192660093,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 542.788699734956,
+              "peakRssBytes": 65994752,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 669.3120999261737,
+              "cancelLatencyMs": 22.21499988809228,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 669.3120999261737,
+              "peakRssBytes": 67829760,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 623.8282001577318,
+              "cancelLatencyMs": 21.818400360643864,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 623.8282001577318,
+              "peakRssBytes": 74584064,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 555.4804997518659,
+              "cancelLatencyMs": 21.73779997974634,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 555.4804997518659,
+              "peakRssBytes": 74588160,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        }
+      },
+      "peakRssBytes": 125829120,
+      "tempPeakBytes": 0,
+      "gates": {
+        "PERF-004-filter-first-result-under-10s": "PASS",
+        "PERF-004-random-page-p95-under-1s": "PASS",
+        "PERF-005-stable-sort-under-120s": "PASS",
+        "PERF-006-peak-rss-under-1.5GiB": "PASS",
+        "PERF-007-temp-under-10GiB": "PASS",
+        "PERF-007-temp-cleanup": "PASS",
+        "PERF-008-cancel-p95-under-2s": "PASS",
+        "PERF-008-cancel-observed": "PASS",
+        "PERF-010-fixture-checksum": "PASS"
+      },
+      "result": "PASS"
+    },
+    {
+      "fixtureId": "query-high-10000000-rows-40-columns",
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-high-10m-40c.parquet",
+      "profile": "full40",
+      "cardinality": "high",
+      "rows": 10000000,
+      "columns": 40,
+      "randomOffsets": [
+        4858880,
+        2489717,
+        1911266,
+        5126166,
+        4514855,
+        2125737,
+        7059006,
+        4805804,
+        2115164,
+        5410959
+      ],
+      "operations": {
+        "first_result": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 581.668,
+            "medianMs": 666.265,
+            "p95Ms": 1041.921,
+            "maximumMs": 1041.921
+          },
+          "peakRssBytes": 120586240,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 899.0080002695322,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1325.8346999064088,
+              "peakRssBytes": 120586240,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1041.92139999941,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1539.0792000107467,
+              "peakRssBytes": 118554624,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 654.5094000175595,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1025.8925999514759,
+              "peakRssBytes": 111218688,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 644.8026997968554,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1014.6651002578437,
+              "peakRssBytes": 117379072,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 705.9014001861215,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1125.3383001312613,
+              "peakRssBytes": 119234560,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 581.6681999713182,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 917.7786000072956,
+              "peakRssBytes": 106024960,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 678.0205997638404,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1031.2624997459352,
+              "peakRssBytes": 116408320,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 701.7219997942448,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 1075.456999707967,
+              "peakRssBytes": 114667520,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 591.871699783951,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 917.2897003591061,
+              "peakRssBytes": 112386048,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 598.7519002519548,
+              "rows": 200,
+              "checksumSha256": "20dcdc6b0d72c4f32cbb1ba63cb065914a23a219492d42072a65ffb5f7909c5a",
+              "processDurationMs": 923.7027997151017,
+              "peakRssBytes": 114515968,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "random_page": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 579.238,
+            "medianMs": 642.701,
+            "p95Ms": 803.827,
+            "maximumMs": 803.827
+          },
+          "peakRssBytes": 114278400,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "02a1ae25177ab12fd3a174afb5ec436d940cb1ef4c598ab25e1f673b7be5267a",
+            "22cdb5dd84e11e3dba0e9ef302712eeda9d306560808cc6261dec69227294a7e",
+            "6a719e5be69e51922fdc4a7177acbadcbebaeb5bd2c1dc998a6285132a23d5ea",
+            "6edb4036d5daeffb119922a66c8a7dd905d40ae9fcd94986b3124447a00e2ec2",
+            "86bbdf29d47da160cb7fa87d05cf2ae887ddc64140845039f707560b531afc21",
+            "8bf4b16649aada44f405215beac9b8f3ab644988fc49fd1739784d332c680a29",
+            "8d95d5952ba026ce2afcefb7db1d60667bbbaf8f0c1fecb1744b817ad358bcc6",
+            "b0044174caf98e2afe09eb834fe693da764c86ea905a64ece15ea1f36574fca1",
+            "d64eb0083ded576c2c4ebc17ed29ce4834a6d2d8937858a22004c7b425bf7ed6",
+            "fd3998597f754509c6afbbb4b8d116beaf6334ee5ed7198051e5d6f8091df6fa"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 720.9871998056769,
+              "offset": 4858880,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "02a1ae25177ab12fd3a174afb5ec436d940cb1ef4c598ab25e1f673b7be5267a",
+              "processDurationMs": 1261.700099799782,
+              "peakRssBytes": 106172416,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 636.0213002189994,
+              "offset": 2489717,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "6edb4036d5daeffb119922a66c8a7dd905d40ae9fcd94986b3124447a00e2ec2",
+              "processDurationMs": 995.6996003165841,
+              "peakRssBytes": 104710144,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 579.2376999743283,
+              "offset": 1911266,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "8bf4b16649aada44f405215beac9b8f3ab644988fc49fd1739784d332c680a29",
+              "processDurationMs": 919.9509997852147,
+              "peakRssBytes": 110505984,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 596.7394998297095,
+              "offset": 5126166,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "d64eb0083ded576c2c4ebc17ed29ce4834a6d2d8937858a22004c7b425bf7ed6",
+              "processDurationMs": 902.2907000035048,
+              "peakRssBytes": 102608896,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 702.71490002051,
+              "offset": 4514855,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "b0044174caf98e2afe09eb834fe693da764c86ea905a64ece15ea1f36574fca1",
+              "processDurationMs": 1037.1032003313303,
+              "peakRssBytes": 106520576,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 732.3439000174403,
+              "offset": 2125737,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "fd3998597f754509c6afbbb4b8d116beaf6334ee5ed7198051e5d6f8091df6fa",
+              "processDurationMs": 1112.323799636215,
+              "peakRssBytes": 114278400,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 803.8273002021015,
+              "offset": 7059006,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "8d95d5952ba026ce2afcefb7db1d60667bbbaf8f0c1fecb1744b817ad358bcc6",
+              "processDurationMs": 1268.8167998567224,
+              "peakRssBytes": 107253760,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 604.6116999350488,
+              "offset": 4805804,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "86bbdf29d47da160cb7fa87d05cf2ae887ddc64140845039f707560b531afc21",
+              "processDurationMs": 938.1036004051566,
+              "peakRssBytes": 107634688,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 649.3804003112018,
+              "offset": 2115164,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "22cdb5dd84e11e3dba0e9ef302712eeda9d306560808cc6261dec69227294a7e",
+              "processDurationMs": 1050.9346998296678,
+              "peakRssBytes": 102637568,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 620.5925000831485,
+              "offset": 5410959,
+              "pageAccess": "row_id range predicate with Parquet row-group statistics",
+              "rows": 200,
+              "checksumSha256": "6a719e5be69e51922fdc4a7177acbadcbebaeb5bd2c1dc998a6285132a23d5ea",
+              "processDurationMs": 960.7116002589464,
+              "peakRssBytes": 106348544,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "simple_filter": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 578.63,
+            "medianMs": 591.761,
+            "p95Ms": 1038.094,
+            "maximumMs": 1038.094
+          },
+          "peakRssBytes": 120287232,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 602.7076002210379,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 920.2200998552144,
+              "peakRssBytes": 103620608,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 590.1132998988032,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 901.9349003210664,
+              "peakRssBytes": 106008576,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 590.29610035941,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 899.7142999432981,
+              "peakRssBytes": 108949504,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 583.7694997899234,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 895.4479000531137,
+              "peakRssBytes": 107851776,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 587.7545000985265,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 898.7284996546805,
+              "peakRssBytes": 105107456,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 593.2260002009571,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 933.1431002356112,
+              "peakRssBytes": 105857024,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 578.629800118506,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 921.7976997606456,
+              "peakRssBytes": 102543360,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 618.1493997573853,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 936.416800133884,
+              "peakRssBytes": 108756992,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 723.9306000992656,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 1085.6952001340687,
+              "peakRssBytes": 120287232,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1038.0937000736594,
+              "rows": 200,
+              "checksumSha256": "2fe46089c16721cac5595ecf1dacd1702990221e51946f25a54c15f41d24a5b8",
+              "processDurationMs": 1543.645199853927,
+              "peakRssBytes": 118288384,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "stable_sort": {
+          "warmups": 3,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 1184.437,
+            "medianMs": 1224.36,
+            "p95Ms": 1739.092,
+            "maximumMs": 1739.092
+          },
+          "peakRssBytes": 143040512,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [
+            "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6"
+          ],
+          "samples": [
+            {
+              "elapsedMs": 1234.831599984318,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1645.447500050068,
+              "peakRssBytes": 139935744,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1282.162900082767,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1736.9069000706077,
+              "peakRssBytes": 138911744,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1616.103700362146,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 2091.5109999477863,
+              "peakRssBytes": 143040512,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1739.0920999459922,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 2369.879999663681,
+              "peakRssBytes": 140406784,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1213.8890996575356,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1663.2217997685075,
+              "peakRssBytes": 139771904,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1193.3623999357224,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1597.236800007522,
+              "peakRssBytes": 140787712,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1209.7963001579046,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1603.0627000145614,
+              "peakRssBytes": 138600448,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1212.4629998579621,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1652.187299914658,
+              "peakRssBytes": 138608640,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1184.436600189656,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 1585.5901003815234,
+              "peakRssBytes": 138690560,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 1566.8891002424061,
+              "rows": 200,
+              "stableTieBreaker": "row_id ASC",
+              "checksumSha256": "9a74b0c46cd3777a04fcba9307d15d3e1465b997cb63a6d44b9596d59ddc3ed6",
+              "processDurationMs": 2008.5972002707422,
+              "peakRssBytes": 139157504,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        },
+        "cancel": {
+          "warmups": 0,
+          "runs": 10,
+          "summary": {
+            "minimumMs": 21.549,
+            "medianMs": 21.71,
+            "p95Ms": 21.955,
+            "maximumMs": 21.955
+          },
+          "peakRssBytes": 76754944,
+          "tempPeakBytes": 0,
+          "allCleanupSucceeded": true,
+          "checksums": [],
+          "samples": [
+            {
+              "elapsedMs": 593.369800131768,
+              "cancelLatencyMs": 21.853700280189514,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 593.369800131768,
+              "peakRssBytes": 72572928,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 546.9186999835074,
+              "cancelLatencyMs": 21.54890028759837,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 546.9186999835074,
+              "peakRssBytes": 72986624,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 548.9841001108289,
+              "cancelLatencyMs": 21.700100041925907,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 548.9841001108289,
+              "peakRssBytes": 75227136,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 551.0673997923732,
+              "cancelLatencyMs": 21.595900412648916,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 551.0673997923732,
+              "peakRssBytes": 75243520,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 548.8168001174927,
+              "cancelLatencyMs": 21.72029996290803,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 548.8168001174927,
+              "peakRssBytes": 76324864,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 541.9529997743666,
+              "cancelLatencyMs": 21.95489965379238,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 541.9529997743666,
+              "peakRssBytes": 75681792,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 546.728600282222,
+              "cancelLatencyMs": 21.784100215882063,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 546.728600282222,
+              "peakRssBytes": 75272192,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 547.4576000124216,
+              "cancelLatencyMs": 21.57970005646348,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 547.4576000124216,
+              "peakRssBytes": 76144640,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 539.9482999928296,
+              "cancelLatencyMs": 21.67689986526966,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 539.9482999928296,
+              "peakRssBytes": 76271616,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            },
+            {
+              "elapsedMs": 544.4052997045219,
+              "cancelLatencyMs": 21.770700346678495,
+              "completedBeforeCancel": false,
+              "cancellationMode": "isolated-worker-process-termination",
+              "processDurationMs": 544.4052997045219,
+              "peakRssBytes": 76754944,
+              "tempPeakBytes": 0,
+              "cleanupSucceeded": true
+            }
+          ]
+        }
+      },
+      "peakRssBytes": 143040512,
+      "tempPeakBytes": 0,
+      "gates": {
+        "PERF-004-filter-first-result-under-10s": "PASS",
+        "PERF-004-random-page-p95-under-1s": "PASS",
+        "PERF-005-stable-sort-under-120s": "PASS",
+        "PERF-006-peak-rss-under-1.5GiB": "PASS",
+        "PERF-007-temp-under-10GiB": "PASS",
+        "PERF-007-temp-cleanup": "PASS",
+        "PERF-008-cancel-p95-under-2s": "PASS",
+        "PERF-008-cancel-observed": "PASS",
+        "PERF-010-fixture-checksum": "PASS"
+      },
+      "result": "PASS"
+    }
+  ],
+  "deletedFixtures": [
+    "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-low-10m-40c.parquet",
+    "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\logs\\phase9-large\\query-high-10m-40c.parquet"
+  ],
+  "tempRootCleanupSucceeded": true,
+  "finishedAtUtc": "2026-07-15T02:29:43.272232+00:00",
+  "freeDiskBytesAfter": 178666455040
+}
