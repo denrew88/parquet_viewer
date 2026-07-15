@@ -25,8 +25,8 @@ blob-report/
 **/__pycache__/
 *.py[cod]
 
-# Generated large fixtures
-fixtures/phase-7/large-csv.csv
+# Generated fixtures
+fixtures/
 
 # Local UI validation captures and intermediate evidence
 artifacts/bugfix-*/

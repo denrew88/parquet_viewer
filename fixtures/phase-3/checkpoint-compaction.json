@@ -1,6 +1,0 @@
-{
-  "checkpointInterval": 4096,
-  "maxCheckpoints": 4096,
-  "syntheticCandidates": 16384,
-  "expectedCompaction": true
-}
