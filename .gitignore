@@ -12,7 +12,10 @@ dist
 dist-ssr
 *.local
 *.tsbuildinfo
-**/target/
+**/target/*
+!src-tauri/target/release/
+src-tauri/target/release/*
+!src-tauri/target/release/data-viewer.exe
 src-tauri/gen
 .tmp/
 
@@ -26,7 +29,9 @@ blob-report/
 *.py[cod]
 
 # Generated fixtures
-fixtures/
+fixtures/*
+!fixtures/phase-10/
+!fixtures/phase-10/**
 
 # Local UI validation captures and intermediate evidence
 artifacts/bugfix-*/

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DataPage, DataValue, FileSummary, ReadPageRequest } from "./backend";
@@ -9,6 +9,7 @@ import {
   GRID_ROW_OVERSCAN,
   VirtualDataGrid,
 } from "./VirtualDataGrid";
+import { GRID_PAGE_COLUMN_LIMIT, orderedProjectionForWindow } from "./gridProjection";
 import { COPY_PRESETS } from "./copy/presets";
 import { EMPTY_QUERY_PLAN, type QueryPlan } from "./query/model";
 import type { DistinctValuesState } from "./query/ColumnFilterPopover";
@@ -28,6 +29,29 @@ function makePage(offset = 0): DataPage {
         (_, column) =>
           ({ kind: "string", display: `R${offset + rowOffset}C${column}` }) as DataValue,
       ),
+    ),
+  };
+}
+
+const oesColumns = ["time", ...Array.from({ length: 64 }, (_, index) => String(400 + index))];
+const oesInitialColumns = oesColumns.slice(0, GRID_PAGE_COLUMN_LIMIT);
+
+function makeOesPage(
+  offset = 0,
+  projectedColumns: readonly string[] = oesInitialColumns,
+): DataPage {
+  return {
+    sessionId: "oes-wide-session",
+    offset,
+    limit: 200,
+    totalRows: 400,
+    hasMore: offset + 200 < 400,
+    columns: [...projectedColumns],
+    rows: Array.from({ length: 200 }, (_, rowOffset) =>
+      projectedColumns.map((column) => ({
+        kind: "int",
+        display: `${offset + rowOffset}:${oesColumns.indexOf(column)}`,
+      })),
     ),
   };
 }
@@ -66,6 +90,28 @@ const summary: FileSummary = {
     },
   ],
   csvMetadata: null,
+};
+
+const oesSummary: FileSummary = {
+  ...summary,
+  sessionId: "oes-wide-session",
+  fileName: "wide.oes.h5",
+  path: "C:\\fixtures\\wide.oes.h5",
+  format: "oesHdf5",
+  formatDescriptor: {
+    id: "oesHdf5",
+    displayName: "OES HDF5",
+    extensions: ["h5", "hdf5"],
+    mimeTypes: ["application/x-hdf5"],
+    capabilities: ["typedSchema", "columnProjection"],
+  },
+  columnCount: oesColumns.length,
+  columns: oesColumns.map((name, index) => ({
+    name,
+    logicalType: index === 0 ? "Int64" : "Int32",
+    physicalType: index === 0 ? "HDF5 int64 attribute" : "HDF5 int32",
+    nullable: false,
+  })),
 };
 
 const queryColumns = columns.slice(0, 4);
@@ -144,6 +190,99 @@ function QueryGridHarness({
 }
 
 describe("VirtualDataGrid", () => {
+  it("builds a bounded ordered projection that reaches the final logical column", () => {
+    expect(orderedProjectionForWindow(oesColumns, [0, 1, 2], oesInitialColumns)).toEqual(
+      oesInitialColumns,
+    );
+    expect(orderedProjectionForWindow(oesColumns, [62, 63, 64], oesInitialColumns)).toEqual(
+      oesColumns.slice(1),
+    );
+    const sparseProjection = orderedProjectionForWindow(oesColumns, [0, 64], oesInitialColumns);
+    expect(sparseProjection).toHaveLength(GRID_PAGE_COLUMN_LIMIT);
+    expect(sparseProjection).toContain("time");
+    expect(sparseProjection).toContain("463");
+  });
+
+  it("uses the summary schema for OES selection and requests the final wavelength projection", async () => {
+    const readPage = vi.fn(async (request: ReadPageRequest) =>
+      makeOesPage(request.offset, request.columns),
+    );
+    const writeClipboardText = vi.fn(async () => undefined);
+    render(
+      <StrictMode>
+        <div style={{ width: 1024, height: 600 }}>
+          <VirtualDataGrid
+            isLoading={false}
+            onPageChange={vi.fn()}
+            onReadError={vi.fn()}
+            page={makeOesPage()}
+            readPage={readPage}
+            summary={oesSummary}
+            writeClipboardText={writeClipboardText}
+          />
+        </div>
+      </StrictMode>,
+    );
+
+    expect(screen.getByText("65 / 65 columns")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox", { name: "Search data" })).not.toBeInTheDocument();
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    grid.scrollLeft = 20_000;
+    fireEvent.scroll(grid);
+    fireEvent.keyDown(grid, { key: "End" });
+
+    await waitFor(() =>
+      expect(readPage).toHaveBeenCalledWith({
+        sessionId: oesSummary.sessionId,
+        offset: 0,
+        limit: 200,
+        columns: oesColumns.slice(1),
+      }),
+    );
+    expect(grid).toHaveAttribute("data-active-column", "64");
+    fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
+    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith("0:64"));
+  });
+
+  it("discards a late horizontal projection instead of caching it for the active window", async () => {
+    let releaseLate: ((page: DataPage) => void) | undefined;
+    const readPage = vi.fn(
+      (request: ReadPageRequest) =>
+        new Promise<DataPage>((resolve) => {
+          if (!releaseLate) releaseLate = resolve;
+          else resolve(makeOesPage(request.offset, request.columns));
+        }),
+    );
+    render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={makeOesPage()}
+          readPage={readPage}
+          summary={oesSummary}
+        />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    grid.scrollLeft = 20_000;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(1));
+
+    grid.scrollLeft = 0;
+    fireEvent.scroll(grid);
+    await waitFor(() =>
+      expect(within(grid).getByRole("columnheader", { name: "time" })).toBeInTheDocument(),
+    );
+    releaseLate?.(makeOesPage(0, oesColumns.slice(1)));
+    await Promise.resolve();
+
+    grid.scrollLeft = 20_000;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(2));
+  });
+
   it("virtualizes a 10k x 120 dataset within the fixed DOM budget", () => {
     const { grid } = renderGrid();
     const mountedRows = Number(grid.dataset.mountedRows);

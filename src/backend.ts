@@ -2466,6 +2466,13 @@ export const browserSupportedFormats: FormatDescriptor[] = [
     mimeTypes: ["application/vnd.apache.parquet"],
     capabilities: ["typedSchema", "columnProjection", "rowGroups", "queryProvider"],
   },
+  {
+    id: "oesHdf5",
+    displayName: "OES HDF5",
+    extensions: ["h5", "hdf5"],
+    mimeTypes: ["application/x-hdf5"],
+    capabilities: ["typedSchema", "columnProjection"],
+  },
 ];
 
 const browserFixtureSummary: FileSummary = {
@@ -2576,6 +2583,76 @@ function browserFixturePage(request: ReadPageRequest): DataPage {
     hasMore: end < (browserFixtureSummary.rowCount ?? 0),
     columns: browserFixtureSummary.columns.map((column) => column.name),
     rows,
+  };
+}
+
+const browserOesColumnNames = [
+  "time",
+  ...Array.from({ length: 64 }, (_, index) => String(400 + index)),
+];
+
+const browserOesSummary: FileSummary = {
+  sessionId: "browser-oes-session",
+  fileName: "spectrometer.oes.h5",
+  path: "C:\\Data\\spectrometer.oes.h5",
+  format: "oesHdf5",
+  formatDescriptor: browserSupportedFormats[2],
+  fileSize: 1_048_576,
+  rowCount: 480,
+  rowCountStatus: {
+    state: "complete",
+    rowsScanned: 480,
+    bytesScanned: 1_048_576,
+    totalBytes: 1_048_576,
+    generation: 0,
+    message: null,
+  },
+  columnCount: browserOesColumnNames.length,
+  rowGroupCount: 0,
+  columns: browserOesColumnNames.map((name, index) => ({
+    name,
+    logicalType: index === 0 ? "Int64" : "Int32",
+    nullable: false,
+    physicalType: index === 0 ? "HDF5 int64 attribute" : "HDF5 int32",
+  })),
+  rowGroups: [],
+  csvMetadata: null,
+  formatDetails: [
+    {
+      id: "oes-layout",
+      title: "OES matrix",
+      kind: "keyValue",
+      entries: [
+        { label: "Intensity shape", value: "480 x 64" },
+        { label: "Chunk shape", value: "200 x 64" },
+        { label: "Filter", value: "Blosc v1 / Zstd (32001)" },
+      ],
+    },
+  ],
+};
+
+function browserOesPage(request: ReadPageRequest): DataPage {
+  const columns = request.columns ?? browserOesColumnNames.slice(0, 64);
+  const sourceOrdinals = columns.map((column) => browserOesColumnNames.indexOf(column));
+  if (sourceOrdinals.some((ordinal) => ordinal < 0)) {
+    throw new DataViewerError("InvalidRequest", "The OES projection contains an unknown column.");
+  }
+  const end = Math.min(request.offset + request.limit, browserOesSummary.rowCount ?? 0);
+  return {
+    sessionId: request.sessionId,
+    offset: request.offset,
+    limit: request.limit,
+    totalRows: browserOesSummary.rowCount,
+    hasMore: end < (browserOesSummary.rowCount ?? 0),
+    columns: [...columns],
+    rows: Array.from({ length: Math.max(0, end - request.offset) }, (_, rowOffset) => {
+      const row = request.offset + rowOffset;
+      return sourceOrdinals.map((ordinal) =>
+        ordinal === 0
+          ? ({ kind: "int", display: String(1_000_000 + row) } as DataValue)
+          : ({ kind: "int", display: String(row * 1_000 + ordinal - 1) } as DataValue),
+      );
+    }),
   };
 }
 
@@ -2757,6 +2834,23 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
       }),
     };
   }
+  if (descriptor.id === "oesHdf5") {
+    const summary = { ...browserOesSummary, sessionId, fileName, path };
+    return {
+      itemIndex,
+      path,
+      disposition: "opened",
+      documentId,
+      sessionId,
+      summary,
+      initialPage: browserOesPage({
+        sessionId: summary.sessionId,
+        offset: 0,
+        limit: 200,
+        columns: browserOesColumnNames.slice(0, 64),
+      }),
+    };
+  }
   const summary = { ...browserFixtureSummary, sessionId, fileName, path };
   return {
     itemIndex,
@@ -2811,6 +2905,7 @@ export const browserMockBackend: BackendAdapter = {
       });
       return summary;
     }
+    if (scenario === "oes") return browserOesSummary;
     return browserFixtureSummary;
   },
   async selectDataFilePath(requestId) {
@@ -2878,9 +2973,14 @@ export const browserMockBackend: BackendAdapter = {
   },
   async readPage(request) {
     await wait(request.offset >= 200 ? 240 : 60);
-    return request.sessionId.includes("csv-session")
-      ? browserCsvPage(request)
-      : browserFixturePage(request);
+    if (request.sessionId.includes("csv-session")) return browserCsvPage(request);
+    if (
+      request.sessionId.includes("oes-session") ||
+      request.sessionId.includes("-h5-session") ||
+      request.sessionId.includes("-hdf5-session")
+    )
+      return browserOesPage(request);
+    return browserFixturePage(request);
   },
   async configureCsv(_documentId, sessionId, headerMode) {
     const state = browserCsvStates.get(sessionId);

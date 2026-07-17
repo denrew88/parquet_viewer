@@ -65,6 +65,7 @@ enum OpenPlan {
 struct PreparedSource {
     source: DataSource,
     summary: FileSummary,
+    initial_projection: Option<Vec<String>>,
     initial_page: DataPage,
 }
 
@@ -114,12 +115,25 @@ fn prepare_source(path: &Path) -> Result<PreparedSource, DataError> {
     std::thread::sleep(std::time::Duration::from_millis(25));
     let source = DataSource::open(path)?;
     let summary = source.summary();
-    let initial_page = source.read_page_projected(0, MAX_PAGE_ROWS, None)?;
+    let initial_projection = initial_projection(&summary);
+    let initial_page =
+        source.read_page_projected(0, MAX_PAGE_ROWS, initial_projection.as_deref())?;
     Ok(PreparedSource {
         source,
         summary,
+        initial_projection,
         initial_page,
     })
+}
+
+fn initial_projection(summary: &FileSummary) -> Option<Vec<String>> {
+    let columns = summary
+        .columns
+        .iter()
+        .take(MAX_PROJECTION_COLUMNS)
+        .map(|column| column.name.clone())
+        .collect::<Vec<_>>();
+    (!columns.is_empty()).then_some(columns)
 }
 
 #[derive(Debug, Serialize)]
@@ -529,13 +543,14 @@ impl AppState {
             .documents
             .with_source(document_id, session_id, DataSource::summary)
             .map_err(document_error)?;
+        let projection = initial_projection(&summary);
         let initial_page = self
             .documents
             .get_or_load_page(
                 document_id,
                 session_id,
-                PageCacheKey::new(0, MAX_PAGE_ROWS, None),
-                |source| source.read_page_projected(0, MAX_PAGE_ROWS, None),
+                PageCacheKey::new(0, MAX_PAGE_ROWS, projection.clone()),
+                |source| source.read_page_projected(0, MAX_PAGE_ROWS, projection.as_deref()),
             )
             .map_err(document_error)??;
         Ok(OpenedPath {
@@ -561,7 +576,7 @@ impl AppState {
             .commit(
                 reservation,
                 prepared.source,
-                PageCacheKey::new(0, MAX_PAGE_ROWS, None),
+                PageCacheKey::new(0, MAX_PAGE_ROWS, prepared.initial_projection),
                 prepared.initial_page.clone(),
             )
             .map_err(document_error)?;
@@ -1470,11 +1485,17 @@ mod tests {
         let formats = list_supported_formats();
         let json = serde_json::to_value(formats).unwrap();
 
-        assert_eq!(json.as_array().unwrap().len(), 2);
+        assert_eq!(json.as_array().unwrap().len(), 3);
         assert_eq!(json[0]["id"], "csv");
         assert_eq!(json[0]["extensions"][0], "csv");
         assert_eq!(json[1]["id"], "parquet");
         assert_eq!(json[1]["extensions"][0], "parquet");
+        assert_eq!(json[2]["id"], "oesHdf5");
+        assert_eq!(json[2]["extensions"], serde_json::json!(["h5", "hdf5"]));
+        assert_eq!(
+            json[2]["capabilities"],
+            serde_json::json!(["typedSchema", "columnProjection"])
+        );
         assert!(list_supported_formats()[0]
             .capabilities
             .contains(&SourceCapability::ParsingProfile));

@@ -7,6 +7,7 @@ pub struct DataFormat(&'static str);
 #[allow(non_upper_case_globals)]
 impl DataFormat {
     pub const Csv: Self = Self("csv");
+    pub const OesHdf5: Self = Self("oesHdf5");
     pub const Parquet: Self = Self("parquet");
 
     #[allow(dead_code)]

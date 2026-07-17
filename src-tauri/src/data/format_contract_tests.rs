@@ -176,9 +176,10 @@ fn assert_common_source_contract(source: &DataSource) {
 #[test]
 fn fmt_001_builtin_descriptors_are_unique_and_serializable() {
     let descriptors = builtin_format_registry().descriptors();
-    assert_eq!(descriptors.len(), 2);
+    assert_eq!(descriptors.len(), 3);
     assert_eq!(descriptors[0].id, DataFormat::Csv);
     assert_eq!(descriptors[1].id, DataFormat::Parquet);
+    assert_eq!(descriptors[2].id, DataFormat::OesHdf5);
     assert!(descriptors
         .iter()
         .all(|descriptor| !descriptor.capabilities.is_empty()));
@@ -210,6 +211,22 @@ fn fmt_002_registry_resolves_case_insensitive_extensions_and_unicode_paths() {
             .descriptor()
             .id,
         DataFormat::Parquet
+    );
+    assert_eq!(
+        registry
+            .resolve(Path::new("C:/자료 폴더/INPUT.OES.H5"))
+            .unwrap()
+            .descriptor()
+            .id,
+        DataFormat::OesHdf5
+    );
+    assert_eq!(
+        registry
+            .resolve(Path::new("C:/자료 폴더/INPUT.HdF5"))
+            .unwrap()
+            .descriptor()
+            .id,
+        DataFormat::OesHdf5
     );
     assert!(registry.resolve(Path::new("unknown.txt")).is_none());
 }

@@ -1,0 +1,490 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/generate_phase10_fixtures.py",
+  "auditor": "scripts/audit_phase10_fixtures.py",
+  "generatorEnvironment": {
+    "python": "3.10.11",
+    "numpy": "1.26.4",
+    "h5py": "3.16.0",
+    "hdf5": "2.0.0",
+    "hdf5plugin": "7.0.0"
+  },
+  "compressionContract": {
+    "filterId": 32001,
+    "codec": "zstd",
+    "compressionLevel": 5,
+    "shuffle": "byte",
+    "hdf5pluginExpression": "hdf5plugin.Blosc(cname='zstd', clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE)"
+  },
+  "referenceFixture": {
+    "id": "actual-current-rules",
+    "included": false,
+    "pathHint": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\OES\\sample_current_rules.oes.h5",
+    "sizeBytes": 37112,
+    "sha256": "CBBF72B067B1ACD7EA3AAD674A76C9A81DF099FAF02710070902528DC3BFE588",
+    "testIds": ["OES-PKG-001", "OES-PKG-004", "OES-FMT-002", "OES-PAGE-001", "OES-PAGE-002"],
+    "expected": {
+      "opensAsHdf5": true,
+      "rootAttributesPresent": ["time", "wavelength"],
+      "rootObjects": {
+        "intensity": "dataset"
+      },
+      "axisSamples": {
+        "time": [
+          "2026-07-17T12:00:00.000+09:00",
+          "2026-07-17T12:00:06.400+09:00",
+          "2026-07-17T12:00:12.700+09:00"
+        ],
+        "wavelength": [200.0000000001, 555.5555555556555, 900.0000000001]
+      },
+      "intensity": {
+        "shape": [128, 64],
+        "dtype": "int32",
+        "chunks": [32, 16],
+        "filters": [
+          {
+            "id": 32001,
+            "flags": 1,
+            "cdValues": [2, 2, 4, 2048, 5, 1, 5],
+            "name": "blosc"
+          }
+        ],
+        "isVirtual": false,
+        "externalStorageCount": 0,
+        "samples": [
+          { "coordinate": [0, 0], "value": 6120 },
+          { "coordinate": [64, 32], "value": 9192 },
+          { "coordinate": [127, 63], "value": 24971 }
+        ],
+        "slices": [
+          {
+            "rows": [0, 3],
+            "columns": [0, 4],
+            "sha256LeI32": "6BCB0489EEDB2AE9AAC94A68A164F6681E31DB48173B00EE9076BEF577675168"
+          },
+          {
+            "rows": [63, 66],
+            "columns": [31, 35],
+            "sha256LeI32": "0EC0189AEBA2C72D3DE803E0ECC257C16818DBD1ADC2D1BAA311FAC88D172932"
+          },
+          {
+            "rows": [125, 128],
+            "columns": [60, 64],
+            "sha256LeI32": "3BFB6B775F028DBF872166E4652F58867862426E20C23479691BB8ACFF3931E4"
+          }
+        ]
+      }
+    }
+  },
+  "committedFixtures": [
+    {
+      "file": "oes-core-vlen-time.oes.h5",
+      "kind": "validCoreOnly",
+      "sizeBytes": 8824,
+      "sha256": "87B43294924FFC45085CE43FB7591B79AD826C16B3486ECE3E6EF9A83C9A400C",
+      "testIds": ["OES-FMT-002", "OES-FMT-003", "OES-AXIS-004", "OES-PAGE-001"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "axisValues": {
+          "time": [
+            "2026-07-17T12:00:00.000+09:00",
+            "2026-07-17T12:00:00.100+09:00",
+            "2026-07-17T12:00:00.200+09:00"
+          ],
+          "wavelength": [200.0000000001, 201.5, 305.25, 900.0000000001]
+        },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": [2, 2],
+          "filters": [
+            {
+              "id": 32001,
+              "flags": 1,
+              "cdValues": [2, 2, 4, 16, 5, 1, 5],
+              "name": "blosc"
+            }
+          ],
+          "isVirtual": false,
+          "externalStorageCount": 0,
+          "samples": [
+            { "coordinate": [0, 0], "value": -2147483648 },
+            { "coordinate": [1, 2], "value": 102 },
+            { "coordinate": [2, 3], "value": 203 }
+          ]
+        }
+      }
+    },
+    {
+      "file": "oes-core-numeric.oes.h5",
+      "kind": "validPrecision",
+      "sizeBytes": 3414,
+      "sha256": "1D5C96097B6B86DCAFB483A5A1C7F85CBB64E8B3BC06B9E2F6097094B65F78DF",
+      "testIds": ["OES-AXIS-001", "OES-AXIS-003", "OES-AXIS-008"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "axisValues": {
+          "time": [9007199254740993, 9007199254740995, 9007199254740997],
+          "wavelength": [200.0000000001, 201.5, 305.25, 900.0000000001]
+        },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": [2, 2],
+          "filters": [
+            {
+              "id": 32001,
+              "flags": 1,
+              "cdValues": [2, 2, 4, 16, 5, 1, 5],
+              "name": "blosc"
+            }
+          ],
+          "samples": [
+            { "coordinate": [0, 3], "value": 2147483647 },
+            { "coordinate": [2, 0], "value": 200 }
+          ]
+        }
+      }
+    },
+    {
+      "file": "oes-core-unknown-attrs.oes.h5",
+      "kind": "validUnknownAttributes",
+      "sizeBytes": 8824,
+      "sha256": "D86933463421598F698B575B1FE4980AAAE903C647DA4182DD8A5D790535CC53",
+      "testIds": ["OES-FMT-003"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["ignored_number", "ignored_scalar", "time", "wavelength"],
+        "rootObjects": { "ignored_group": "group", "intensity": "dataset" },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": [2, 2],
+          "filters": [
+            {
+              "id": 32001,
+              "flags": 1,
+              "cdValues": [2, 2, 4, 16, 5, 1, 5],
+              "name": "blosc"
+            }
+          ],
+          "samples": [{ "coordinate": [1, 1], "value": 101 }]
+        }
+      }
+    },
+    {
+      "file": "oes-name-collisions.oes.h5",
+      "kind": "validNameCollisions",
+      "sizeBytes": 8792,
+      "sha256": "B9E272C4D2BCFCB9F93C5C027085E810A3125BD8A2428230FE00C107211F32EE",
+      "testIds": ["OES-AXIS-006", "OES-INT-007"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "axisValues": { "time": [1, 2], "wavelength": ["", "time", "500", "500"] },
+        "intensity": {
+          "shape": [2, 4],
+          "dtype": "int32",
+          "chunks": [1, 2],
+          "filters": [
+            {
+              "id": 32001,
+              "flags": 1,
+              "cdValues": [2, 2, 4, 8, 5, 1, 5],
+              "name": "blosc"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "not-oes.h5",
+      "kind": "validNonOesHdf5",
+      "sizeBytes": 2060,
+      "sha256": "04ABE4198F5C1F86E453B4FA13C381B2600B5BACBC0CB3DDBD26BCD293978610",
+      "testIds": ["OES-FMT-004"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": [],
+        "rootObjects": { "ordinary": "dataset" }
+      }
+    },
+    {
+      "file": "fake.oes.h5",
+      "kind": "notHdf5",
+      "sizeBytes": 17,
+      "sha256": "0F0EE01F8367154510F009332302F97234EB100F99E2FE48D07D390A19FA523E",
+      "testIds": ["OES-FMT-004"],
+      "expected": { "opensAsHdf5": false }
+    },
+    {
+      "file": "oes-missing-time.oes.h5",
+      "kind": "missingTime",
+      "sizeBytes": 8824,
+      "sha256": "35D2B5BA7591005781E472715FF62DD10076A2430E2161DDEF25DAEC1560954E",
+      "testIds": ["OES-FMT-006", "OES-SEC-002"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributesPresent": ["wavelength"],
+        "rootAttributesAbsent": ["time"],
+        "rootObjects": { "intensity": "dataset" }
+      }
+    },
+    {
+      "file": "oes-missing-wavelength.oes.h5",
+      "kind": "missingWavelength",
+      "sizeBytes": 8824,
+      "sha256": "EC318986609C54E425CBBDC5E8E98C8C69BC353D99994256647F75E64F53A809",
+      "testIds": ["OES-FMT-006", "OES-SEC-002"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributesPresent": ["time"],
+        "rootAttributesAbsent": ["wavelength"],
+        "rootObjects": { "intensity": "dataset" }
+      }
+    },
+    {
+      "file": "oes-missing-intensity.oes.h5",
+      "kind": "missingIntensity",
+      "sizeBytes": 6144,
+      "sha256": "26034303BF022BE90A9186DC802D19112BB16D8300CD88E486670FFC2667AAF4",
+      "testIds": ["OES-FMT-006", "OES-SEC-002"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": {}
+      }
+    },
+    {
+      "file": "oes-axis-datasets.oes.h5",
+      "kind": "axisDatasets",
+      "sizeBytes": 8904,
+      "sha256": "B346FE5889B00F29385D132ABDDDB6647D35863B47FB1A7BDCB9CD7B80C2935C",
+      "testIds": ["OES-FMT-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": [],
+        "rootObjects": { "time": "dataset", "wavelength": "dataset", "intensity": "dataset" },
+        "intensity": { "shape": [3, 4], "dtype": "int32", "chunks": [2, 2] }
+      }
+    },
+    {
+      "file": "oes-wrong-rank.oes.h5",
+      "kind": "wrongRank",
+      "sizeBytes": 2821,
+      "sha256": "E6E9E1D84C07D068D37FBF0C2DAEB208613B2A761BD47AF3A6D3636AF04D2AAF",
+      "testIds": ["OES-FMT-005", "OES-FMT-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": { "shape": [3], "dtype": "int32", "chunks": [2] }
+      }
+    },
+    {
+      "file": "oes-wrong-dtype.oes.h5",
+      "kind": "wrongDtype",
+      "sizeBytes": 8792,
+      "sha256": "1F36DC869078CF03F934A74194E63D85CB6FB9725BEEE00288F0C42CFDB45E93",
+      "testIds": ["OES-FMT-005", "OES-FMT-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": { "shape": [3, 4], "dtype": "int16", "chunks": [2, 2] }
+      }
+    },
+    {
+      "file": "oes-contiguous.oes.h5",
+      "kind": "notChunked",
+      "sizeBytes": 6192,
+      "sha256": "A986E343BF2E859474649382E72EDFC4D027328AD84429B28C710B1DFA9C9076",
+      "testIds": ["OES-FMT-005", "OES-FMT-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": { "shape": [3, 4], "dtype": "int32", "chunks": null, "filters": [] }
+      }
+    },
+    {
+      "file": "oes-wrong-filter.oes.h5",
+      "kind": "wrongFilter",
+      "sizeBytes": 8836,
+      "sha256": "1962AC8F1DA705AC96DCBA743D42CE60435EC94579DEB1D6DCB05051604D932A",
+      "testIds": ["OES-FMT-005", "OES-FMT-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": [2, 2],
+          "filters": [{ "id": 1, "flags": 1, "cdValues": [1], "name": "deflate" }]
+        }
+      }
+    },
+    {
+      "file": "oes-shape-mismatch.oes.h5",
+      "kind": "shapeMismatch",
+      "sizeBytes": 3406,
+      "sha256": "8B7465AD0727464AB253ED850B745DF9E23EAD25EF51D8B378BC4BBD12C4B4D4",
+      "testIds": ["OES-FMT-005", "OES-SEC-002"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "axisValues": { "time": [1, 2] },
+        "intensity": { "shape": [3, 4], "dtype": "int32", "chunks": [2, 2] }
+      }
+    },
+    {
+      "file": "oes-soft-link.oes.h5",
+      "kind": "softLinkedIntensity",
+      "sizeBytes": 8824,
+      "sha256": "B5F97F66975BCD811F37D403B2B2C97BD7A9AC23B90614A0EBF8167F4B835AC6",
+      "testIds": ["OES-SEC-003"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "payload": "group", "intensity": "softLink" }
+      }
+    },
+    {
+      "file": "oes-external-link.oes.h5",
+      "kind": "externalLinkedIntensity",
+      "sizeBytes": 6144,
+      "sha256": "14EA89E034933591A6E858F60D759F684869FF0AE0FA2C7BECFCA6D61EA4E4C5",
+      "testIds": ["OES-SEC-003"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "externalLink" }
+      }
+    },
+    {
+      "file": "oes-vds.oes.h5",
+      "kind": "virtualDataset",
+      "sizeBytes": 6144,
+      "sha256": "332F036FF26F965E5C60F9A79DB87A555C8DD1A3F1C95F8E2A9CF845629732AB",
+      "testIds": ["OES-SEC-003"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": null,
+          "isVirtual": true,
+          "externalStorageCount": 0
+        }
+      }
+    },
+    {
+      "file": "oes-external-storage.oes.h5",
+      "kind": "externalRawStorage",
+      "sizeBytes": 6144,
+      "sha256": "FD044044D088C9B8A31C7417C3CE37AFEB1DB2E685CEA4FE067DDDB8441170A8",
+      "testIds": ["OES-SEC-003"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": null,
+          "isVirtual": false,
+          "externalStorageCount": 1
+        }
+      }
+    },
+    {
+      "file": "oes-unknown-filter.oes.h5",
+      "kind": "unknownOptionalFilter",
+      "sizeBytes": 6144,
+      "sha256": "F1353983191E6E17DF82F29FD4DB7B84DD4F2789FB1040C03C5E8F56F798B729",
+      "testIds": ["OES-SEC-004", "OES-SEC-006"],
+      "expected": {
+        "opensAsHdf5": true,
+        "rootAttributeNames": ["time", "wavelength"],
+        "rootObjects": { "intensity": "dataset" },
+        "intensity": {
+          "shape": [3, 4],
+          "dtype": "int32",
+          "chunks": [2, 2],
+          "filters": [{ "id": 32099, "flags": 1, "cdValues": [], "name": "" }]
+        }
+      }
+    },
+    {
+      "file": "oes-truncated.oes.h5",
+      "kind": "truncatedHdf5",
+      "sizeBytes": 512,
+      "sha256": "041C7ACBFF9086BA37BA5FB8D29B2AA410BD45ACAB4220D2B6476C2FD26D4EF2",
+      "testIds": ["OES-FMT-004", "OES-SEC-001"],
+      "expected": { "opensAsHdf5": false }
+    }
+  ],
+  "optInFixtures": [
+    {
+      "id": "oes-wide",
+      "included": false,
+      "shape": [8, 4096],
+      "chunks": [4, 128],
+      "purpose": "4,096 wavelength schema and bounded initial projection",
+      "testIds": ["OES-AXIS-009", "OES-PAGE-005"]
+    },
+    {
+      "id": "oes-chunk-limit-exact",
+      "included": false,
+      "shape": [4096, 4096],
+      "chunks": [4096, 4096],
+      "decodedChunkBytes": 67108864,
+      "purpose": "64 MiB decoded chunk success boundary",
+      "testIds": ["OES-PAGE-008"]
+    },
+    {
+      "id": "oes-chunk-limit-over",
+      "included": false,
+      "shape": [4097, 4096],
+      "chunks": [4097, 4096],
+      "decodedChunkBytes": 67125248,
+      "purpose": "decoded chunk rejection before payload read",
+      "testIds": ["OES-PAGE-008"]
+    },
+    {
+      "id": "oes-low-large",
+      "included": false,
+      "shape": [10000000, 64],
+      "chunks": [4096, 64],
+      "seed": 1010,
+      "valueFormula": "int32(row % 8)",
+      "purpose": "low-cardinality release performance",
+      "testIds": ["OES-PERF-001", "OES-PERF-002", "OES-PERF-003"]
+    },
+    {
+      "id": "oes-high-large",
+      "included": false,
+      "shape": [10000000, 64],
+      "chunks": [4096, 64],
+      "seed": 1010,
+      "valueFormula": "seeded int32 PRNG by logical coordinate",
+      "purpose": "high-cardinality release performance",
+      "testIds": ["OES-PERF-001", "OES-PERF-002", "OES-PERF-003"]
+    },
+    {
+      "id": "oes-axis-limit",
+      "included": false,
+      "purpose": "128 MiB file and 256 MiB process axis lease boundaries; use metadata/preflight tests before any physical allocation",
+      "testIds": ["OES-AXIS-009", "OES-PERF-004"]
+    }
+  ]
+}

@@ -51,6 +51,7 @@ import {
 import { CopyAccumulator, CopyByteLimitExceededError, serializeCopyField } from "./copy/serializer";
 import { COPY_PRESETS } from "./copy/presets";
 import type { CopyOptions, CopyPreset } from "./copy/model";
+import { orderedProjectionForWindow, sameProjectedColumns } from "./gridProjection";
 import { ColumnFilterPopover, type DistinctValuesState } from "./query/ColumnFilterPopover";
 import {
   clearFilters,
@@ -94,6 +95,7 @@ export interface VirtualDataGridProps {
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
   findTarget?: { row: number; columnId: string; key: string };
   isLoading: boolean;
+  logicalColumnNames?: readonly string[];
   onCancelQuery?(): void;
   onFindNext?(): void;
   onFindPrevious?(): void;
@@ -112,6 +114,10 @@ export interface VirtualDataGridProps {
   resultKey?: string;
   summary: FileSummary;
   writeClipboardText?: (text: string) => Promise<void>;
+}
+
+function projectedPageKey(offset: number, columns: readonly string[]): string {
+  return `${offset}:${JSON.stringify(columns)}`;
 }
 
 interface CopyProgress {
@@ -169,6 +175,7 @@ export function VirtualDataGrid({
   distinctValuesForColumn,
   findTarget,
   isLoading,
+  logicalColumnNames: logicalColumnNamesProp,
   onCancelQuery,
   onFindNext,
   onFindPrevious,
@@ -201,10 +208,14 @@ export function VirtualDataGrid({
   const copyGeneration = useRef(0);
   const mounted = useRef(true);
   const dragging = useRef(false);
-  const inFlight = useRef(new Map<number, Promise<DataPage>>());
-  const [pages, setPages] = useState<Map<number, DataPage>>(() => new Map([[page.offset, page]]));
+  const horizontalGeneration = useRef(0);
+  const inFlight = useRef(new Map<string, Promise<DataPage>>());
+  const [pages, setPages] = useState<Map<string, DataPage>>(
+    () => new Map([[projectedPageKey(page.offset, page.columns), page]]),
+  );
   const [activeOffset, setActiveOffset] = useState(page.offset);
-  const [loadingOffsets, setLoadingOffsets] = useState<Set<number>>(new Set());
+  const [activeProjection, setActiveProjection] = useState<string[]>(() => [...page.columns]);
+  const [loadingPageKeys, setLoadingPageKeys] = useState<Set<string>>(new Set());
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [chooserOpen, setChooserOpen] = useState(false);
@@ -214,9 +225,14 @@ export function VirtualDataGrid({
   const copyMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [searchInput, setSearchInput] = useState("");
   const [columnSearch, setColumnSearch] = useState("");
+  const logicalColumnNames = useMemo(
+    () => logicalColumnNamesProp ?? summary.columns.map((column) => column.name),
+    [logicalColumnNamesProp, summary.columns],
+  );
+  const logicalColumnsKey = JSON.stringify(logicalColumnNames);
   const initialBounds = {
     rowCount: Math.max(1, summary.rowCount ?? page.offset + page.rows.length),
-    columnCount: Math.max(1, page.columns.length),
+    columnCount: Math.max(1, logicalColumnNames.length),
     pageStep: 10,
   };
   const [selection, dispatchSelection] = useReducer(
@@ -273,15 +289,16 @@ export function VirtualDataGrid({
     if (queryPlan && onQueryPlanChange) onQueryPlanChange(clearFilters(queryPlan));
   }, [onQueryPlanChange, queryPlan]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    const pendingRequests = inFlight.current;
+    return () => {
       mounted.current = false;
       generation.current += 1;
       copyGeneration.current += 1;
-      inFlight.current.clear();
-    },
-    [],
-  );
+      pendingRequests.clear();
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setColumnSearch(searchInput), 100);
@@ -291,10 +308,12 @@ export function VirtualDataGrid({
   useEffect(() => {
     const firstPage = latestPage.current;
     generation.current += 1;
+    horizontalGeneration.current += 1;
     inFlight.current.clear();
-    setPages(new Map([[firstPage.offset, firstPage]]));
+    setPages(new Map([[projectedPageKey(firstPage.offset, firstPage.columns), firstPage]]));
     setActiveOffset(firstPage.offset);
-    setLoadingOffsets(new Set());
+    setActiveProjection([...firstPage.columns]);
+    setLoadingPageKeys(new Set());
     setColumnSizing({});
     setColumnVisibility({});
     copyGeneration.current += 1;
@@ -305,7 +324,7 @@ export function VirtualDataGrid({
       sessionId: activeResultKey,
       bounds: {
         rowCount: Math.max(1, firstPage.totalRows ?? firstPage.rows.length),
-        columnCount: Math.max(1, firstPage.columns.length),
+        columnCount: Math.max(1, logicalColumnNames.length),
         pageStep: 10,
       },
     });
@@ -314,7 +333,7 @@ export function VirtualDataGrid({
       scrollRef.current.scrollTop = 0;
     }
     if (activeRef.current) window.requestAnimationFrame(() => gridRef.current?.focus());
-  }, [activeResultKey]);
+  }, [activeResultKey, logicalColumnsKey, logicalColumnNames.length]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
@@ -445,7 +464,7 @@ export function VirtualDataGrid({
   useEffect(() => {
     setPages((current) => {
       const next = new Map(current);
-      next.set(page.offset, page);
+      next.set(projectedPageKey(page.offset, page.columns), page);
       return next;
     });
     setActiveOffset(page.offset);
@@ -458,8 +477,8 @@ export function VirtualDataGrid({
   const columnHelper = createColumnHelper<DataValue[]>();
   const columnDefs = useMemo(
     () =>
-      page.columns.map((name, index) =>
-        columnHelper.accessor((row) => row[index], {
+      logicalColumnNames.map((name) =>
+        columnHelper.display({
           id: name,
           header: name,
           size: GRID_DEFAULT_COLUMN_WIDTH,
@@ -468,7 +487,7 @@ export function VirtualDataGrid({
         }),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page.columns],
+    [logicalColumnsKey],
   );
   const table = useReactTable({
     data: page.rows,
@@ -482,8 +501,8 @@ export function VirtualDataGrid({
   const visibleColumns = table.getVisibleLeafColumns();
   const allColumns = table.getAllLeafColumns();
   const visibleColumnIndexes = useMemo(
-    () => visibleColumns.map((column) => page.columns.indexOf(column.id)),
-    [page.columns, visibleColumns],
+    () => visibleColumns.map((column) => logicalColumnNames.indexOf(column.id)),
+    [logicalColumnNames, visibleColumns],
   );
   const totalColumnWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
 
@@ -495,7 +514,7 @@ export function VirtualDataGrid({
   const rowCount = knownCount ?? (finalLoadedPage ? loadedEnd : loadedEnd + 1);
   const selectionBounds: GridBounds = {
     rowCount,
-    columnCount: page.columns.length,
+    columnCount: logicalColumnNames.length,
     pageStep: Math.max(
       1,
       Math.floor(((scrollRef.current?.clientHeight ?? 420) - GRID_HEADER_HEIGHT) / GRID_ROW_HEIGHT),
@@ -534,7 +553,7 @@ export function VirtualDataGrid({
 
   useEffect(() => {
     if (!findTarget) return;
-    const column = page.columns.indexOf(findTarget.columnId);
+    const column = logicalColumnNames.indexOf(findTarget.columnId);
     if (column < 0 || findTarget.row < 0 || findTarget.row >= selectionBounds.rowCount) return;
     const coordinate = { row: findTarget.row, column };
     dispatchSelection({ type: "click", coordinate, bounds: selectionBounds });
@@ -544,64 +563,116 @@ export function VirtualDataGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findTarget?.key]);
 
-  const trimPageWindow = useCallback((source: Map<number, DataPage>, focusOffset: number) => {
+  const trimPageWindow = useCallback((source: Map<string, DataPage>, focusKey: string) => {
     if (source.size <= MAX_PAGE_WINDOW) return source;
-    const ordered = [...source.keys()].sort(
-      (left, right) => Math.abs(left - focusOffset) - Math.abs(right - focusOffset),
-    );
+    const focusOffset = source.get(focusKey)?.offset ?? 0;
+    const ordered = [...source.keys()].sort((left, right) => {
+      if (left === focusKey) return -1;
+      if (right === focusKey) return 1;
+      return (
+        Math.abs((source.get(left)?.offset ?? 0) - focusOffset) -
+        Math.abs((source.get(right)?.offset ?? 0) - focusOffset)
+      );
+    });
     const keep = new Set(ordered.slice(0, MAX_PAGE_WINDOW));
-    return new Map([...source].filter(([offset]) => keep.has(offset)));
+    return new Map([...source].filter(([key]) => keep.has(key)));
   }, []);
 
   const requestPage = useCallback(
     (offset: number, foreground: boolean) => {
-      if (offset < 0 || pages.has(offset)) return Promise.resolve(pages.get(offset) ?? null);
-      const existing = inFlight.current.get(offset);
+      if (offset < 0 || activeProjection.length === 0) return Promise.resolve(null);
+      const key = projectedPageKey(offset, activeProjection);
+      if (pages.has(key)) return Promise.resolve(pages.get(key) ?? null);
+      const compatible = [...pages.values()].find(
+        (candidate) =>
+          candidate.offset === offset &&
+          activeProjection.every((column) => candidate.columns.includes(column)),
+      );
+      if (compatible) return Promise.resolve(compatible);
+      const existing = inFlight.current.get(key);
       if (existing) return existing;
       if (inFlight.current.size >= MAX_CONCURRENT_REQUESTS) return Promise.resolve(null);
       const requestGeneration = generation.current;
-      const promise = readPage({ sessionId: summary.sessionId, offset, limit: page.limit });
-      inFlight.current.set(offset, promise);
-      setLoadingOffsets((current) => new Set(current).add(offset));
+      const requestHorizontalGeneration = horizontalGeneration.current;
+      const requestedColumns = [...activeProjection];
+      const promise = readPage({
+        sessionId: summary.sessionId,
+        offset,
+        limit: page.limit,
+        columns: requestedColumns,
+      });
+      inFlight.current.set(key, promise);
+      setLoadingPageKeys((current) => new Set(current).add(key));
       void promise
         .then(
           (nextPage) => {
             if (
               requestGeneration !== generation.current ||
+              requestHorizontalGeneration !== horizontalGeneration.current ||
               nextPage.sessionId !== summary.sessionId ||
-              nextPage.offset !== offset
+              nextPage.offset !== offset ||
+              !sameProjectedColumns(nextPage.columns, requestedColumns)
             ) {
               return;
             }
             setPages((current) => {
               const next = new Map(current);
-              next.set(offset, nextPage);
-              return trimPageWindow(next, offset);
+              next.set(key, nextPage);
+              return trimPageWindow(next, key);
             });
             if (foreground) setActiveOffset(offset);
           },
           (error: unknown) => {
-            if (foreground && requestGeneration === generation.current) onReadError(error, offset);
+            if (
+              foreground &&
+              requestGeneration === generation.current &&
+              requestHorizontalGeneration === horizontalGeneration.current
+            )
+              onReadError(error, offset);
           },
         )
         .finally(() => {
-          if (requestGeneration === generation.current) {
-            inFlight.current.delete(offset);
-            setLoadingOffsets((current) => {
+          if (inFlight.current.get(key) === promise) inFlight.current.delete(key);
+          if (
+            requestGeneration === generation.current &&
+            requestHorizontalGeneration === horizontalGeneration.current
+          ) {
+            setLoadingPageKeys((current) => {
               const next = new Set(current);
-              next.delete(offset);
+              next.delete(key);
               return next;
             });
           }
         });
       return promise;
     },
-    [onReadError, page.limit, pages, readPage, summary.sessionId, trimPageWindow],
+    [activeProjection, onReadError, page.limit, pages, readPage, summary.sessionId, trimPageWindow],
   );
 
   const virtualRows = rowVirtualizer.getVirtualItems();
+  const columnVirtualItems = columnVirtualizer.getVirtualItems();
   const firstVisibleRow = virtualRows[0]?.index ?? 0;
   const lastVisibleRow = virtualRows[virtualRows.length - 1]?.index ?? 0;
+  const mountedLogicalOrdinals = columnVirtualItems.map(
+    (virtualColumn) => visibleColumnIndexes[virtualColumn.index],
+  );
+  const mountedLogicalOrdinalsKey = mountedLogicalOrdinals.join(",");
+
+  useEffect(() => {
+    setActiveProjection((current) => {
+      const next = orderedProjectionForWindow(logicalColumnNames, mountedLogicalOrdinals, current);
+      return sameProjectedColumns(current, next) ? current : next;
+    });
+    // The key captures the virtual range without making this effect depend on a fresh array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logicalColumnsKey, mountedLogicalOrdinalsKey]);
+
+  const activeProjectionKey = JSON.stringify(activeProjection);
+  useEffect(() => {
+    horizontalGeneration.current += 1;
+    inFlight.current.clear();
+    setLoadingPageKeys(new Set());
+  }, [activeProjectionKey]);
 
   useEffect(() => {
     if (rowCount === 0) return;
@@ -609,11 +680,20 @@ export function VirtualDataGrid({
       (scrollRef.current?.scrollTop ?? firstVisibleRow * GRID_ROW_HEIGHT) / GRID_ROW_HEIGHT,
     );
     const visibleOffset = pageOffsetFor(scrollRow, page.limit);
-    if (!pages.has(visibleOffset) && page.offset !== visibleOffset) {
+    const visibleKey = projectedPageKey(visibleOffset, activeProjection);
+    const compatible = [...pages.values()].find(
+      (candidate) =>
+        candidate.offset === visibleOffset &&
+        activeProjection.every((column) => candidate.columns.includes(column)),
+    );
+    const propPageCompatible =
+      page.offset === visibleOffset &&
+      activeProjection.every((column) => page.columns.includes(column));
+    if (!pages.has(visibleKey) && !compatible && !propPageCompatible) {
       void requestPage(visibleOffset, true);
     } else setActiveOffset(visibleOffset);
 
-    const current = pages.get(visibleOffset);
+    const current = pages.get(visibleKey) ?? compatible ?? (propPageCompatible ? page : undefined);
     if (!current) return;
     const distanceToEnd = current.offset + current.rows.length - 1 - lastVisibleRow;
     if (current.hasMore && distanceToEnd <= GRID_PREFETCH_DISTANCE) {
@@ -623,10 +703,9 @@ export function VirtualDataGrid({
     if (current.offset > 0 && distanceToStart <= GRID_PREFETCH_DISTANCE) {
       void requestPage(Math.max(0, current.offset - page.limit), false);
     }
-  }, [firstVisibleRow, lastVisibleRow, page.limit, page.offset, pages, requestPage, rowCount]);
+  }, [activeProjection, firstVisibleRow, lastVisibleRow, page, pages, requestPage, rowCount]);
 
-  const activePage = pages.get(activeOffset) ?? page;
-  const columnVirtualItems = columnVirtualizer.getVirtualItems();
+  const activePage = pages.get(projectedPageKey(activeOffset, activeProjection)) ?? page;
 
   useEffect(() => {
     const stopDragging = () => {
@@ -642,8 +721,20 @@ export function VirtualDataGrid({
 
   function valueAt(rowIndex: number, columnIndex: number): DataValue | null {
     const offset = pageOffsetFor(rowIndex, page.limit);
-    const loaded = pages.get(offset);
-    return loaded?.rows[rowIndex - offset]?.[columnIndex] ?? null;
+    const columnName = logicalColumnNames[columnIndex];
+    if (!columnName) return null;
+    const preferred = pages.get(projectedPageKey(offset, activeProjection));
+    const candidates = preferred
+      ? [preferred, ...[...pages.values()].filter((candidate) => candidate !== preferred)]
+      : [...pages.values()];
+    for (const loaded of candidates) {
+      if (loaded.offset !== offset) continue;
+      const projectedIndex = loaded.columns.indexOf(columnName);
+      if (projectedIndex < 0) continue;
+      const value = loaded.rows[rowIndex - offset]?.[projectedIndex];
+      if (value) return value;
+    }
+    return null;
   }
 
   function inspect(coordinate: GridCoordinate) {
@@ -658,13 +749,13 @@ export function VirtualDataGrid({
   }
 
   async function copySelection(includeColumnHeaders?: boolean, options = copyOptions) {
-    if (copyProgress || rowCount === 0 || page.columns.length === 0) return;
+    if (copyProgress || rowCount === 0 || logicalColumnNames.length === 0) return;
     const copyId = ++copyGeneration.current;
     const sessionId = summary.sessionId;
     const copyResultKey = activeResultKey;
     const { top, left, bottom, right } = selection.rect;
     const totalRows = bottom - top + 1;
-    const selectedColumns = page.columns.slice(left, right + 1);
+    const selectedColumns = logicalColumnNames.slice(left, right + 1);
     const cellCount = totalRows * selectedColumns.length;
     setCopyMessage(null);
 
@@ -1326,9 +1417,20 @@ export function VirtualDataGrid({
             </div>
             {virtualRows.map((virtualRow) => {
               const offset = pageOffsetFor(virtualRow.index, page.limit);
-              const loaded = pages.get(offset);
+              const pageKey = projectedPageKey(offset, activeProjection);
+              const mountedColumnNames = columnVirtualItems.map(
+                (virtualColumn) => visibleColumns[virtualColumn.index].id,
+              );
+              const loaded =
+                pages.get(pageKey) ??
+                [...pages.values()].find(
+                  (candidate) =>
+                    candidate.offset === offset &&
+                    mountedColumnNames.every((column) => candidate.columns.includes(column)),
+                );
               const row = loaded?.rows[virtualRow.index - offset];
-              const pending = !row && (loadingOffsets.has(offset) || inFlight.current.has(offset));
+              const pending =
+                !row && (loadingPageKeys.has(pageKey) || inFlight.current.has(pageKey));
               return (
                 <div
                   aria-rowindex={virtualRow.index + 1}
@@ -1358,7 +1460,8 @@ export function VirtualDataGrid({
                   {columnVirtualItems.map((virtualColumn) => {
                     const logicalColumn = visibleColumnIndexes[virtualColumn.index];
                     const column = visibleColumns[virtualColumn.index];
-                    const value = row?.[logicalColumn];
+                    const projectedColumn = loaded?.columns.indexOf(column.id) ?? -1;
+                    const value = projectedColumn >= 0 ? row?.[projectedColumn] : undefined;
                     const coordinate = { row: virtualRow.index, column: logicalColumn };
                     const selected = isSelected(selection, coordinate);
                     const active =
@@ -1443,7 +1546,7 @@ export function VirtualDataGrid({
 
       <div
         className="paging-bar"
-        aria-busy={isLoading || loadingOffsets.size > 0}
+        aria-busy={isLoading || loadingPageKeys.size > 0}
         aria-label="Page navigation"
       >
         <button
@@ -1460,7 +1563,7 @@ export function VirtualDataGrid({
           <ChevronLeft aria-hidden="true" />
         </button>
         <span className="page-status">{pageStatus(activePage)}</span>
-        {(isLoading || loadingOffsets.size > 0) && (
+        {(isLoading || loadingPageKeys.size > 0) && (
           <span className="page-loading" role="status">
             <LoaderCircle aria-hidden="true" />
             <span>Loading page</span>
@@ -1498,7 +1601,8 @@ export function VirtualDataGrid({
             <div>
               <strong>Cell value</strong>
               <span>
-                Row {inspected.coordinate.row + 1}, {page.columns[inspected.coordinate.column]}
+                Row {inspected.coordinate.row + 1},{" "}
+                {logicalColumnNames[inspected.coordinate.column]}
               </span>
             </div>
             <button

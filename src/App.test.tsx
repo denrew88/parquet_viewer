@@ -511,9 +511,12 @@ function pageAt(offset: number, count: number, totalRows: number, prefix: string
     limit: 200,
     totalRows,
     hasMore: offset + count < totalRows,
-    columns: ["id"],
+    columns: summary.columns.map((column) => column.name),
     rows: Array.from({ length: count }, (_, index) => [
       { kind: "int" as const, display: `${prefix}-${offset + index}` },
+      { kind: "string" as const, display: `label-${offset + index}` },
+      { kind: "float" as const, display: String(offset + index) },
+      { kind: "boolean" as const, display: index % 2 === 0 ? "true" : "false" },
     ]),
   };
 }
@@ -831,10 +834,20 @@ describe("App", () => {
         ],
       ],
     };
+    const typedSummary: FileSummary = {
+      ...summaryWithRows(1),
+      columnCount: typedPage.columns.length,
+      columns: typedPage.columns.map((name) => ({
+        name,
+        logicalType: name,
+        nullable: true,
+        physicalType: name.toLocaleUpperCase(),
+      })),
+    };
     render(
       <App
         backend={backend({
-          selectDataFile: vi.fn().mockResolvedValue(summaryWithRows(1)),
+          selectDataFile: vi.fn().mockResolvedValue(typedSummary),
           readPage: vi.fn().mockResolvedValue(typedPage),
         })}
       />,

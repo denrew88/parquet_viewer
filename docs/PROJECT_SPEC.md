@@ -1,6 +1,7 @@
 # 프로젝트 상세 명세
 
-이 문서는 CSV와 Parquet 데스크톱 뷰어의 상세 제품 요구사항과 기술 계약을 정의한다.
+이 문서는 CSV, Parquet와 Phase 10의 OES HDF5 확장을 포함한 데스크톱 뷰어의 상세 제품
+요구사항과 기술 계약을 정의한다.
 구현 순서와 단계별 완료 조건은 `docs/DEVELOPMENT_PLAN.md`를 따른다.
 
 ## 1. 제품 목표
@@ -32,7 +33,8 @@ MVP는 다음 기능을 포함한다.
 - 명확한 로딩, 진행, 빈 데이터, 취소, 오류 상태
 
 MVP에는 데이터 편집, 셀 값 붙여넣기를 통한 데이터 변경, 원격 스토리지, SQL, 데이터
-내보내기, HDF5 지원을 포함하지 않는다.
+내보내기, HDF5 지원을 포함하지 않는다. Phase 10의 OES HDF5는 MVP 완료 뒤 추가되는 제한된
+읽기 전용 확장이며 범용 HDF5 지원을 뜻하지 않는다.
 
 ## 3. 파일 열기
 
@@ -96,7 +98,7 @@ decode, worker join을 수행하지 않는다.
 cache는 문서당 8 pages, 프로세스 전체 64 pages 또는 추정 256 MiB 중 먼저 도달하는 상한을
 사용한다. cache는 LRU로 회수할 수 있지만 열린 문서 탭은 자동 퇴출하지 않는다.
 
-CSV와 Parquet는 compile-time format registry와 공통 tabular source 인터페이스 뒤에 둔다.
+CSV, Parquet와 OES HDF5는 compile-time format registry와 공통 tabular source 인터페이스 뒤에 둔다.
 registry descriptor는 format id, 표시 이름, 확장자, MIME과 capability를 제공한다. native dialog,
 drag-and-drop 안내와 backend 형식 판별은 같은 descriptor 목록을 사용한다. 공통 인터페이스는 다음 정보를
 제공한다.
@@ -315,7 +317,47 @@ Phase 9 query engine은 DuckDB Rust `1.10504.0`의 `bundled`, `parquet`, `vscala
 않는다. 새 입력 형식은 `FormatRegistry` handler와 선택적 query provider로 추가하며 query executor
 핵심에 형식별 분기를 추가하지 않는다.
 
-## 12. 보안과 안정성
+## 12. OES HDF5 규칙
+
+Phase 10은 범용 HDF5 browser가 아니라 다음 고정 OES 구조만 지원한다.
+
+```text
+root attribute: time[rows]
+root attribute: wavelength[columns]
+root dataset:   intensity[rows, columns]
+```
+
+- `intensity`는 2차원 int32, chunked dataset이며 현재 형식은 Blosc v1 filter ID 32001과 Zstd를
+  사용한다.
+- `time`과 `wavelength`는 numeric primitive 또는 UTF-8 attribute다. 다른 attribute는 열기 필수
+  조건이 아니며 알 수 없는 값은 무시한다.
+- `intensity.shape`와 두 axis 길이는 정확히 일치해야 한다.
+- viewer 표는 `time`을 첫 열로 두고 각 wavelength 값을 intensity 열 이름으로 사용한다.
+- wavelength 이름 충돌은 저장 순서 기반 suffix로 고유화하고 내부 projection은 ordinal binding을
+  사용한다.
+- page는 최대 200행, projection은 최대 64열이며 전체 intensity를 materialize하지 않는다.
+- wavelength는 최대 4,096개, decoded axis는 파일당 128 MiB와 process 256 MiB, decoded chunk는
+  64 MiB 상한을 갖는다.
+- HDF5 attribute에는 부분 I/O가 없으므로 두 axis는 상한 안에서 전체 읽는다. axis가 dataset인
+  변형은 후속 계약 없이 추측해 지원하지 않는다.
+- vlen UTF-8 axis read는 전체 container 크기와 무관한 128 MiB axis lease를 먼저 예약하고 process에서
+  직렬화한 뒤 실제 decoded 크기로 lease를 줄인다. HDF5 attribute API가 vlen payload 크기를 read 전에
+  제공하지 않아 allocation-before-limit을 강제하지 못하는 adversarial case는 Phase 10 완료 전 별도
+  격리 또는 bounded decoder가 필요한 BLOCKED gate다.
+- source capability는 `typedSchema`, `columnProjection`만 제공한다. OES query provider와
+  filter/search/sort는 Phase 10 범위가 아니다.
+- local hard-linked `/intensity`만 허용하고 soft/external link, VDS와 external storage를 거부한다.
+- HDF5와 Blosc는 정적으로 링크하고 dynamic filter/VOL/VFD plugin loading을 비활성화한다.
+- `.h5`, `.hdf5`는 native dialog, drag-and-drop과 startup path에서 후보가 되며 handler가 HDF5
+  signature와 OES 구조를 최종 검증한다. `.oes.h5`는 마지막 `.h5` suffix로 처리한다.
+- Windows `.h5/.hdf5` file association은 모든 HDF5를 선점하므로 Phase 10에서 추가하지 않는다.
+- 64열을 넘는 grid projection은 현재 mounted logical column을 먼저 모두 포함하고 남는 slot을 인접한
+  source column으로 채운다. 숨긴 중간 열 때문에 `time`과 마지막 wavelength가 동시에 보이는 경우에도
+  두 열이 같은 bounded projection에 포함되어야 한다.
+
+정확한 열 이름, 오류, fixture, packaging과 완료 gate는 `artifacts/phase-10/`의 확정 문서를 따른다.
+
+## 13. 보안과 안정성
 
 모든 파일을 신뢰할 수 없는 입력으로 취급한다.
 
@@ -330,12 +372,12 @@ Phase 9 query engine은 DuckDB Rust `1.10504.0`의 `bundled`, `parquet`, `vscala
 - query literal과 column name을 engine SQL 문자열로 연결하지 않고 typed expression 또는 bind를 사용한다.
 - query temp와 settings는 Tauri app directory에만 쓰고 source/exe directory에는 쓰지 않는다.
 
-## 13. 향후 범위
+## 14. 향후 범위
 
 aggregation, group by, join, pivot와 SQL editor는 별도 요구사항이 승인된 경우에만 추가한다.
 runtime reader plugin과 query 결과의 persistent reusable cache는 현재 범위가 아니다.
 
-HDF5는 registry의 별도 데이터 소스 구현으로 추가한다. 한 파일의 여러 dataset을 위한
-`multipleDatasets` capability와 선택 UI가 필요하다. 네이티브 HDF5 라이브러리의 설치와 배포
-영향을 검증하기 전에는 의존성을 추가하지 않는다. Excel도 같은 방식으로 sheet 선택 계약을
-먼저 정의한다.
+Phase 10 OES 계약 밖의 일반 HDF5는 별도 데이터 소스로 다룬다. 한 파일의 여러 dataset을 위한
+`multipleDatasets` capability와 선택 UI, axis dataset paging, OES query provider는 각각 별도
+요구사항과 fixture가 승인된 경우에만 추가한다. Excel도 같은 방식으로 sheet 선택 계약을 먼저
+정의한다.

@@ -1,6 +1,6 @@
 # 개발 계획
 
-## 2026-07-15 최신 실행 상태
+## 2026-07-17 최신 실행 상태
 
 - Phase 0~8 제품 구현과 실행 가능한 자동 gate를 모두 실행했다.
 - frontend 266 tests, Playwright 24 tests, Rust 127 tests, format/lint/typecheck/clippy/build가 PASS했다.
@@ -16,13 +16,18 @@
   multi-process와 최종 release/NSIS build가 PASS했다.
 - Phase 9 구현과 실행 가능한 Browser/Rust/native gate는 PASS다. 일부 OS/8-tab 필수 gate
   미실행 때문에 전체 완료 판정은 BLOCKED다.
+- Phase 10은 단일 `time`/`wavelength` attribute와 `intensity` dataset을 사용하는 OES HDF5
+  source, bounded projection, generic grid와 static HDF5/Blosc runtime 구현을 완료했다. 실제 기준
+  파일과 Windows clipboard native smoke, release/NSIS build와 static binary import audit는 PASS했다.
+  adversarial vlen allocation, large/performance, DPI와 clean installer gate가 남아 전체 Phase 판정은
+  BLOCKED다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 9까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 10까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -37,24 +42,28 @@
 
 ## 현재 상태
 
-| 단계 | 상태 | 결과물 |
-| --- | --- | --- |
-| Phase 0 | 구현 완료, UI gate BLOCKED | 프로젝트 기반과 품질 검사 |
-| Phase 1 | 구현 완료, UI gate BLOCKED | 작은 Parquet 파일 수직 기능 |
-| Phase 2 | 구현 및 자동 검증 완료 | 대용량 Parquet와 타입 지원 |
-| Phase 3 | 구현 및 자동 검증 완료 | CSV 데이터 소스 |
-| Phase 4 | 구현 및 자동 검증 완료 | 모든 파일 열기 경로 |
-| Phase 5 | 구현 및 자동 검증 완료 | 가상화 그리드와 탐색 UI |
-| Phase 6 | 구현 및 자동 검증 완료 | Excel 방식 선택과 클립보드 |
-| Phase 7 | 구현 및 자동 검증 완료, 일부 native/UI gate BLOCKED | 성능, 안정성, 패키징 |
-| Phase 8 | 구현 및 자동/native 검증 완료, 일부 UI·설치 gate BLOCKED | 컨텍스트 메뉴, 다중 실행, 다중 문서 탭 |
-| Phase 9 | 구현 완료, 필수 UI·soak gate BLOCKED | 포맷 registry, copy 설정, CSV profile, filter·search·sort |
+| 단계     | 상태                                                     | 결과물                                                       |
+| -------- | -------------------------------------------------------- | ------------------------------------------------------------ |
+| Phase 0  | 구현 완료, UI gate BLOCKED                               | 프로젝트 기반과 품질 검사                                    |
+| Phase 1  | 구현 완료, UI gate BLOCKED                               | 작은 Parquet 파일 수직 기능                                  |
+| Phase 2  | 구현 및 자동 검증 완료                                   | 대용량 Parquet와 타입 지원                                   |
+| Phase 3  | 구현 및 자동 검증 완료                                   | CSV 데이터 소스                                              |
+| Phase 4  | 구현 및 자동 검증 완료                                   | 모든 파일 열기 경로                                          |
+| Phase 5  | 구현 및 자동 검증 완료                                   | 가상화 그리드와 탐색 UI                                      |
+| Phase 6  | 구현 및 자동 검증 완료                                   | Excel 방식 선택과 클립보드                                   |
+| Phase 7  | 구현 및 자동 검증 완료, 일부 native/UI gate BLOCKED      | 성능, 안정성, 패키징                                         |
+| Phase 8  | 구현 및 자동/native 검증 완료, 일부 UI·설치 gate BLOCKED | 컨텍스트 메뉴, 다중 실행, 다중 문서 탭                       |
+| Phase 9  | 구현 완료, 필수 UI·soak gate BLOCKED                     | 포맷 registry, copy 설정, CSV profile, filter·search·sort    |
+| Phase 10 | 구현 완료, 필수 security·performance·installer gate BLOCKED | OES HDF5 source, static Blosc decode와 bounded matrix paging |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
 `artifacts/phase-N/90-review.md`를 따른다. Phase 8의 확정 범위와 테스트 기준은
 `artifacts/phase-8/00-scope.md`와 `artifacts/phase-8/10-test-plan.md`를 따른다.
 Phase 9 결과는 `artifacts/phase-9/50-integration.md`와 `90-review.md`를 따른다.
+Phase 10의 확정 범위와 구현 gate는 `artifacts/phase-10/00-scope.md`부터
+`40-implementation-plan.md`까지를 따른다. Phase 9의 외부 환경 BLOCKED 항목은 Phase 10을
+시작해도 해소된 것으로 간주하지 않으며 공통 회귀와 최종 배포 판정에서 계속 추적한다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -397,3 +406,52 @@ profile과 전체 파일 대상 filter·search·stable sort를 bounded memory/di
 - query/profile/tab/process 종료 후 active resource와 temporary data가 누적되지 않는다.
 - query engine 선택, dependency 승인과 측정 결과가 `engine-spike.md`와 최종 설계에 기록된다.
 - HIGH/MEDIUM 결함과 필수 BLOCKED가 없고 `50-integration.md`, `90-review.md`, UI 증거가 완성된다.
+
+## Phase 10. OES HDF5 읽기 지원
+
+**목표:** 루트의 `time`, `wavelength` attribute와 2차원 int32 `intensity` dataset을 사용하는
+OES HDF5를 정적 HDF5/Blosc runtime으로 안전하게 열고, 기존 tabular grid에서 bounded page와
+projection으로 탐색한다.
+
+**상태:** 구현 완료, 필수 security·performance·installer gate BLOCKED (2026-07-17)
+
+구현은 `artifacts/phase-10/40-implementation-plan.md`의 10A~10E 순서를 따른다. 제품 동작은
+`00-scope.md`, 검증은 `10-test-plan.md`, UI는 `20-ux-design.md`, native/source 설계는
+`30-hdf5-design.md`를 따른다.
+
+### 해야 할 일
+
+- `hdf5-metno 0.13.0` static+blosc-zstd와 `ndarray 0.17` dependency/build/license spike
+- process 최초 HDF5 초기화, dynamic filter/VOL/VFD plugin 차단과 static Blosc availability 확인
+- `OES HDF5` format descriptor, handler와 typed structure/error 계약
+- local hard-linked `/intensity` 검증과 external link/VDS/external storage 거부
+- numeric/UTF-8 time·wavelength axis, optional datetime hint와 deterministic unique column binding
+- 파일당 128 MiB/process 256 MiB axis lease, 4,096 wavelength와 64 MiB decoded chunk 상한
+- 200행 x 64열 hyperslab page/projection, time-only intensity I/O 0과 coalesced column slice
+- 64열을 넘는 source의 공통 bounded initial projection과 actual projection cache key
+- generic Data/Schema/Metadata, virtual grid, selection과 clipboard 연결
+- `.h5/.hdf5` dialog/drop/startup 지원과 broad Windows file association 제외
+- actual Python hdf5plugin golden, corrupt/security/large fixture와 release/NSIS clean-runtime 검증
+
+### 테스트
+
+- profile attribute 없이 핵심 세 객체만 있는 OES와 axis type/precision matrix
+- missing object, rank/dtype/shape/filter mismatch, truncated chunk와 arbitrary HDF5 typed error
+- duplicate/blank/time wavelength label의 deterministic projection 이름
+- first/middle/chunk boundary/last/EOF와 1/64/65열 projection
+- wide 4,096 wavelength initial page와 10M x 64 low/high release fixture
+- 전체 intensity materialize 0, axis/chunk/page cache/process memory 상한
+- dynamic plugin, soft/external link, VDS와 external storage 차단
+- mixed CSV/Parquet/OES batch, 8-tab lifecycle와 2~5 release process
+- 세 viewport Browser interaction·geometry·screenshot과 실제 Tauri dialog/drop/startup/clipboard
+- static binary import, license notice, release/NSIS clean install과 기존 format 회귀
+
+### 완료 조건
+
+- `artifacts/phase-10/10-test-plan.md`의 모든 필수 OES 테스트 ID가 PASS다.
+- 실제 Blosc filter 32001/Zstd 파일을 Python, system HDF5, plugin env와 loose native DLL 없이 읽는다.
+- page와 projection이 전체 intensity를 materialize하지 않고 axis/chunk/cache/process 상한을 지킨다.
+- unknown attribute는 무시하고 현재 계약 밖의 layout과 외부 참조는 안전한 typed error로 거부한다.
+- OES가 전용 grid 분기 없이 generic UI, selection과 clipboard에 표시된다.
+- CSV/Parquet와 Phase 9 query의 정확성·성능·native packaging 회귀가 없다.
+- HIGH/MEDIUM 결함, 필수 BLOCKED가 없고 integration/review/UI/native 증거가 완성된다.

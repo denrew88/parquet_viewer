@@ -269,6 +269,7 @@ describe("backend adapters", () => {
     await expect(browserMockBackend.listSupportedFormats()).resolves.toEqual([
       expect.objectContaining({ id: "csv", extensions: ["csv"] }),
       expect.objectContaining({ id: "parquet", extensions: ["parquet"] }),
+      expect.objectContaining({ id: "oesHdf5", extensions: ["h5", "hdf5"] }),
     ]);
   });
 

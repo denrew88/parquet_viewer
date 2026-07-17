@@ -1,0 +1,149 @@
+{
+  "capturedAt": "2026-07-17T11:28:39.032Z",
+  "results": [
+    {
+      "name": "desktop",
+      "body": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "cell": {
+        "bottom": 280,
+        "height": 34,
+        "left": 1260,
+        "right": 1440,
+        "top": 246,
+        "width": 180
+      },
+      "columnAlignmentError": 0,
+      "grid": {
+        "ariaColumnCount": "65",
+        "mountedCells": 308,
+        "mountedColumns": 11,
+        "mountedRows": 28,
+        "selection": {
+          "bottom": "0",
+          "left": "64",
+          "right": "64",
+          "top": "0"
+        }
+      },
+      "header": {
+        "bottom": 210,
+        "height": 36,
+        "left": 1260,
+        "right": 1440,
+        "top": 174,
+        "width": 180
+      },
+      "shell": {
+        "bottom": 870,
+        "height": 734,
+        "left": 0,
+        "right": 1440,
+        "top": 136,
+        "width": 1440
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    {
+      "name": "compact",
+      "body": {
+        "clientWidth": 1024,
+        "scrollWidth": 1024
+      },
+      "cell": {
+        "bottom": 280,
+        "height": 34,
+        "left": 844,
+        "right": 1024,
+        "top": 246,
+        "width": 180
+      },
+      "columnAlignmentError": 0,
+      "grid": {
+        "ariaColumnCount": "65",
+        "mountedCells": 216,
+        "mountedColumns": 9,
+        "mountedRows": 24,
+        "selection": {
+          "bottom": "0",
+          "left": "64",
+          "right": "64",
+          "top": "0"
+        }
+      },
+      "header": {
+        "bottom": 210,
+        "height": 36,
+        "left": 844,
+        "right": 1024,
+        "top": 174,
+        "width": 180
+      },
+      "shell": {
+        "bottom": 738,
+        "height": 602,
+        "left": 0,
+        "right": 1024,
+        "top": 136,
+        "width": 1024
+      },
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    {
+      "name": "minimum",
+      "body": {
+        "clientWidth": 800,
+        "scrollWidth": 800
+      },
+      "cell": {
+        "bottom": 280,
+        "height": 34,
+        "left": 620,
+        "right": 800,
+        "top": 246,
+        "width": 180
+      },
+      "columnAlignmentError": 0,
+      "grid": {
+        "ariaColumnCount": "65",
+        "mountedCells": 152,
+        "mountedColumns": 8,
+        "mountedRows": 19,
+        "selection": {
+          "bottom": "0",
+          "left": "64",
+          "right": "64",
+          "top": "0"
+        }
+      },
+      "header": {
+        "bottom": 210,
+        "height": 36,
+        "left": 620,
+        "right": 800,
+        "top": 174,
+        "width": 180
+      },
+      "shell": {
+        "bottom": 570,
+        "height": 434,
+        "left": 0,
+        "right": 800,
+        "top": 136,
+        "width": 800
+      },
+      "viewport": {
+        "height": 600,
+        "width": 800
+      }
+    }
+  ]
+}

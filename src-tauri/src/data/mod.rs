@@ -1,5 +1,6 @@
 mod csv_profile;
 mod csv_source;
+mod oes_hdf5_source;
 mod parquet_source;
 mod registry;
 mod source;

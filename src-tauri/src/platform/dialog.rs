@@ -109,11 +109,13 @@ mod tests {
         let filters = dialog_filters(&descriptors);
 
         assert_eq!(filters[0].name, "Data files");
-        assert_eq!(filters[0].extensions, vec!["csv", "parquet"]);
+        assert_eq!(filters[0].extensions, vec!["csv", "parquet", "h5", "hdf5"]);
         assert_eq!(filters[1].name, "CSV");
         assert_eq!(filters[1].extensions, vec!["csv"]);
         assert_eq!(filters[2].name, "Parquet");
         assert_eq!(filters[2].extensions, vec!["parquet"]);
+        assert_eq!(filters[3].name, "OES HDF5");
+        assert_eq!(filters[3].extensions, vec!["h5", "hdf5"]);
     }
 
     #[test]

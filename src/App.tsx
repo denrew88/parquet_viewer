@@ -420,6 +420,7 @@ function DataView({
         distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
         findTarget={queryState?.findTarget ?? undefined}
         isLoading={isLoading}
+        logicalColumnNames={queryState?.queryId ? page.columns : undefined}
         onCancelQuery={queryState ? onCancelQuery : undefined}
         onFindNext={queryState ? () => onFindMatch("next") : undefined}
         onFindPrevious={queryState ? () => onFindMatch("previous") : undefined}

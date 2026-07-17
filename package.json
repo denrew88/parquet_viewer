@@ -17,6 +17,7 @@
     "test:e2e:report": "playwright show-report",
     "test:native:build": "tauri build --debug --no-bundle --config src-tauri/tauri.playwright.conf.json",
     "test:native:smoke": "node scripts/native_cdp_smoke.mjs",
+    "test:native:oes": "node scripts/native_oes_smoke.mjs",
     "playwright:install": "playwright install chromium",
     "preview": "vite preview",
     "tauri": "tauri"

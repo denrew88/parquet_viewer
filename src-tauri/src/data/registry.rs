@@ -3,8 +3,8 @@ use std::{collections::HashSet, path::Path, sync::OnceLock};
 use crate::domain::{DataError, FormatDescriptor};
 
 use super::{
-    csv_source::CSV_FORMAT_HANDLER, parquet_source::PARQUET_FORMAT_HANDLER, DataSource,
-    FormatHandler,
+    csv_source::CSV_FORMAT_HANDLER, oes_hdf5_source::OES_HDF5_FORMAT_HANDLER,
+    parquet_source::PARQUET_FORMAT_HANDLER, DataSource, FormatHandler,
 };
 
 #[derive(Debug)]
@@ -110,7 +110,11 @@ impl FormatRegistry {
 pub fn builtin_format_registry() -> &'static FormatRegistry {
     static REGISTRY: OnceLock<FormatRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
-        FormatRegistry::new(vec![&CSV_FORMAT_HANDLER, &PARQUET_FORMAT_HANDLER])
-            .expect("built-in format descriptors must be valid")
+        FormatRegistry::new(vec![
+            &CSV_FORMAT_HANDLER,
+            &PARQUET_FORMAT_HANDLER,
+            &OES_HDF5_FORMAT_HANDLER,
+        ])
+        .expect("built-in format descriptors must be valid")
     })
 }
