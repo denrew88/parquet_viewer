@@ -1,3 +1,4 @@
+mod boundary;
 mod csv_profile;
 mod csv_source;
 mod oes_hdf5_source;
@@ -13,6 +14,7 @@ mod phase2_tests;
 #[cfg(test)]
 mod phase3_tests;
 
+pub(crate) use boundary::find_boundary as resolve_boundary;
 #[cfg(test)]
 pub use parquet_source::ParquetSource;
 pub use registry::builtin_format_registry;

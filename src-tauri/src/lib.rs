@@ -48,6 +48,8 @@ pub fn run() {
             commands::list_distinct_values,
             commands::cancel_query,
             commands::find_query_match,
+            commands::find_data_boundary,
+            commands::cancel_data_boundary_navigation,
             commands::get_query_temp_usage,
             commands::clear_query_temp,
             commands::select_data_file,

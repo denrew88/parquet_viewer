@@ -32,6 +32,62 @@ test("opens a projected OES matrix and reaches the final wavelength without quer
   await expect(page.locator(".copy-status")).toHaveText("Copied 1 rows.");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("63");
 
+  await grid.press("Control+Shift+ArrowLeft");
+  await expect(grid).toHaveAttribute("data-active-column", "0");
+  await expect(grid).toHaveAttribute("data-selection-left", "0");
+  await expect(grid).toHaveAttribute("data-selection-right", "64");
+  await expect(grid.locator('[data-grid-row="0"][data-grid-column="0"]')).toHaveText("1000000");
+
+  await grid.press("Control+Alt+ArrowRight");
+  await expect(grid).toHaveAttribute("data-active-column", "64");
+  await expect(grid).toHaveAttribute("data-selection-left", "64");
+  await grid.press("Control+ArrowLeft");
+  await expect(grid).toHaveAttribute("data-active-column", "0");
+  await grid.press("Control+Alt+Shift+ArrowRight");
+  await expect(grid).toHaveAttribute("data-active-column", "64");
+  await expect(grid).toHaveAttribute("data-selection-left", "0");
+  await expect(grid).toHaveAttribute("data-selection-right", "64");
+
+  await grid.press("Control+Alt+Shift+ArrowDown");
+  await expect(grid).toHaveAttribute("data-active-row", "479");
+  await expect(grid).toHaveAttribute("data-selection-top", "0");
+  await expect(grid).toHaveAttribute("data-selection-bottom", "479");
+  const bottomCell = grid.locator('[data-grid-row="479"][data-grid-column="64"]');
+  await expect(bottomCell).toHaveText("479063");
+  await expect(bottomCell).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [cellBox, gridBox] = await Promise.all([bottomCell.boundingBox(), grid.boundingBox()]);
+      if (!cellBox || !gridBox) return Number.POSITIVE_INFINITY;
+      return cellBox.y + cellBox.height - (gridBox.y + gridBox.height);
+    })
+    .toBeLessThanOrEqual(1);
+  const bottomGeometry = await bottomCell.evaluate(
+    (cell, gridElement) => {
+      const cellRect = cell.getBoundingClientRect();
+      const gridRect = (gridElement as HTMLElement).getBoundingClientRect();
+      return {
+        cellTop: cellRect.top,
+        cellBottom: cellRect.bottom,
+        gridTop: gridRect.top,
+        gridBottom: gridRect.bottom,
+      };
+    },
+    await grid.elementHandle(),
+  );
+  expect(bottomGeometry.cellTop).toBeGreaterThanOrEqual(bottomGeometry.gridTop + 36);
+  expect(bottomGeometry.cellBottom).toBeLessThanOrEqual(bottomGeometry.gridBottom + 1);
+  await expect(grid).toBeFocused();
+
+  await grid.press("Control+Alt+ArrowUp");
+  await expect(grid).toHaveAttribute("data-active-row", "0");
+  await expect(grid.locator('[data-grid-row="0"][data-grid-column="64"]')).toHaveText("63");
+  await grid.press("Control+Alt+ArrowDown");
+  await grid.press("Control+Shift+ArrowUp");
+  await expect(grid).toHaveAttribute("data-active-row", "0");
+  await expect(grid).toHaveAttribute("data-selection-top", "0");
+  await expect(grid).toHaveAttribute("data-selection-bottom", "479");
+
   await expectInsideViewport(page.locator(".virtual-grid-shell"));
   await expectNoHorizontalPageOverflow(page);
 });

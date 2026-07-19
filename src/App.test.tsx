@@ -380,6 +380,13 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
     takePendingOpenRequests: vi.fn().mockResolvedValue([]),
     onOpenDataRequest: vi.fn().mockResolvedValue(() => undefined),
     readPage: vi.fn().mockResolvedValue(page),
+    findDataBoundary: vi.fn(async (request) => ({
+      ...request,
+      targetRow: request.row,
+      targetColumnId: request.columnId,
+      resolvedRowCount: page.totalRows,
+    })),
+    cancelDataBoundaryNavigation: vi.fn().mockResolvedValue(undefined),
     configureCsv: vi.fn().mockRejectedValue(new Error("not csv")),
     getCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
     previewCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),

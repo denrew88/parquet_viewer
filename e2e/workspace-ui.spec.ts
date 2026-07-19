@@ -95,9 +95,11 @@ test("runs global find and filter, cycles sort, and applies a column filter popo
   await popover.getByRole("textbox", { name: "Value", exact: true }).fill("9007199254740993");
   await popover.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByLabel("Active filters")).toContainText("id > 9007199254740993");
-
-  await filterButton.click();
-  await popover.press("Escape");
+  await expect(async () => {
+    await filterButton.click();
+    await expect(popover).toBeVisible({ timeout: 1_000 });
+    await popover.press("Escape", { timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
   await expect(popover).toHaveCount(0);
   await expect(filterButton).toBeFocused();
   await page.getByRole("button", { name: "Remove filter id" }).click();

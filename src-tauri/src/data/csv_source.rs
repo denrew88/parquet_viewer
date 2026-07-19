@@ -1,10 +1,11 @@
 use crate::domain::{
-    ColumnSchema, CsvColumnInference, CsvColumnValidation, CsvHeaderIssue, CsvHeaderIssueReason,
-    CsvMetadata, CsvParsingProfile, CsvPreviewCell, CsvPreviewColumn, CsvPreviewRow,
-    CsvPreviewStage, CsvProfileMode, CsvProfilePreview, CsvStructureIssue, CsvTargetType,
-    CsvValidationErrorSample, DataError, DataFormat, DataPage, DataValue, DataValueState,
-    FileSummary, FormatDescriptor, FormatDetailsContent, FormatDetailsSection, HeaderMode,
-    MetadataEntry, RowCountState, RowCountStatus, SourceCapability, ValueKind,
+    BoundarySearchRequest, BoundarySearchResult, ColumnSchema, CsvColumnInference,
+    CsvColumnValidation, CsvHeaderIssue, CsvHeaderIssueReason, CsvMetadata, CsvParsingProfile,
+    CsvPreviewCell, CsvPreviewColumn, CsvPreviewRow, CsvPreviewStage, CsvProfileMode,
+    CsvProfilePreview, CsvStructureIssue, CsvTargetType, CsvValidationErrorSample,
+    DataBoundaryDirection, DataBoundaryMode, DataError, DataFormat, DataPage, DataValue,
+    DataValueState, FileSummary, FormatDescriptor, FormatDetailsContent, FormatDetailsSection,
+    HeaderMode, MetadataEntry, RowCountState, RowCountStatus, SourceCapability, ValueKind,
 };
 use csv::{ByteRecord, Position, Reader, ReaderBuilder};
 use duckdb::{appender_params_from_iter, types::Value};
@@ -43,6 +44,7 @@ pub const MAX_CONCURRENT_INDEX_WORKERS: usize = 4;
 const MAX_STRUCTURE_ISSUES: usize = 100;
 const MAX_HEADER_AUDIT_ITEMS: usize = 100;
 const MAX_HEADER_AUDIT_CHARS: usize = 256;
+const BOUNDARY_CANCEL_INTERVAL: u64 = 4_096;
 
 pub const CSV_FORMAT_DESCRIPTOR: FormatDescriptor = FormatDescriptor {
     id: DataFormat::Csv,
@@ -742,6 +744,161 @@ impl CsvSource {
         Ok(page)
     }
 
+    fn find_boundary_sequential(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        let summary = self.summary();
+        super::boundary::validate_request(&summary.columns, summary.row_count, request)?;
+        if cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+
+        if matches!(
+            request.direction,
+            DataBoundaryDirection::Left | DataBoundaryDirection::Right
+        ) || (request.direction == DataBoundaryDirection::Up
+            && request.mode == DataBoundaryMode::TableBoundary)
+        {
+            return super::boundary::find_boundary(
+                &summary.columns,
+                summary.row_count,
+                request,
+                cancel,
+                |offset, limit, columns| self.read_page_projected(offset, limit, Some(columns)),
+            );
+        }
+
+        let raw_summary = self.raw_summary();
+        let (profile, inferences) = self.effective_profile_and_inferences(&raw_summary.columns);
+        let selected = profile
+            .columns
+            .iter()
+            .zip(&inferences)
+            .find(|(column, inference)| {
+                column.source_name == request.column_id
+                    && resolved_type(profile.mode, column, inference) != CsvTargetType::Skip
+            })
+            .ok_or_else(|| {
+                DataError::invalid_request(format!(
+                    "Unknown CSV boundary column: {}",
+                    request.column_id
+                ))
+            })?;
+        let selected_index = selected.0.source_index;
+        let selected_type = resolved_type(profile.mode, selected.0, selected.1);
+        let mut reader = new_reader(&self.path)?;
+        let mut record = ByteRecord::new();
+        if self.header_used {
+            read_record_checked(&self.path, &mut reader, &mut record)?;
+        }
+
+        let mut row = 0_u64;
+        let mut previous_occupied = false;
+        let mut occupied_run_start = None;
+        let mut last_occupied = None;
+        let mut found_current = false;
+        let mut target = request.row;
+        let mut seek_occupied = false;
+        let mut first_neighbor = true;
+
+        while read_record_checked(&self.path, &mut reader, &mut record)? {
+            if row % BOUNDARY_CANCEL_INTERVAL == 0 && cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            if record.len() > MAX_COLUMNS {
+                return Err(DataError::csv_limit_exceeded(
+                    &self.path,
+                    format!(
+                        "record has {} columns; maximum is {MAX_COLUMNS}",
+                        record.len()
+                    ),
+                ));
+            }
+            let raw = std::str::from_utf8(record.get(selected_index).unwrap_or_default())
+                .map_err(|_| DataError::invalid_encoding(&self.path, reader.position().byte()))?;
+            let is_occupied = csv_boundary_occupied(raw, selected_type, selected.0);
+
+            if request.direction == DataBoundaryDirection::Up {
+                if row == request.row {
+                    target = if is_occupied && previous_occupied {
+                        occupied_run_start.unwrap_or(0)
+                    } else {
+                        last_occupied.unwrap_or(0)
+                    };
+                    return Ok(BoundarySearchResult {
+                        target_row: target,
+                        target_column_id: request.column_id.clone(),
+                        resolved_row_count: summary.row_count,
+                    });
+                }
+                if is_occupied {
+                    if !previous_occupied {
+                        occupied_run_start = Some(row);
+                    }
+                    last_occupied = Some(row);
+                }
+                previous_occupied = is_occupied;
+                row = row.saturating_add(1);
+                continue;
+            }
+
+            if request.mode == DataBoundaryMode::TableBoundary {
+                found_current |= row == request.row;
+                target = row;
+                row = row.saturating_add(1);
+                continue;
+            }
+
+            if row < request.row {
+                row = row.saturating_add(1);
+                continue;
+            }
+            if row == request.row {
+                found_current = true;
+                previous_occupied = is_occupied;
+                target = row;
+                row = row.saturating_add(1);
+                continue;
+            }
+            if first_neighbor {
+                seek_occupied = !(previous_occupied && is_occupied);
+                first_neighbor = false;
+            }
+            if seek_occupied {
+                if is_occupied {
+                    return Ok(BoundarySearchResult {
+                        target_row: row,
+                        target_column_id: request.column_id.clone(),
+                        resolved_row_count: summary.row_count,
+                    });
+                }
+                target = row;
+            } else if is_occupied {
+                target = row;
+            } else {
+                return Ok(BoundarySearchResult {
+                    target_row: target,
+                    target_column_id: request.column_id.clone(),
+                    resolved_row_count: summary.row_count,
+                });
+            }
+            row = row.saturating_add(1);
+        }
+
+        if !found_current {
+            return Err(DataError::invalid_request(
+                "Boundary navigation row is outside the data table.",
+            ));
+        }
+        Ok(BoundarySearchResult {
+            target_row: target,
+            target_column_id: request.column_id.clone(),
+            resolved_row_count: Some(row),
+        })
+    }
+
     fn effective_profile_and_inferences(
         &self,
         columns: &[ColumnSchema],
@@ -791,6 +948,21 @@ impl CsvSource {
             let _ = worker.join();
         }
     }
+}
+
+fn csv_boundary_occupied(
+    raw: &str,
+    target: CsvTargetType,
+    options: &crate::domain::CsvColumnProfile,
+) -> bool {
+    let value = if options.trim { raw.trim() } else { raw };
+    if value.is_empty() || options.null_tokens.iter().any(|token| token == value) {
+        return false;
+    }
+    if matches!(target, CsvTargetType::Auto | CsvTargetType::Text) {
+        return true;
+    }
+    super::boundary::occupied(convert_value(raw, target, options).state)
 }
 
 impl Drop for CsvSource {
@@ -977,6 +1149,14 @@ impl TabularSource for CsvSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         CsvSource::read_page_projected(self, offset, limit, columns)
+    }
+
+    fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        self.find_boundary_sequential(request, cancel)
     }
 
     fn cancel_task(&self, generation: u64) -> Result<FileSummary, DataError> {
@@ -1415,6 +1595,7 @@ mod tests {
     use super::*;
     use std::{
         fs,
+        io::{BufWriter, Write},
         time::{Duration, Instant},
     };
 
@@ -1428,6 +1609,204 @@ mod tests {
             assert!(Instant::now() < deadline, "CSV worker timed out");
             thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    fn boundary_request(
+        row: u64,
+        direction: DataBoundaryDirection,
+        mode: DataBoundaryMode,
+    ) -> BoundarySearchRequest {
+        BoundarySearchRequest {
+            row,
+            column_id: String::from("column_000"),
+            visible_column_ids: vec![String::from("column_000")],
+            direction,
+            mode,
+        }
+    }
+
+    #[test]
+    fn csv_boundary_text_fast_path_matches_converted_value_state() {
+        let mut profile = crate::domain::CsvColumnProfile::new(
+            0,
+            String::from("column_000"),
+            CsvTargetType::Text,
+        );
+        for raw in ["", "NULL", "N/A", "x", "  x  "] {
+            assert_eq!(
+                csv_boundary_occupied(raw, CsvTargetType::Text, &profile),
+                super::super::boundary::occupied(
+                    convert_value(raw, CsvTargetType::Text, &profile).state
+                ),
+                "{raw:?}",
+            );
+        }
+        profile.trim = true;
+        for raw in ["   ", " NULL ", " x "] {
+            assert_eq!(
+                csv_boundary_occupied(raw, CsvTargetType::Text, &profile),
+                super::super::boundary::occupied(
+                    convert_value(raw, CsvTargetType::Text, &profile).state
+                ),
+                "{raw:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn csv_sequential_boundary_handles_regions_reverse_and_unknown_eof() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("boundary.csv");
+        fs::write(
+            &path,
+            "column_000,column_001,column_002\nx,x,\ny,,x\n\"\"\n\"\"\nx\ny\n",
+        )
+        .unwrap();
+        let source = CsvSource::open(&path, HeaderMode::Present).unwrap();
+        wait_complete(&source);
+        let cancel = AtomicBool::new(false);
+
+        let down = source
+            .find_boundary_sequential(
+                &boundary_request(
+                    0,
+                    DataBoundaryDirection::Down,
+                    DataBoundaryMode::DataBoundary,
+                ),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(down.target_row, 1);
+        let next_region = source
+            .find_boundary_sequential(
+                &boundary_request(
+                    1,
+                    DataBoundaryDirection::Down,
+                    DataBoundaryMode::DataBoundary,
+                ),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(next_region.target_row, 4);
+        let up = source
+            .find_boundary_sequential(
+                &boundary_request(4, DataBoundaryDirection::Up, DataBoundaryMode::DataBoundary),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(up.target_row, 1);
+
+        let right = source
+            .find_boundary_sequential(
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("column_000"),
+                    visible_column_ids: vec![
+                        String::from("column_000"),
+                        String::from("column_001"),
+                        String::from("column_002"),
+                    ],
+                    direction: DataBoundaryDirection::Right,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(right.target_column_id, "column_001");
+        let left = source
+            .find_boundary_sequential(
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("column_002"),
+                    visible_column_ids: vec![
+                        String::from("column_000"),
+                        String::from("column_001"),
+                        String::from("column_002"),
+                    ],
+                    direction: DataBoundaryDirection::Left,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(left.target_column_id, "column_001");
+
+        let unknown = CsvSource::open(&path, HeaderMode::Present).unwrap();
+        unknown.cancel_index(unknown.generation).unwrap();
+        let eof = unknown
+            .find_boundary_sequential(
+                &boundary_request(
+                    0,
+                    DataBoundaryDirection::Down,
+                    DataBoundaryMode::TableBoundary,
+                ),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(eof.target_row, 5);
+        assert_eq!(eof.resolved_row_count, Some(6));
+    }
+
+    #[test]
+    fn csv_sequential_boundary_finds_250k_last_row_in_one_pass() {
+        const ROWS: u64 = 250_000;
+        const COLUMNS: usize = 40;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("large-csv.csv");
+        let file = File::create(&path).unwrap();
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "{}",
+            (0..COLUMNS)
+                .map(|index| format!("column_{index:03}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .unwrap();
+        let record = vec!["x"; COLUMNS].join(",");
+        for _ in 0..ROWS {
+            writeln!(writer, "{record}").unwrap();
+        }
+        writer.flush().unwrap();
+
+        let source = CsvSource::open(&path, HeaderMode::Present).unwrap();
+        source.cancel_index(source.generation).unwrap();
+        let started = Instant::now();
+        let result = source
+            .find_boundary_sequential(
+                &boundary_request(
+                    0,
+                    DataBoundaryDirection::Down,
+                    DataBoundaryMode::DataBoundary,
+                ),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        let elapsed = started.elapsed();
+        eprintln!("250k x 40 CSV boundary elapsed: {elapsed:?}");
+        assert_eq!(result.target_row, ROWS - 1);
+        assert_eq!(result.resolved_row_count, Some(ROWS));
+        assert!(elapsed < Duration::from_secs(10), "elapsed: {elapsed:?}");
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_signal = Arc::clone(&cancel);
+        let canceller = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(1));
+            cancel_signal.store(true, Ordering::Release);
+        });
+        let error = source
+            .find_boundary_sequential(
+                &boundary_request(
+                    0,
+                    DataBoundaryDirection::Down,
+                    DataBoundaryMode::DataBoundary,
+                ),
+                &cancel,
+            )
+            .unwrap_err();
+        canceller.join().unwrap();
+        assert_eq!(error.code, crate::domain::DataErrorCode::TaskCancelled);
     }
 
     #[test]

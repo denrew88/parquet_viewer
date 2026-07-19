@@ -126,7 +126,7 @@ function stepCoordinate(
   };
 }
 
-function ctrlArrowTarget(
+export function ctrlArrowTarget(
   start: GridCoordinate,
   rowDelta: number,
   columnDelta: number,
@@ -141,8 +141,7 @@ function ctrlArrowTarget(
   if (next.row === start.row && next.column === start.column) return start;
 
   const startEmpty = isEmpty(start);
-  const nextEmpty = isEmpty(next);
-  if (!startEmpty && nextEmpty) {
+  if (!startEmpty && isEmpty(next)) {
     let cursor = next;
     while (cursor.row !== boundary.row || cursor.column !== boundary.column) {
       if (!isEmpty(cursor)) return cursor;
@@ -173,8 +172,10 @@ export function applyGridKey(
   bounds: GridBounds,
   isEmpty: (coordinate: GridCoordinate) => boolean = () => false,
 ): SelectionState {
-  if (!validBounds(bounds) || command.altKey) return state;
+  if (!validBounds(bounds)) return state;
   const primary = Boolean(command.ctrlKey || command.metaKey);
+  const absoluteArrow = Boolean(primary && command.altKey && command.key.startsWith("Arrow"));
+  if (command.altKey && !absoluteArrow) return state;
   if (primary && command.key.toLocaleLowerCase() === "a") {
     return makeState(
       state,
@@ -198,9 +199,15 @@ export function applyGridKey(
             ? ([0, 1] as const)
             : null;
   if (direction) {
-    target = primary
-      ? ctrlArrowTarget(state.active, direction[0], direction[1], bounds, isEmpty)
-      : stepCoordinate(state.active, direction[0], direction[1], bounds);
+    target = absoluteArrow
+      ? {
+          row: direction[0] < 0 ? 0 : direction[0] > 0 ? bounds.rowCount - 1 : state.active.row,
+          column:
+            direction[1] < 0 ? 0 : direction[1] > 0 ? bounds.columnCount - 1 : state.active.column,
+        }
+      : primary
+        ? ctrlArrowTarget(state.active, direction[0], direction[1], bounds, isEmpty)
+        : stepCoordinate(state.active, direction[0], direction[1], bounds);
   } else if (command.key === "Home") {
     target = primary ? { row: 0, column: 0 } : { row: state.active.row, column: 0 };
   } else if (command.key === "End") {

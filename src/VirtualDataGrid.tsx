@@ -39,7 +39,16 @@ import {
 } from "@tanstack/react-table";
 import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { DataPage, DataValue, FileSummary, ReadPageRequest } from "./backend";
+import type {
+  CancelDataBoundaryNavigationRequest,
+  DataBoundaryDirection,
+  DataPage,
+  DataValue,
+  FileSummary,
+  FindBoundaryRequest,
+  FindBoundaryResponse,
+  ReadPageRequest,
+} from "./backend";
 import {
   applyGridKey,
   createSelection,
@@ -47,11 +56,17 @@ import {
   selectionReducer,
   type GridBounds,
   type GridCoordinate,
+  type SelectionAction,
+  type SelectionState,
 } from "./gridSelection";
 import { CopyAccumulator, CopyByteLimitExceededError, serializeCopyField } from "./copy/serializer";
 import { COPY_PRESETS } from "./copy/presets";
 import type { CopyOptions, CopyPreset } from "./copy/model";
-import { orderedProjectionForWindow, sameProjectedColumns } from "./gridProjection";
+import {
+  compatiblePageFor,
+  orderedProjectionForWindow,
+  sameProjectedColumns,
+} from "./gridProjection";
 import { ColumnFilterPopover, type DistinctValuesState } from "./query/ColumnFilterPopover";
 import {
   clearFilters,
@@ -93,6 +108,8 @@ export interface VirtualDataGridProps {
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
+  documentId?: string;
+  findDataBoundary?(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
   findTarget?: { row: number; columnId: string; key: string };
   isLoading: boolean;
   logicalColumnNames?: readonly string[];
@@ -107,10 +124,13 @@ export interface VirtualDataGridProps {
   onQueryPlanChange?(plan: QueryPlan): void;
   onReadError(error: unknown, offset: number): void;
   page: DataPage;
+  queryActive?: boolean;
   queryPlan?: QueryPlan;
   queryScalarTypes?: Readonly<Record<string, QueryScalarType>>;
   queryStatus?: QueryToolbarStatus;
   readPage(request: ReadPageRequest): Promise<DataPage>;
+  cancelDataBoundaryNavigation?(request: CancelDataBoundaryNavigationRequest): Promise<void>;
+  queryId?: string;
   resultKey?: string;
   summary: FileSummary;
   writeClipboardText?: (text: string) => Promise<void>;
@@ -148,6 +168,23 @@ function dataCellText(value: DataValue): string {
   return value.display ?? "";
 }
 
+function dataValueIsEmpty(value: DataValue): boolean {
+  if (value.state === "invalid") return false;
+  if (value.state === "null" || value.state === "empty") return true;
+  if (value.state === "valid") return false;
+  return value.display === null || value.display === "";
+}
+
+type ArrowDirection = readonly [rowDelta: -1 | 0 | 1, columnDelta: -1 | 0 | 1];
+
+function arrowDirection(key: string): ArrowDirection | null {
+  if (key === "ArrowUp") return [-1, 0];
+  if (key === "ArrowDown") return [1, 0];
+  if (key === "ArrowLeft") return [0, -1];
+  if (key === "ArrowRight") return [0, 1];
+  return null;
+}
+
 function cellClass(value: DataValue): string {
   return `virtual-grid__cell data-value--${value.kind}${
     value.kind === "null"
@@ -172,7 +209,15 @@ export function VirtualDataGrid({
   copyOptions = COPY_PRESETS.excel,
   copyPresetError = null,
   copyPresetSaving = false,
+  cancelDataBoundaryNavigation = async () => undefined,
   distinctValuesForColumn,
+  documentId,
+  findDataBoundary = async (request) => ({
+    ...request,
+    targetRow: request.row,
+    targetColumnId: request.columnId,
+    resolvedRowCount: null,
+  }),
   findTarget,
   isLoading,
   logicalColumnNames: logicalColumnNamesProp,
@@ -187,6 +232,8 @@ export function VirtualDataGrid({
   onQueryPlanChange,
   onReadError,
   page,
+  queryActive = false,
+  queryId,
   queryPlan,
   queryScalarTypes,
   queryStatus,
@@ -199,6 +246,8 @@ export function VirtualDataGrid({
   const gridRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const latestCancelBoundaryNavigation = useRef(cancelDataBoundaryNavigation);
+  latestCancelBoundaryNavigation.current = cancelDataBoundaryNavigation;
   const latestPage = useRef(page);
   latestPage.current = page;
   const activeResultKey = resultKey ?? summary.sessionId;
@@ -208,6 +257,10 @@ export function VirtualDataGrid({
   const copyGeneration = useRef(0);
   const mounted = useRef(true);
   const dragging = useRef(false);
+  const navigationGeneration = useRef(0);
+  const boundaryQueueEpoch = useRef(0);
+  const boundaryNavigationQueue = useRef<Promise<void>>(Promise.resolve());
+  const activeBoundaryRequest = useRef<FindBoundaryRequest | null>(null);
   const horizontalGeneration = useRef(0);
   const inFlight = useRef(new Map<string, Promise<DataPage>>());
   const [pages, setPages] = useState<Map<string, DataPage>>(
@@ -235,10 +288,18 @@ export function VirtualDataGrid({
     columnCount: Math.max(1, logicalColumnNames.length),
     pageStep: 10,
   };
-  const [selection, dispatchSelection] = useReducer(
+  const [selection, reactDispatchSelection] = useReducer(
     selectionReducer,
     createSelection(activeResultKey, initialBounds),
   );
+  const latestSelection = useRef(selection);
+  latestSelection.current = selection;
+  function dispatchSelection(action: SelectionAction): SelectionState {
+    const next = selectionReducer(latestSelection.current, action);
+    latestSelection.current = next;
+    reactDispatchSelection(action);
+    return next;
+  }
   const [copyProgress, setCopyProgress] = useState<CopyProgress | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [inspected, setInspected] = useState<{
@@ -292,10 +353,24 @@ export function VirtualDataGrid({
   useEffect(() => {
     mounted.current = true;
     const pendingRequests = inFlight.current;
+    const boundaryRequest = activeBoundaryRequest;
+    const cancelBoundary = latestCancelBoundaryNavigation;
     return () => {
       mounted.current = false;
       generation.current += 1;
       copyGeneration.current += 1;
+      navigationGeneration.current += 1;
+      boundaryQueueEpoch.current += 1;
+      const pendingBoundary = boundaryRequest.current;
+      boundaryRequest.current = null;
+      if (pendingBoundary) {
+        void cancelBoundary.current({
+          navigationId: pendingBoundary.navigationId,
+          documentId: pendingBoundary.documentId,
+          sessionId: pendingBoundary.sessionId,
+          ...(pendingBoundary.queryId ? { queryId: pendingBoundary.queryId } : {}),
+        });
+      }
       pendingRequests.clear();
     };
   }, []);
@@ -309,7 +384,19 @@ export function VirtualDataGrid({
     const firstPage = latestPage.current;
     generation.current += 1;
     horizontalGeneration.current += 1;
+    navigationGeneration.current += 1;
+    boundaryQueueEpoch.current += 1;
     inFlight.current.clear();
+    const pendingBoundary = activeBoundaryRequest.current;
+    activeBoundaryRequest.current = null;
+    if (pendingBoundary) {
+      void latestCancelBoundaryNavigation.current({
+        navigationId: pendingBoundary.navigationId,
+        documentId: pendingBoundary.documentId,
+        sessionId: pendingBoundary.sessionId,
+        ...(pendingBoundary.queryId ? { queryId: pendingBoundary.queryId } : {}),
+      });
+    }
     setPages(new Map([[projectedPageKey(firstPage.offset, firstPage.columns), firstPage]]));
     setActiveOffset(firstPage.offset);
     setActiveProjection([...firstPage.columns]);
@@ -332,7 +419,14 @@ export function VirtualDataGrid({
       scrollRef.current.scrollLeft = 0;
       scrollRef.current.scrollTop = 0;
     }
-    if (activeRef.current) window.requestAnimationFrame(() => gridRef.current?.focus());
+    if (activeRef.current) {
+      window.requestAnimationFrame(() => {
+        const grid = gridRef.current;
+        if (grid && (document.activeElement === document.body || document.activeElement === grid)) {
+          grid.focus();
+        }
+      });
+    }
   }, [activeResultKey, logicalColumnsKey, logicalColumnNames.length]);
 
   useLayoutEffect(() => {
@@ -506,20 +600,20 @@ export function VirtualDataGrid({
   );
   const totalColumnWidth = visibleColumns.reduce((total, column) => total + column.getSize(), 0);
 
-  const knownCount = queryEnabled ? page.totalRows : summary.rowCount;
+  const knownCount = queryActive ? page.totalRows : summary.rowCount;
   const loadedEnd = Math.max(
     ...[...pages.values()].map((loaded) => loaded.offset + loaded.rows.length),
   );
   const finalLoadedPage = [...pages.values()].find((loaded) => !loaded.hasMore);
   const rowCount = knownCount ?? (finalLoadedPage ? loadedEnd : loadedEnd + 1);
-  const selectionBounds: GridBounds = {
-    rowCount,
-    columnCount: logicalColumnNames.length,
-    pageStep: Math.max(
-      1,
-      Math.floor(((scrollRef.current?.clientHeight ?? 420) - GRID_HEADER_HEIGHT) / GRID_ROW_HEIGHT),
-    ),
-  };
+  const pageStep = Math.max(
+    1,
+    Math.floor(((scrollRef.current?.clientHeight ?? 420) - GRID_HEADER_HEIGHT) / GRID_ROW_HEIGHT),
+  );
+  const selectionBounds: GridBounds = useMemo(
+    () => ({ rowCount, columnCount: logicalColumnNames.length, pageStep }),
+    [logicalColumnNames.length, pageStep, rowCount],
+  );
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
@@ -549,7 +643,77 @@ export function VirtualDataGrid({
       ),
   });
 
+  const scrollToCoordinate = useCallback(
+    (coordinate: GridCoordinate) => {
+      const grid = scrollRef.current;
+      const movingDown = coordinate.row > selection.active.row;
+      const movingRight = coordinate.column > selection.active.column;
+      rowVirtualizer.scrollToIndex(coordinate.row, { align: "auto" });
+      const visibleIndex = visibleColumnIndexes.indexOf(coordinate.column);
+      if (visibleIndex >= 0) columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
+      if (grid && movingDown) {
+        grid.scrollTop = Math.min(
+          grid.scrollTop + GRID_HEADER_HEIGHT,
+          grid.scrollHeight - grid.clientHeight,
+        );
+      }
+      if (grid && movingRight) {
+        grid.scrollLeft = Math.min(
+          grid.scrollLeft + GRID_ROW_NUMBER_WIDTH,
+          grid.scrollWidth - grid.clientWidth,
+        );
+      }
+    },
+    [
+      columnVirtualizer,
+      rowVirtualizer,
+      selection.active.column,
+      selection.active.row,
+      visibleColumnIndexes,
+    ],
+  );
+
   useEffect(() => columnVirtualizer.measure(), [columnSizing, columnVirtualizer]);
+
+  const activeRow = selection.active.row;
+  const activeColumn = selection.active.column;
+  useLayoutEffect(() => {
+    let frame = 0;
+    let attempts = 0;
+    const inspect = () => {
+      attempts += 1;
+      const grid = gridRef.current;
+      const cell = grid?.querySelector<HTMLElement>(
+        `[data-grid-row="${activeRow}"][data-grid-column="${activeColumn}"]`,
+      );
+      let adjusted = false;
+      if (grid && cell) {
+        const gridRect = grid.getBoundingClientRect();
+        const cellRect = cell.getBoundingClientRect();
+        if (gridRect.width > 0 && gridRect.height > 0 && cellRect.width > 0) {
+          const visibleTop = gridRect.top + GRID_HEADER_HEIGHT;
+          const visibleLeft = gridRect.left + GRID_ROW_NUMBER_WIDTH;
+          if (cellRect.top < visibleTop) {
+            grid.scrollTop -= visibleTop - cellRect.top;
+            adjusted = true;
+          } else if (cellRect.bottom > gridRect.bottom) {
+            grid.scrollTop += cellRect.bottom - gridRect.bottom;
+            adjusted = true;
+          }
+          if (cellRect.left < visibleLeft) {
+            grid.scrollLeft -= visibleLeft - cellRect.left;
+            adjusted = true;
+          } else if (cellRect.right > gridRect.right) {
+            grid.scrollLeft += cellRect.right - gridRect.right;
+            adjusted = true;
+          }
+        }
+      }
+      if (attempts < 30 && (!cell || adjusted)) frame = window.requestAnimationFrame(inspect);
+    };
+    frame = window.requestAnimationFrame(inspect);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeColumn, activeRow]);
 
   useEffect(() => {
     if (!findTarget) return;
@@ -583,11 +747,7 @@ export function VirtualDataGrid({
       if (offset < 0 || activeProjection.length === 0) return Promise.resolve(null);
       const key = projectedPageKey(offset, activeProjection);
       if (pages.has(key)) return Promise.resolve(pages.get(key) ?? null);
-      const compatible = [...pages.values()].find(
-        (candidate) =>
-          candidate.offset === offset &&
-          activeProjection.every((column) => candidate.columns.includes(column)),
-      );
+      const compatible = compatiblePageFor(pages.values(), page, offset, activeProjection);
       if (compatible) return Promise.resolve(compatible);
       const existing = inFlight.current.get(key);
       if (existing) return existing;
@@ -646,7 +806,7 @@ export function VirtualDataGrid({
         });
       return promise;
     },
-    [activeProjection, onReadError, page.limit, pages, readPage, summary.sessionId, trimPageWindow],
+    [activeProjection, onReadError, page, pages, readPage, summary.sessionId, trimPageWindow],
   );
 
   const virtualRows = rowVirtualizer.getVirtualItems();
@@ -681,19 +841,12 @@ export function VirtualDataGrid({
     );
     const visibleOffset = pageOffsetFor(scrollRow, page.limit);
     const visibleKey = projectedPageKey(visibleOffset, activeProjection);
-    const compatible = [...pages.values()].find(
-      (candidate) =>
-        candidate.offset === visibleOffset &&
-        activeProjection.every((column) => candidate.columns.includes(column)),
-    );
-    const propPageCompatible =
-      page.offset === visibleOffset &&
-      activeProjection.every((column) => page.columns.includes(column));
-    if (!pages.has(visibleKey) && !compatible && !propPageCompatible) {
+    const compatible = compatiblePageFor(pages.values(), page, visibleOffset, activeProjection);
+    if (!pages.has(visibleKey) && !compatible) {
       void requestPage(visibleOffset, true);
     } else setActiveOffset(visibleOffset);
 
-    const current = pages.get(visibleKey) ?? compatible ?? (propPageCompatible ? page : undefined);
+    const current = pages.get(visibleKey) ?? compatible;
     if (!current) return;
     const distanceToEnd = current.offset + current.rows.length - 1 - lastVisibleRow;
     if (current.hasMore && distanceToEnd <= GRID_PREFETCH_DISTANCE) {
@@ -705,7 +858,10 @@ export function VirtualDataGrid({
     }
   }, [activeProjection, firstVisibleRow, lastVisibleRow, page, pages, requestPage, rowCount]);
 
-  const activePage = pages.get(projectedPageKey(activeOffset, activeProjection)) ?? page;
+  const activePage =
+    pages.get(projectedPageKey(activeOffset, activeProjection)) ??
+    compatiblePageFor(pages.values(), page, activeOffset, activeProjection) ??
+    page;
 
   useEffect(() => {
     const stopDragging = () => {
@@ -723,29 +879,15 @@ export function VirtualDataGrid({
     const offset = pageOffsetFor(rowIndex, page.limit);
     const columnName = logicalColumnNames[columnIndex];
     if (!columnName) return null;
-    const preferred = pages.get(projectedPageKey(offset, activeProjection));
-    const candidates = preferred
-      ? [preferred, ...[...pages.values()].filter((candidate) => candidate !== preferred)]
-      : [...pages.values()];
-    for (const loaded of candidates) {
-      if (loaded.offset !== offset) continue;
-      const projectedIndex = loaded.columns.indexOf(columnName);
-      if (projectedIndex < 0) continue;
-      const value = loaded.rows[rowIndex - offset]?.[projectedIndex];
-      if (value) return value;
-    }
-    return null;
+    const loaded = compatiblePageFor(pages.values(), page, offset, [columnName]);
+    if (!loaded) return null;
+    const projectedIndex = loaded.columns.indexOf(columnName);
+    return loaded.rows[rowIndex - offset]?.[projectedIndex] ?? null;
   }
 
   function inspect(coordinate: GridCoordinate) {
     const value = valueAt(coordinate.row, coordinate.column);
     if (value) setInspected({ coordinate, value });
-  }
-
-  function scrollToCoordinate(coordinate: GridCoordinate) {
-    rowVirtualizer.scrollToIndex(coordinate.row, { align: "auto" });
-    const visibleIndex = visibleColumnIndexes.indexOf(coordinate.column);
-    if (visibleIndex >= 0) columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
   }
 
   async function copySelection(includeColumnHeaders?: boolean, options = copyOptions) {
@@ -917,6 +1059,162 @@ export function VirtualDataGrid({
     }
   }
 
+  function navigationIsCurrent(
+    navigationId: number,
+    resultIdentity: string,
+    selectionGeneration: number,
+  ): boolean {
+    return (
+      mounted.current &&
+      navigationGeneration.current === navigationId &&
+      latestResultKey.current === resultIdentity &&
+      latestSelection.current.generation === selectionGeneration
+    );
+  }
+
+  function cancelActiveBoundaryNavigation(): void {
+    navigationGeneration.current += 1;
+    const pending = activeBoundaryRequest.current;
+    activeBoundaryRequest.current = null;
+    if (!pending) return;
+    void cancelDataBoundaryNavigation({
+      navigationId: pending.navigationId,
+      documentId: pending.documentId,
+      sessionId: pending.sessionId,
+      ...(pending.queryId ? { queryId: pending.queryId } : {}),
+    });
+  }
+
+  function cancelPendingBoundaryNavigation(): void {
+    boundaryQueueEpoch.current += 1;
+    cancelActiveBoundaryNavigation();
+  }
+
+  async function navigateByResolvedBoundary(
+    direction: ArrowDirection,
+    shiftKey: boolean,
+    absoluteBoundary: boolean,
+  ): Promise<void> {
+    cancelActiveBoundaryNavigation();
+    const navigationId = ++navigationGeneration.current;
+    const startSelection = latestSelection.current;
+    const resultIdentity = latestResultKey.current;
+    let expectedSelectionGeneration = startSelection.generation;
+    const assertCurrent = () =>
+      navigationIsCurrent(navigationId, resultIdentity, expectedSelectionGeneration);
+
+    try {
+      const visibleColumnIds = visibleColumns.map((column) => column.id);
+      const startColumnId = logicalColumnNames[startSelection.active.column];
+      const startVisibleColumn = visibleColumnIds.indexOf(startColumnId);
+      if (startVisibleColumn < 0 || visibleColumnIds.length === 0) return;
+      const boundaryDirection: DataBoundaryDirection =
+        direction[0] < 0 ? "up" : direction[0] > 0 ? "down" : direction[1] < 0 ? "left" : "right";
+      const request: FindBoundaryRequest = {
+        navigationId: `${resultIdentity}:${navigationId}`,
+        documentId: documentId ?? summary.sessionId,
+        sessionId: summary.sessionId,
+        ...(queryId ? { queryId } : {}),
+        row: startSelection.active.row,
+        columnId: startColumnId,
+        visibleColumnIds,
+        direction: boundaryDirection,
+        mode: absoluteBoundary ? "tableBoundary" : "dataBoundary",
+      };
+      activeBoundaryRequest.current = request;
+      const response = await findDataBoundary(request);
+      if (!assertCurrent() || activeBoundaryRequest.current !== request) return;
+      const targetVisibleColumn = visibleColumnIds.indexOf(response.targetColumnId);
+      const responseMatches =
+        response.navigationId === request.navigationId &&
+        response.documentId === request.documentId &&
+        response.sessionId === request.sessionId &&
+        response.queryId === request.queryId;
+      const directionalTarget =
+        (direction[0] < 0 && response.targetRow <= request.row) ||
+        (direction[0] > 0 && response.targetRow >= request.row) ||
+        (direction[1] < 0 && targetVisibleColumn <= startVisibleColumn) ||
+        (direction[1] > 0 && targetVisibleColumn >= startVisibleColumn);
+      if (
+        !responseMatches ||
+        !Number.isSafeInteger(response.targetRow) ||
+        response.targetRow < 0 ||
+        targetVisibleColumn < 0 ||
+        !directionalTarget ||
+        (response.resolvedRowCount !== null &&
+          (response.resolvedRowCount < 0 || response.targetRow >= response.resolvedRowCount))
+      ) {
+        throw new Error("The backend returned an invalid data-boundary target.");
+      }
+      const targetRow = response.targetRow;
+      const targetColumnId = response.targetColumnId;
+      const resolvedRowCount = response.resolvedRowCount;
+
+      if (!assertCurrent()) return;
+      const targetColumn = logicalColumnNames.indexOf(targetColumnId);
+      const target = { row: targetRow, column: targetColumn };
+      const targetOffset = pageOffsetFor(target.row, page.limit);
+      const cached = compatiblePageFor(pages.values(), page, targetOffset, [targetColumnId]);
+      if (!cached) {
+        const projection = orderedProjectionForWindow(
+          logicalColumnNames,
+          [targetColumn],
+          activeProjection,
+        );
+        const targetPage = await readPage({
+          sessionId: summary.sessionId,
+          offset: targetOffset,
+          limit: page.limit,
+          columns: projection,
+        });
+        if (!assertCurrent()) return;
+        if (
+          targetPage.sessionId !== summary.sessionId ||
+          targetPage.offset !== targetOffset ||
+          !sameProjectedColumns(targetPage.columns, projection) ||
+          target.row >= targetPage.offset + targetPage.rows.length
+        ) {
+          throw new Error("The navigation target page does not match the resolved boundary.");
+        }
+        const targetPageKey = projectedPageKey(targetPage.offset, targetPage.columns);
+        setActiveProjection(projection);
+        setPages((current) => {
+          const next = new Map(current);
+          next.set(targetPageKey, targetPage);
+          return trimPageWindow(next, targetPageKey);
+        });
+      }
+      if (!assertCurrent()) return;
+      activeBoundaryRequest.current = null;
+      const targetBounds = {
+        ...selectionBounds,
+        rowCount: Math.max(selectionBounds.rowCount, resolvedRowCount ?? 0, target.row + 1),
+      };
+      const committedSelection = dispatchSelection({
+        type: "click",
+        coordinate: target,
+        shiftKey,
+        bounds: targetBounds,
+      });
+      expectedSelectionGeneration = committedSelection.generation;
+      scrollToCoordinate(target);
+      window.requestAnimationFrame(() => {
+        const grid = gridRef.current;
+        if (
+          grid &&
+          navigationIsCurrent(navigationId, resultIdentity, committedSelection.generation) &&
+          document.activeElement === grid
+        )
+          grid.focus();
+      });
+    } catch (error) {
+      if (assertCurrent()) {
+        activeBoundaryRequest.current = null;
+        onReadError(error, pageOffsetFor(startSelection.active.row, page.limit));
+      }
+    }
+  }
+
   function handleGridKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) return;
     if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
@@ -948,8 +1246,19 @@ export function VirtualDataGrid({
         "Escape",
       ].includes(event.key) ||
       (primary && event.key.toLocaleLowerCase() === "a");
-    if (!handled || event.altKey) return;
+    const direction = arrowDirection(event.key);
+    const absoluteBoundary = Boolean(primary && event.altKey && direction);
+    if (!handled || (event.altKey && !absoluteBoundary)) return;
     event.preventDefault();
+    if (primary && direction) {
+      const queueEpoch = boundaryQueueEpoch.current;
+      boundaryNavigationQueue.current = boundaryNavigationQueue.current.then(async () => {
+        if (!mounted.current || boundaryQueueEpoch.current !== queueEpoch) return;
+        await navigateByResolvedBoundary(direction, event.shiftKey, absoluteBoundary);
+      });
+      return;
+    }
+    cancelPendingBoundaryNavigation();
     const next = applyGridKey(
       selection,
       {
@@ -962,7 +1271,7 @@ export function VirtualDataGrid({
       selectionBounds,
       (coordinate) => {
         const value = valueAt(coordinate.row, coordinate.column);
-        return value === null || value.kind === "null" || value.display === "";
+        return value ? dataValueIsEmpty(value) : false;
       },
     );
     dispatchSelection({
@@ -977,7 +1286,7 @@ export function VirtualDataGrid({
       bounds: selectionBounds,
       isEmpty: (coordinate) => {
         const value = valueAt(coordinate.row, coordinate.column);
-        return value === null || value.kind === "null" || value.display === "";
+        return value ? dataValueIsEmpty(value) : false;
       },
     });
     scrollToCoordinate(next.active);
@@ -1259,7 +1568,13 @@ export function VirtualDataGrid({
         data-selection-right={selection.rect.right}
         data-selection-top={selection.rect.top}
         data-testid="data-scroll"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            cancelPendingBoundaryNavigation();
+          }
+        }}
         onKeyDown={handleGridKeyDown}
+        onPointerDownCapture={() => cancelPendingBoundaryNavigation()}
         ref={(element) => {
           gridRef.current = element;
           scrollRef.current = element;
@@ -1423,11 +1738,7 @@ export function VirtualDataGrid({
               );
               const loaded =
                 pages.get(pageKey) ??
-                [...pages.values()].find(
-                  (candidate) =>
-                    candidate.offset === offset &&
-                    mountedColumnNames.every((column) => candidate.columns.includes(column)),
-                );
+                compatiblePageFor(pages.values(), page, offset, mountedColumnNames);
               const row = loaded?.rows[virtualRow.index - offset];
               const pending =
                 !row && (loadingPageKeys.has(pageKey) || inFlight.current.has(pageKey));

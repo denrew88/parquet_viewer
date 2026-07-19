@@ -222,3 +222,23 @@ artifacts/phase-6/
 3. Home/End는 현재 행 첫/마지막 열, Ctrl+Home/End는 table 첫/마지막 셀로 확정할지.
 4. Ctrl 경계에서 현재 non-empty 영역 끝에 이미 있으면 다음 non-empty 영역으로 이동하는 규칙을 확정할지.
 5. Ctrl+A와 row/all 선택에는 header를 자동 포함하지 않고 명시적 column-header 선택에서만 포함할지.
+
+## 2026-07-19 Ctrl 경계 탐색 성능 회귀
+
+| ID | 계층 | 검증 |
+| --- | --- | --- |
+| `NAV-RPC-001` | Rust/TS boundary | 잘못된 direction·mode·좌표·column·session/query identity를 typed reject |
+| `NAV-RPC-002` | Rust/TS unit | valid·invalid·null·empty·legacy empty·공백의 occupied parity |
+| `NAV-RPC-003` | Rust/native CSV | `small-csv.csv` column_002의 `0→1→100→102→201`과 역방향 경계 |
+| `NAV-RPC-004` | Rust unit | source/query의 상·하·좌·우 Excel 경계 matrix parity |
+| `NAV-RPC-005` | component | Ctrl+Shift와 Ctrl+Alt+Shift가 backend target까지 anchor 유지 |
+| `NAV-RPC-006` | Rust/component | unknown row count의 absolute Down이 backend에서 EOF 확정 |
+| `NAV-RPC-007` | component | 숨긴 열 제외, 응답 column ID와 visible 순서 검증 |
+| `NAV-RPC-008` | component | resolver 1회, 중간 readPage 0회, target cache miss readPage 최대 1회 |
+| `NAV-RPC-009` | component | click·새 key·focus·session/query 교체 뒤 late 결과 폐기 |
+| `NAV-RPC-010` | Rust/component | cancel flag 확인과 취소 뒤 선택·scroll·error 불변 |
+| `NAV-RPC-011` | Rust query | source와 materialized query가 현재 result ordering에서 같은 경계 반환 |
+| `NAV-RPC-012` | release/native perf | large CSV 250,000행 Ctrl+Down resolver IPC 1회와 p95 2초 이하, page IPC·RSS 실측 기록 |
+
+성능 측정은 warm-up 1회 뒤 반복하고 navigation IPC, target page IPC, end-to-visible latency와
+RSS delta를 기록한다. 전체 파일 materialize와 frontend 중간 page 요청은 실패다.

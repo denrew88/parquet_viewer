@@ -1,4 +1,26 @@
+import type { DataPage } from "./backend";
+
 export const GRID_PAGE_COLUMN_LIMIT = 64;
+
+export function compatiblePageFor(
+  cachedPages: Iterable<DataPage>,
+  propPage: DataPage,
+  offset: number,
+  requiredColumns: readonly string[],
+): DataPage | undefined {
+  for (const candidate of cachedPages) {
+    if (
+      candidate.offset === offset &&
+      requiredColumns.every((column) => candidate.columns.includes(column))
+    ) {
+      return candidate;
+    }
+  }
+  return propPage.offset === offset &&
+    requiredColumns.every((column) => propPage.columns.includes(column))
+    ? propPage
+    : undefined;
+}
 
 export function sameProjectedColumns(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((column, index) => column === right[index]);

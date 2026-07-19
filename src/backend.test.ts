@@ -20,6 +20,7 @@ import {
   parseQueryStatus,
   parseDistinctValuesResponse,
   parseFindQueryMatchResponse,
+  parseFindBoundaryResponse,
   parseQueryTempCleanupResult,
   parseQueryTempUsage,
   parseOpenDataRequest,
@@ -260,6 +261,49 @@ function validQueryStatus(state: "queued" | "running" | "complete" = "queued") {
 }
 
 describe("backend adapters", () => {
+  it("NAV-RPC-008 validates and invokes boundary find/cancel with exact identity", async () => {
+    const request = {
+      navigationId: "navigation-1",
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      row: 12,
+      columnId: "value",
+      visibleColumnIds: ["name", "value"],
+      direction: "down" as const,
+      mode: "dataBoundary" as const,
+    };
+    const response = {
+      navigationId: request.navigationId,
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      targetRow: 99,
+      targetColumnId: "value",
+      resolvedRowCount: 100,
+    };
+    invokeMock.mockResolvedValueOnce(response).mockResolvedValueOnce(undefined);
+
+    await expect(tauriBackend.findDataBoundary(request)).resolves.toEqual(response);
+    expect(invokeMock).toHaveBeenLastCalledWith("find_data_boundary", { request });
+    expect(parseFindBoundaryResponse(response)).toEqual(response);
+    const cancellation = {
+      navigationId: request.navigationId,
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+    };
+    await tauriBackend.cancelDataBoundaryNavigation(cancellation);
+    expect(invokeMock).toHaveBeenLastCalledWith("cancel_data_boundary_navigation", {
+      request: cancellation,
+    });
+
+    expect(() => parseFindBoundaryResponse({ ...response, resolvedRowCount: undefined })).toThrow(
+      DataViewerError,
+    );
+    invokeMock.mockResolvedValueOnce({ ...response, navigationId: "stale" });
+    await expect(tauriBackend.findDataBoundary(request)).rejects.toThrow(DataViewerError);
+  });
   it("uses the explicit browser mock outside a Tauri runtime", async () => {
     expect(createDefaultBackend()).toBe(browserMockBackend);
     await expect(browserMockBackend.healthCheck()).resolves.toEqual({

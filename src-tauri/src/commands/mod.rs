@@ -11,11 +11,12 @@ use tauri::{AppHandle, Manager, State};
 use crate::{
     data::{builtin_format_registry, DataSource},
     domain::{
-        AppSettingsV1, CsvColumnValidation, CsvParsingProfile, CsvProfilePreview,
-        CsvValidationState, CsvValidationStatus, DataError, DataErrorCode, DataPage,
-        DistinctValuesRequest, DistinctValuesResponse, ExecuteQueryRequest, FileSummary,
-        FindQueryMatchRequest, FindQueryMatchResponse, FormatDescriptor, HeaderMode, QueryStatus,
-        ReadQueryPageRequest, ReadQueryPageResponse,
+        AppSettingsV1, BoundarySearchRequest, CancelDataBoundaryNavigationRequest,
+        CsvColumnValidation, CsvParsingProfile, CsvProfilePreview, CsvValidationState,
+        CsvValidationStatus, DataError, DataErrorCode, DataPage, DistinctValuesRequest,
+        DistinctValuesResponse, ExecuteQueryRequest, FileSummary, FindBoundaryRequest,
+        FindBoundaryResponse, FindQueryMatchRequest, FindQueryMatchResponse, FormatDescriptor,
+        HeaderMode, QueryStatus, ReadQueryPageRequest, ReadQueryPageResponse,
     },
     platform::{
         pick_data_file, pick_data_files, DocumentAccessError, DocumentRef, DocumentRegistry,
@@ -42,6 +43,12 @@ struct CsvPreviewControl {
 #[derive(Debug)]
 struct CsvValidationTask {
     status: CsvValidationStatus,
+    cancel: Arc<AtomicBool>,
+}
+
+#[derive(Debug)]
+struct BoundaryNavigationTask {
+    query_id: Option<String>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -283,6 +290,7 @@ pub struct AppState {
     cancelled_requests: Mutex<VecDeque<String>>,
     csv_preview_tasks: Mutex<HashMap<(String, String), CsvPreviewControl>>,
     csv_validation_tasks: Arc<Mutex<HashMap<String, CsvValidationTask>>>,
+    boundary_navigation_tasks: Mutex<HashMap<(String, String, String), BoundaryNavigationTask>>,
     query_service: Mutex<Option<Arc<QueryService>>>,
 }
 
@@ -297,6 +305,91 @@ impl Drop for AppState {
 }
 
 impl AppState {
+    fn begin_boundary_navigation(
+        &self,
+        request: &FindBoundaryRequest,
+    ) -> Result<Arc<AtomicBool>, DataError> {
+        let key = (
+            request.document_id.clone(),
+            request.session_id.clone(),
+            request.navigation_id.clone(),
+        );
+        let mut tasks = self
+            .boundary_navigation_tasks
+            .lock()
+            .map_err(|_| DataError {
+                code: DataErrorCode::Io,
+                message: String::from("The boundary-navigation registry is unavailable."),
+            })?;
+        if tasks.contains_key(&key) {
+            return Err(DataError::invalid_request(format!(
+                "Boundary navigation ID is already active: {}",
+                request.navigation_id
+            )));
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        tasks.insert(
+            key,
+            BoundaryNavigationTask {
+                query_id: request.query_id.clone(),
+                cancel: Arc::clone(&cancel),
+            },
+        );
+        Ok(cancel)
+    }
+
+    fn finish_boundary_navigation(&self, request: &FindBoundaryRequest, cancel: &Arc<AtomicBool>) {
+        if let Ok(mut tasks) = self.boundary_navigation_tasks.lock() {
+            let key = (
+                request.document_id.clone(),
+                request.session_id.clone(),
+                request.navigation_id.clone(),
+            );
+            if tasks
+                .get(&key)
+                .is_some_and(|task| Arc::ptr_eq(&task.cancel, cancel))
+            {
+                tasks.remove(&key);
+            }
+        }
+    }
+
+    fn cancel_boundary_navigation(
+        &self,
+        request: &CancelDataBoundaryNavigationRequest,
+    ) -> Result<(), DataError> {
+        validate_boundary_identity(
+            &request.navigation_id,
+            &request.document_id,
+            &request.session_id,
+            request.query_id.as_deref(),
+        )?;
+        self.documents
+            .with_source(&request.document_id, &request.session_id, |_| ())
+            .map_err(document_error)?;
+        let tasks = self
+            .boundary_navigation_tasks
+            .lock()
+            .map_err(|_| DataError {
+                code: DataErrorCode::Io,
+                message: String::from("The boundary-navigation registry is unavailable."),
+            })?;
+        let key = (
+            request.document_id.clone(),
+            request.session_id.clone(),
+            request.navigation_id.clone(),
+        );
+        if let Some(task) = tasks.get(&key) {
+            if task.query_id != request.query_id {
+                return Err(DataError::invalid_request(
+                    "Boundary navigation query identity does not match the active task.",
+                ));
+            }
+            task.cancel.store(true, Ordering::Release);
+        }
+        Ok(())
+    }
+
     pub(crate) fn initialize_query_temp(&self, app: &AppHandle) -> Result<(), DataError> {
         let local_data = app.path().app_local_data_dir().map_err(|error| DataError {
             code: DataErrorCode::Io,
@@ -990,6 +1083,65 @@ fn validate_open_request(request: &OpenPathsRequest) -> Result<(), DataError> {
     Ok(())
 }
 
+fn validate_boundary_identity(
+    navigation_id: &str,
+    document_id: &str,
+    session_id: &str,
+    query_id: Option<&str>,
+) -> Result<(), DataError> {
+    for (label, value) in [
+        ("navigation", navigation_id),
+        ("document", document_id),
+        ("session", session_id),
+    ] {
+        if value.trim().is_empty() || value.len() > 128 {
+            return Err(DataError::invalid_request(format!(
+                "Boundary {label} ID must contain 1 to 128 characters."
+            )));
+        }
+    }
+    if query_id.is_some_and(|value| value.trim().is_empty() || value.len() > 128) {
+        return Err(DataError::invalid_request(
+            "Boundary query ID must contain 1 to 128 characters.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_boundary_request(request: &FindBoundaryRequest) -> Result<(), DataError> {
+    validate_boundary_identity(
+        &request.navigation_id,
+        &request.document_id,
+        &request.session_id,
+        request.query_id.as_deref(),
+    )?;
+    if request.row < 0 {
+        return Err(DataError::invalid_request(
+            "Boundary navigation row cannot be negative.",
+        ));
+    }
+    if request.column_id.trim().is_empty() || request.column_id.len() > 16_384 {
+        return Err(DataError::invalid_request(
+            "Boundary column ID must contain 1 to 16384 characters.",
+        ));
+    }
+    if request.visible_column_ids.is_empty() || request.visible_column_ids.len() > 8_192 {
+        return Err(DataError::invalid_request(
+            "Boundary navigation requires 1 to 8192 visible columns.",
+        ));
+    }
+    if request
+        .visible_column_ids
+        .iter()
+        .any(|column| column.is_empty() || column.len() > 16_384)
+    {
+        return Err(DataError::invalid_request(
+            "Visible boundary column IDs must contain 1 to 16384 characters.",
+        ));
+    }
+    Ok(())
+}
+
 fn canonicalize_open_path(path: &Path) -> Result<PathBuf, DataError> {
     std::fs::canonicalize(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
@@ -1193,6 +1345,81 @@ pub fn find_query_match(
         .with_source(&request.document_id, &request.session_id, |_| ())
         .map_err(document_error)?;
     state.query_service(&app)?.find_match(request)
+}
+
+#[tauri::command]
+pub async fn find_data_boundary(
+    request: FindBoundaryRequest,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<FindBoundaryResponse, DataError> {
+    validate_boundary_request(&request)?;
+    state
+        .documents
+        .with_source(&request.document_id, &request.session_id, |_| ())
+        .map_err(document_error)?;
+    let query_service = request
+        .query_id
+        .as_ref()
+        .map(|_| state.query_service(&app))
+        .transpose()?;
+    let cancel = state.begin_boundary_navigation(&request)?;
+    let search = BoundarySearchRequest {
+        row: request.row as u64,
+        column_id: request.column_id.clone(),
+        visible_column_ids: request.visible_column_ids.clone(),
+        direction: request.direction,
+        mode: request.mode,
+    };
+    let documents = Arc::clone(&state.documents);
+    let worker_request = request.clone();
+    let worker_cancel = Arc::clone(&cancel);
+    let resolved = tauri::async_runtime::spawn_blocking(move || {
+        match (worker_request.query_id.as_deref(), query_service) {
+            (Some(query_id), Some(service)) => service.find_boundary(
+                &worker_request.document_id,
+                &worker_request.session_id,
+                query_id,
+                &search,
+                &worker_cancel,
+            ),
+            (None, None) => documents
+                .with_source(
+                    &worker_request.document_id,
+                    &worker_request.session_id,
+                    |source| source.find_boundary(&search, &worker_cancel),
+                )
+                .map_err(document_error)
+                .and_then(|result| result),
+            _ => Err(DataError::invalid_request(
+                "Boundary query identity does not match its resolver.",
+            )),
+        }
+    })
+    .await
+    .map_err(|error| DataError {
+        code: DataErrorCode::Io,
+        message: format!("The boundary-navigation worker failed: {error}"),
+    });
+    state.finish_boundary_navigation(&request, &cancel);
+    let resolved = resolved??;
+    Ok(FindBoundaryResponse {
+        navigation_id: request.navigation_id,
+        document_id: request.document_id,
+        session_id: request.session_id,
+        query_id: request.query_id,
+        target_row: resolved.target_row,
+        target_column_id: resolved.target_column_id,
+        resolved_row_count: resolved.resolved_row_count,
+    })
+}
+
+#[tauri::command]
+pub fn cancel_data_boundary_navigation(
+    request: CancelDataBoundaryNavigationRequest,
+    state: State<'_, AppState>,
+) -> Result<(), DataError> {
+    state.cancel_boundary_navigation(&request)
 }
 
 #[tauri::command]

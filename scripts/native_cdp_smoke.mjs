@@ -17,7 +17,8 @@ const artifact = path.resolve(
 );
 const artifactDirectory = path.dirname(artifact);
 const thousandsSeparator = process.env.NATIVE_THOUSANDS_SEPARATOR ?? ".";
-const separatorName = thousandsSeparator === "," ? "comma" : thousandsSeparator === " " ? "space" : "dot";
+const separatorName =
+  thousandsSeparator === "," ? "comma" : thousandsSeparator === " " ? "space" : "dot";
 const formatInteger = (value) => value.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSeparator);
 
 function artifactPath(name) {
@@ -66,12 +67,131 @@ try {
     url: page.url(),
     fixture,
     csvProfile: "pending",
+    boundaryNavigation: "pending",
     sort: "pending",
     filter: "pending",
     copySettings: "pending",
     thousandsSeparator: separatorName,
     artifacts: [artifact],
   };
+
+  const grid = page.getByRole("grid", { name: "Data preview" });
+  const cell = (row, column) =>
+    page.locator(`[data-grid-row="${row}"][data-grid-column="${column}"]`);
+  const assertActiveCellVisible = async (row, column) => {
+    const target = cell(row, column);
+    await target.waitFor({ state: "visible", timeout: 30_000 });
+    await page.waitForFunction(
+      ({ row, column }) => {
+        const gridElement = document.querySelector('[role="grid"][aria-label="Data preview"]');
+        const cellElement = document.querySelector(
+          `[data-grid-row="${row}"][data-grid-column="${column}"]`,
+        );
+        if (!gridElement || !cellElement) return false;
+        const gridRect = gridElement.getBoundingClientRect();
+        const cellRect = cellElement.getBoundingClientRect();
+        return (
+          cellRect.top >= gridRect.top + 36 &&
+          cellRect.bottom <= gridRect.bottom + 1 &&
+          cellRect.left >= gridRect.left + 56 &&
+          cellRect.right <= gridRect.right + 1 &&
+          document.activeElement === gridElement
+        );
+      },
+      { row, column },
+      { timeout: 5_000 },
+    );
+    const geometry = await target.evaluate((element) => {
+      const cellRect = element.getBoundingClientRect();
+      const gridElement = element.closest('[role="grid"]');
+      const gridRect = gridElement?.getBoundingClientRect();
+      return {
+        cellTop: cellRect.top,
+        cellBottom: cellRect.bottom,
+        gridTop: gridRect?.top,
+        gridBottom: gridRect?.bottom,
+        cellLeft: cellRect.left,
+        cellRight: cellRect.right,
+        gridLeft: gridRect?.left,
+        gridRight: gridRect?.right,
+        gridFocused: document.activeElement === gridElement,
+      };
+    });
+    assert.ok(
+      geometry.cellTop >= geometry.gridTop + 36 &&
+        geometry.cellBottom <= geometry.gridBottom + 1 &&
+        geometry.cellLeft >= geometry.gridLeft + 56 &&
+        geometry.cellRight <= geometry.gridRight + 1,
+      `Active cell ${row}:${column} is outside the native grid viewport: ${JSON.stringify(geometry)}`,
+    );
+    assert.equal(geometry.gridFocused, true, "The native grid lost keyboard focus.");
+  };
+  const waitForActiveCell = async (row, column) => {
+    await page.waitForFunction(
+      ({ row, column }) => {
+        const gridElement = document.querySelector('[role="grid"][aria-label="Data preview"]');
+        return (
+          gridElement?.getAttribute("data-active-row") === String(row) &&
+          gridElement?.getAttribute("data-active-column") === String(column)
+        );
+      },
+      { row, column },
+      { timeout: 30_000 },
+    );
+    await assertActiveCellVisible(row, column);
+  };
+
+  // column_002 is empty at zero-based rows 0, 101, 202, ... in small-csv.csv.
+  await cell(0, 2).click();
+  await page.keyboard.press("Control+ArrowDown");
+  await waitForActiveCell(1, 2);
+  await page.keyboard.press("Control+ArrowDown");
+  await waitForActiveCell(100, 2);
+  await page.keyboard.press("Control+ArrowDown");
+  await waitForActiveCell(102, 2);
+  await page.keyboard.press("Control+ArrowDown");
+  await waitForActiveCell(201, 2);
+  try {
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[role="grid"][aria-label="Data preview"]')
+            ?.getAttribute("aria-rowcount"),
+        ) > 200,
+      undefined,
+      { timeout: 30_000 },
+    );
+  } catch (error) {
+    const diagnostics = {
+      ariaRowCount: await grid.getAttribute("aria-rowcount"),
+      activeRow: await grid.getAttribute("data-active-row"),
+      body: (await page.locator("body").innerText()).slice(0, 2_000),
+    };
+    process.stderr.write(`Boundary navigation diagnostics: ${JSON.stringify(diagnostics)}\n`);
+    throw error;
+  }
+  const expectedSourceRowCount = 10_000;
+  await page.keyboard.press("Control+Alt+ArrowDown");
+  await waitForActiveCell(expectedSourceRowCount - 1, 2);
+  const sourceRowCount = Number(await grid.getAttribute("aria-rowcount"));
+  assert.equal(sourceRowCount, expectedSourceRowCount);
+  const sourceLastRow = sourceRowCount - 1;
+  await page.keyboard.press("Control+Alt+ArrowUp");
+  await waitForActiveCell(0, 2);
+  await page.keyboard.press("Control+Alt+ArrowRight");
+  await waitForActiveCell(0, 19);
+  await page.keyboard.press("Control+Alt+Shift+ArrowLeft");
+  assert.equal(await grid.getAttribute("data-active-column"), "0");
+  assert.equal(await grid.getAttribute("data-selection-left"), "0");
+  assert.equal(await grid.getAttribute("data-selection-right"), "19");
+  await page.keyboard.press("Control+Alt+Shift+ArrowDown");
+  await waitForActiveCell(sourceLastRow, 0);
+  assert.equal(await grid.getAttribute("data-selection-top"), "0");
+  assert.equal(await grid.getAttribute("data-selection-bottom"), String(sourceLastRow));
+  await page.keyboard.press("Control+Alt+ArrowUp");
+  results.boundaryNavigation = "passed";
+  results.sourceRowCount = sourceRowCount;
 
   await page.getByRole("button", { name: /CSV parsing profile/i }).click();
   const profileDialog = page.getByRole("dialog", { name: "CSV Parsing Profile" });
@@ -91,15 +211,17 @@ try {
   await profileDialog.getByRole("button", { name: "Apply", exact: true }).click();
   await profileDialog.waitFor({ state: "detached", timeout: 30_000 });
 
-  const cell = (row, column) =>
-    page.locator(`[data-grid-row="${row}"][data-grid-column="${column}"]`);
-  await cell(1, 0).filter({ hasText: formatInteger("10000019") }).waitFor({ timeout: 30_000 });
+  await cell(1, 0)
+    .filter({ hasText: formatInteger("10000019") })
+    .waitFor({ timeout: 30_000 });
   results.csvProfile = "passed";
 
   const sortButton = page.getByRole("button", { name: /Sort column_000:/ });
   await sortButton.click();
   await sortButton.click();
-  await cell(0, 0).filter({ hasText: formatInteger("99990189981") }).waitFor({ timeout: 30_000 });
+  await cell(0, 0)
+    .filter({ hasText: formatInteger("99990189981") })
+    .waitFor({ timeout: 30_000 });
   results.sort = "passed";
 
   await page.getByRole("button", { name: "Filter column_000" }).click();
@@ -108,7 +230,9 @@ try {
   await filterDialog.getByRole("textbox", { name: "Value", exact: true }).fill("50000000000");
   await filterDialog.getByRole("button", { name: "Apply", exact: true }).click();
   await filterDialog.waitFor({ state: "detached" });
-  await cell(0, 0).filter({ hasText: formatInteger("99990189981") }).waitFor({ timeout: 30_000 });
+  await cell(0, 0)
+    .filter({ hasText: formatInteger("99990189981") })
+    .waitFor({ timeout: 30_000 });
   await page.getByText("Showing rows 1-200 of 5,000", { exact: true }).waitFor({ timeout: 30_000 });
   const visibleValues = await page
     .locator('[data-grid-column="0"][data-grid-row]')
@@ -137,7 +261,10 @@ try {
   const selectedCoordinates = await page
     .locator('[role="gridcell"][aria-selected="true"]')
     .evaluateAll((nodes) =>
-      nodes.map((node) => [node.getAttribute("data-grid-row"), node.getAttribute("data-grid-column")]),
+      nodes.map((node) => [
+        node.getAttribute("data-grid-row"),
+        node.getAttribute("data-grid-column"),
+      ]),
     );
   assert.equal(
     JSON.stringify(selectedCoordinates),
@@ -158,7 +285,10 @@ try {
   assert.notEqual(clipboardText, "__native-smoke-sentinel__", "Copy did not write the clipboard.");
   const clipboardLines = clipboardText.trimEnd().split(/\r?\n/);
   assert.equal(clipboardLines.length, 2, `Unexpected clipboard row count: ${clipboardText}`);
-  assert.ok(clipboardLines.every((line) => line.includes(";")), clipboardText);
+  assert.ok(
+    clipboardLines.every((line) => line.includes(";")),
+    clipboardText,
+  );
   results.copySettings = "passed";
 
   const finalArtifact = artifactPath(`native-query-copy-${separatorName}-passed.png`);

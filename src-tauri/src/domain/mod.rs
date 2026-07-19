@@ -1,9 +1,11 @@
+mod boundary;
 mod csv_profile;
 mod error;
 mod models;
 mod query;
 mod settings;
 
+pub use boundary::*;
 pub use csv_profile::{
     CsvColumnInference, CsvColumnProfile, CsvColumnValidation, CsvConversionFailurePolicy,
     CsvParsingProfile, CsvPreviewCell, CsvPreviewColumn, CsvPreviewRow, CsvPreviewStage,

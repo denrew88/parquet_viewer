@@ -7,8 +7,9 @@ use std::{
 use duckdb::Connection;
 
 use crate::domain::{
-    ColumnSchema, CsvColumnValidation, CsvParsingProfile, CsvProfilePreview, DataError, DataPage,
-    FileSummary, FormatDescriptor, HeaderMode, ValueKind,
+    BoundarySearchRequest, BoundarySearchResult, ColumnSchema, CsvColumnValidation,
+    CsvParsingProfile, CsvProfilePreview, DataError, DataPage, FileSummary, FormatDescriptor,
+    HeaderMode, ValueKind,
 };
 
 #[derive(Debug, Clone)]
@@ -100,6 +101,21 @@ pub trait TabularSource: Debug + Send + Sync {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError>;
 
+    fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        let summary = self.summary();
+        super::boundary::find_boundary(
+            &summary.columns,
+            summary.row_count,
+            request,
+            cancel,
+            |offset, limit, columns| self.read_page_projected(offset, limit, Some(columns)),
+        )
+    }
+
     fn query_source_spec(&self) -> Result<QuerySourceSpec, DataError> {
         Err(DataError::invalid_request(
             "This tabular source does not support query execution.",
@@ -157,6 +173,14 @@ impl DataSource {
 
     pub fn query_source_spec(&self) -> Result<QuerySourceSpec, DataError> {
         self.inner.query_source_spec()
+    }
+
+    pub fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        self.inner.find_boundary(request, cancel)
     }
 
     pub fn cancel_task(&self, generation: u64) -> Result<FileSummary, DataError> {

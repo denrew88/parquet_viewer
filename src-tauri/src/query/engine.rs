@@ -20,14 +20,15 @@ use duckdb::{
 use crate::{
     data::{
         query_invalid_name as invalid_name, query_quote_identifier as quote_identifier,
-        query_quote_literal as quote_literal, query_raw_name as raw_name, QueryPrepareContext,
-        QuerySourceSpec,
+        query_quote_literal as quote_literal, query_raw_name as raw_name, resolve_boundary,
+        QueryPrepareContext, QuerySourceSpec,
     },
     domain::{
-        DataError, DataErrorCode, DataPage, DataValue, DistinctValue, DistinctValuesRequest,
-        DistinctValuesResponse, ExecuteQueryRequest, FindDirection, FindQueryMatch,
-        FindQueryMatchRequest, FindQueryMatchResponse, QueryProgress, QueryStatus, QueryTaskState,
-        ReadQueryPageRequest, ReadQueryPageResponse, ValueKind,
+        BoundarySearchRequest, BoundarySearchResult, ColumnSchema, DataError, DataErrorCode,
+        DataPage, DataValue, DistinctValue, DistinctValuesRequest, DistinctValuesResponse,
+        ExecuteQueryRequest, FindDirection, FindQueryMatch, FindQueryMatchRequest,
+        FindQueryMatchResponse, QueryProgress, QueryStatus, QueryTaskState, ReadQueryPageRequest,
+        ReadQueryPageResponse, ValueKind,
     },
     storage::{QueryTempCleanupResult, QueryTempLease, QueryTempManager, QueryTempUsage},
 };
@@ -395,6 +396,18 @@ impl QueryService {
             .find_match(request)
     }
 
+    pub fn find_boundary(
+        &self,
+        document_id: &str,
+        session_id: &str,
+        query_id: &str,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        self.result(document_id, session_id, query_id)?
+            .find_boundary(request, cancel)
+    }
+
     pub fn drop_session(&self, document_id: &str, session_id: &str) -> Result<(), DataError> {
         self.drop_session_results(document_id, session_id, true)
     }
@@ -706,11 +719,37 @@ impl QueryService {
 
 impl QueryResult {
     fn read_page(&self, offset: u64, limit: usize) -> Result<DataPage, DataError> {
-        let connection = self.connection.lock().map_err(|_| registry_error())?;
-        let select = self
+        let projection = self
             .columns
             .iter()
-            .enumerate()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
+        self.read_page_projected(offset, limit, &projection)
+    }
+
+    fn read_page_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        projection: &[String],
+    ) -> Result<DataPage, DataError> {
+        let selected = projection
+            .iter()
+            .map(|name| {
+                self.columns
+                    .iter()
+                    .position(|column| column.name == *name)
+                    .ok_or_else(|| {
+                        DataError::invalid_request(format!(
+                            "Unknown query result boundary column: {name}"
+                        ))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let connection = self.connection.lock().map_err(|_| registry_error())?;
+        let select = selected
+            .iter()
+            .map(|index| (*index, &self.columns[*index]))
             .flat_map(|(index, column)| {
                 [
                     quote_identifier(&column.name),
@@ -730,17 +769,18 @@ impl QueryResult {
             .map_err(duckdb_error)?;
         let mut rows = Vec::new();
         while let Some(row) = query.next().map_err(duckdb_error)? {
-            let mut values = Vec::with_capacity(self.columns.len());
-            for (index, column) in self.columns.iter().enumerate() {
+            let mut values = Vec::with_capacity(selected.len());
+            for (output_index, source_index) in selected.iter().enumerate() {
+                let column = &self.columns[*source_index];
                 let display: Option<String> = row
-                    .get::<_, Option<String>>(index * 3)
+                    .get::<_, Option<String>>(output_index * 3)
                     .map_err(duckdb_error)?
                     .map(|value| {
                         self.provider
                             .format_query_display(&column.name, column.kind, &value)
                     });
-                let raw: Option<String> = row.get(index * 3 + 1).map_err(duckdb_error)?;
-                let invalid: bool = row.get(index * 3 + 2).map_err(duckdb_error)?;
+                let raw: Option<String> = row.get(output_index * 3 + 1).map_err(duckdb_error)?;
+                let invalid: bool = row.get(output_index * 3 + 2).map_err(duckdb_error)?;
                 values.push(result_value(column.kind, display, raw, invalid));
             }
             rows.push(values);
@@ -750,13 +790,33 @@ impl QueryResult {
             limit,
             total_rows: Some(self.row_count),
             has_more: offset.saturating_add(rows.len() as u64) < self.row_count,
-            columns: self
-                .columns
-                .iter()
-                .map(|column| column.name.clone())
-                .collect(),
+            columns: projection.to_vec(),
             rows,
         })
+    }
+
+    fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        let columns = self
+            .columns
+            .iter()
+            .map(|column| ColumnSchema {
+                name: column.name.clone(),
+                logical_type: format!("{:?}", column.kind),
+                nullable: true,
+                physical_type: String::from("queryResult"),
+            })
+            .collect::<Vec<_>>();
+        resolve_boundary(
+            &columns,
+            Some(self.row_count),
+            request,
+            cancel,
+            |offset, limit, projection| self.read_page_projected(offset, limit, projection),
+        )
     }
 
     fn distinct(
@@ -1009,7 +1069,7 @@ fn result_value(
     match (display, raw) {
         (None, Some(raw)) => DataValue::converted_null(raw),
         (None, None) => DataValue::null(),
-        (Some(_), Some(raw)) if raw.is_empty() => DataValue::empty(raw),
+        (Some(display), Some(raw)) if display.is_empty() => DataValue::empty(raw),
         (Some(display), Some(raw)) => DataValue::converted(kind, display, raw),
         (Some(display), None) => DataValue::displayed(kind, display),
     }
@@ -1156,6 +1216,26 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let service = Arc::new(QueryService::open(directory.path(), limit).unwrap());
         (directory, service)
+    }
+
+    #[test]
+    fn query_result_restores_trimmed_whitespace_as_empty() {
+        let trimmed = result_value(
+            ValueKind::String,
+            Some(String::new()),
+            Some(String::from("   ")),
+            false,
+        );
+        assert_eq!(trimmed.state, DataValueState::Empty);
+        assert_eq!(trimmed.raw_display.as_deref(), Some("   "));
+
+        let preserved = result_value(
+            ValueKind::String,
+            Some(String::from("   ")),
+            Some(String::from("   ")),
+            false,
+        );
+        assert_eq!(preserved.state, DataValueState::Valid);
     }
 
     fn request(task: &str, query: &str, plan: QueryPlan) -> ExecuteQueryRequest {

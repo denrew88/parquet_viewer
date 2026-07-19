@@ -1,0 +1,57 @@
+{
+  "fixture": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-7\\large-csv.csv",
+  "rows": 250000,
+  "column": "column_000",
+  "warmupMs": 366.8171000000002,
+  "warmupCommandCounts": {
+    "get_data_file_status": 1,
+    "find_data_boundary": 1,
+    "read_page": 2
+  },
+  "timingsMs": [
+    355.5951,
+    300.78110000000015,
+    298.14760000000024,
+    282.2952,
+    281.6102000000001
+  ],
+  "measurements": [
+    {
+      "elapsedMs": 355.5951,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 300.78110000000015,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 298.14760000000024,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 282.2952,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 281.6102000000001,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    }
+  ],
+  "p95Ms": 355.5951,
+  "navigationIpcPerMove": 1,
+  "readPageIpcPerMoveMax": 0,
+  "rssBeforeBytes": 33300480,
+  "rssAfterBytes": 37216256,
+  "rssDeltaBytes": 3915776,
+  "measuredAt": "2026-07-19T04:48:14.968Z"
+}

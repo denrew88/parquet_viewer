@@ -4,6 +4,7 @@ import {
   createSelection,
   normalizeRect,
   selectionReducer,
+  ctrlArrowTarget,
   type GridBounds,
   type GridKeyCommand,
 } from "./gridSelection";
@@ -80,6 +81,24 @@ describe("keyboard matrix", () => {
     ["left", { key: "ArrowLeft" }, [5, 2], [5, 2, 5, 2]],
     ["right", { key: "ArrowRight" }, [5, 4], [5, 4, 5, 4]],
     ["shift down", { key: "ArrowDown", shiftKey: true }, [6, 3], [5, 3, 6, 3]],
+    ["ctrl up", { key: "ArrowUp", ctrlKey: true }, [0, 3], [0, 3, 0, 3]],
+    ["ctrl down", { key: "ArrowDown", ctrlKey: true }, [11, 3], [11, 3, 11, 3]],
+    ["ctrl left", { key: "ArrowLeft", ctrlKey: true }, [5, 0], [5, 0, 5, 0]],
+    ["ctrl right", { key: "ArrowRight", ctrlKey: true }, [5, 7], [5, 7, 5, 7]],
+    ["ctrl shift up", { key: "ArrowUp", ctrlKey: true, shiftKey: true }, [0, 3], [0, 3, 5, 3]],
+    [
+      "ctrl shift down",
+      { key: "ArrowDown", ctrlKey: true, shiftKey: true },
+      [11, 3],
+      [5, 3, 11, 3],
+    ],
+    ["ctrl shift left", { key: "ArrowLeft", ctrlKey: true, shiftKey: true }, [5, 0], [5, 0, 5, 3]],
+    [
+      "ctrl shift right",
+      { key: "ArrowRight", ctrlKey: true, shiftKey: true },
+      [5, 7],
+      [5, 3, 5, 7],
+    ],
     ["home", { key: "Home" }, [5, 0], [5, 0, 5, 0]],
     ["end", { key: "End" }, [5, 7], [5, 7, 5, 7]],
     ["ctrl home", { key: "Home", ctrlKey: true }, [0, 0], [0, 0, 0, 0]],
@@ -102,27 +121,53 @@ describe("keyboard matrix", () => {
     expect([state.rect.top, state.rect.left, state.rect.bottom, state.rect.right]).toEqual(rect);
   });
 
-  it("implements Excel-style Ctrl boundary movement over sparse values", () => {
-    const occupied = new Set(["5:3", "5:4", "5:5", "5:7"]);
-    const isEmpty = ({ row, column }: { row: number; column: number }) =>
-      !occupied.has(`${row}:${column}`);
-    let state = createSelection("session", bounds);
-    state = selectionReducer(state, {
-      type: "click",
-      coordinate: { row: 5, column: 3 },
-      bounds,
-    });
-    state = applyGridKey(state, { key: "ArrowRight", ctrlKey: true }, bounds, isEmpty);
-    expect(state.active).toEqual({ row: 5, column: 5 });
-    state = applyGridKey(state, { key: "ArrowRight", ctrlKey: true }, bounds, isEmpty);
-    expect(state.active).toEqual({ row: 5, column: 7 });
-  });
-
   it("maps Ctrl and Meta to the same commands and ignores Alt combinations", () => {
     const state = createSelection("session", bounds);
     expect(applyGridKey(state, { key: "End", ctrlKey: true }, bounds).active).toEqual(
       applyGridKey(state, { key: "End", metaKey: true }, bounds).active,
     );
     expect(applyGridKey(state, { key: "ArrowDown", altKey: true }, bounds)).toBe(state);
+  });
+
+  it("GRID-NAV-001 restores Excel Ctrl+Arrow occupied and empty-region semantics", () => {
+    const occupied = new Set(["5:3", "5:4", "5:5", "5:7"]);
+    const isEmpty = ({ row, column }: { row: number; column: number }) =>
+      !occupied.has(`${row}:${column}`);
+    expect(ctrlArrowTarget({ row: 5, column: 3 }, 0, 1, bounds, isEmpty)).toEqual({
+      row: 5,
+      column: 5,
+    });
+    expect(ctrlArrowTarget({ row: 5, column: 5 }, 0, 1, bounds, isEmpty)).toEqual({
+      row: 5,
+      column: 7,
+    });
+    expect(ctrlArrowTarget({ row: 5, column: 6 }, 0, -1, bounds, isEmpty)).toEqual({
+      row: 5,
+      column: 5,
+    });
+  });
+
+  it("GRID-NAV-002 uses Ctrl+Alt+Arrow for absolute boundaries and Shift to extend", () => {
+    let state = createSelection("session", bounds);
+    state = selectionReducer(state, {
+      type: "click",
+      coordinate: { row: 5, column: 3 },
+      bounds,
+    });
+    const moved = applyGridKey(
+      state,
+      { key: "ArrowDown", ctrlKey: true, altKey: true },
+      bounds,
+      () => true,
+    );
+    expect(moved.active).toEqual({ row: 11, column: 3 });
+    const extended = applyGridKey(
+      state,
+      { key: "ArrowLeft", ctrlKey: true, altKey: true, shiftKey: true },
+      bounds,
+      () => true,
+    );
+    expect(extended.anchor).toEqual({ row: 5, column: 3 });
+    expect(extended.active).toEqual({ row: 5, column: 0 });
   });
 });

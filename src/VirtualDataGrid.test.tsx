@@ -1,15 +1,27 @@
 import { StrictMode, useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { DataPage, DataValue, FileSummary, ReadPageRequest } from "./backend";
+import type {
+  DataPage,
+  DataValue,
+  FileSummary,
+  FindBoundaryRequest,
+  FindBoundaryResponse,
+  ReadPageRequest,
+} from "./backend";
 import {
   GRID_COLUMN_OVERSCAN,
   GRID_MAX_COLUMN_WIDTH,
   GRID_MIN_COLUMN_WIDTH,
   GRID_ROW_OVERSCAN,
   VirtualDataGrid,
+  type VirtualDataGridProps,
 } from "./VirtualDataGrid";
-import { GRID_PAGE_COLUMN_LIMIT, orderedProjectionForWindow } from "./gridProjection";
+import {
+  GRID_PAGE_COLUMN_LIMIT,
+  compatiblePageFor,
+  orderedProjectionForWindow,
+} from "./gridProjection";
 import { COPY_PRESETS } from "./copy/presets";
 import { EMPTY_QUERY_PLAN, type QueryPlan } from "./query/model";
 import type { DistinctValuesState } from "./query/ColumnFilterPopover";
@@ -134,9 +146,66 @@ const querySummary: FileSummary = {
   columns: summary.columns.slice(0, queryColumns.length),
 };
 
+const occupiedValue = (display = "value"): DataValue => ({
+  kind: "string",
+  display,
+  state: "valid",
+});
+function makeNavigationSummary(
+  columnNames: readonly string[],
+  rowCount: number | null,
+  sessionId = "navigation-session",
+): FileSummary {
+  return {
+    ...summary,
+    sessionId,
+    fileName: "navigation.parquet",
+    path: "C:\\fixtures\\navigation.parquet",
+    rowCount,
+    rowCountStatus:
+      rowCount === null
+        ? { ...summary.rowCountStatus, state: "calculating", rowsScanned: 0 }
+        : { ...summary.rowCountStatus, state: "complete", rowsScanned: rowCount },
+    columnCount: columnNames.length,
+    columns: columnNames.map((name) => ({
+      name,
+      logicalType: "Utf8",
+      physicalType: "BYTE_ARRAY",
+      nullable: true,
+    })),
+  };
+}
+
+function makeNavigationPage(
+  request: ReadPageRequest,
+  columnNames: readonly string[],
+  actualRowCount: number,
+  valueAt: (row: number, column: number) => DataValue,
+  reportedRowCount: number | null = actualRowCount,
+): DataPage {
+  const projectedColumns = request.columns ?? [...columnNames];
+  const rowLength = Math.max(0, Math.min(request.limit, actualRowCount - request.offset));
+  return {
+    sessionId: request.sessionId,
+    offset: request.offset,
+    limit: request.limit,
+    totalRows: reportedRowCount,
+    hasMore: request.offset + rowLength < actualRowCount,
+    columns: [...projectedColumns],
+    rows: Array.from({ length: rowLength }, (_, rowOffset) =>
+      projectedColumns.map((columnName) =>
+        valueAt(request.offset + rowOffset, columnNames.indexOf(columnName)),
+      ),
+    ),
+  };
+}
+
 function renderGrid(
   readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
   writeClipboardText = vi.fn(async () => undefined),
+  summaryValue = summary,
+  pageValue = makePage(),
+  extraProps: Partial<VirtualDataGridProps> = {},
 ) {
   const rendered = render(
     <div style={{ width: 1024, height: 600 }}>
@@ -144,10 +213,11 @@ function renderGrid(
         isLoading={false}
         onPageChange={vi.fn()}
         onReadError={vi.fn()}
-        page={makePage()}
+        page={pageValue}
         readPage={readPage}
-        summary={summary}
+        summary={summaryValue}
         writeClipboardText={writeClipboardText}
+        {...extraProps}
       />
     </div>,
   );
@@ -155,6 +225,22 @@ function renderGrid(
     grid: screen.getByRole("grid", { name: "Data preview" }),
     readPage,
     writeClipboardText,
+    rerenderSummary(nextSummary: FileSummary) {
+      rendered.rerender(
+        <div style={{ width: 1024, height: 600 }}>
+          <VirtualDataGrid
+            isLoading={false}
+            onPageChange={vi.fn()}
+            onReadError={vi.fn()}
+            page={pageValue}
+            readPage={readPage}
+            summary={nextSummary}
+            writeClipboardText={writeClipboardText}
+            {...extraProps}
+          />
+        </div>,
+      );
+    },
     unmount: rendered.unmount,
   };
 }
@@ -181,6 +267,7 @@ function QueryGridHarness({
         onQueryPlanChange={setPlan}
         onReadError={vi.fn()}
         page={page}
+        queryActive
         queryPlan={plan}
         readPage={vi.fn(async () => page)}
         summary={summaryValue}
@@ -298,6 +385,290 @@ describe("VirtualDataGrid", () => {
     expect(within(grid).getByText("R0C0")).toHaveAttribute("data-grid-row", "0");
     expect(screen.queryByLabelText("Query tools")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Filter column_0" })).not.toBeInTheDocument();
+  });
+
+  function boundaryResponse(
+    request: FindBoundaryRequest,
+    targetRow: number,
+    targetColumnId = request.columnId,
+    resolvedRowCount: number | null = null,
+  ): FindBoundaryResponse {
+    return {
+      navigationId: request.navigationId,
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      ...(request.queryId ? { queryId: request.queryId } : {}),
+      targetRow,
+      targetColumnId,
+      resolvedRowCount,
+    };
+  }
+
+  it("NAV-RPC-001 resolves once without intermediate page reads when the target is cached", async () => {
+    const names = ["a", "b", "c"];
+    const navigationSummary = makeNavigationSummary(names, 6);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      6,
+      (row, column) => occupiedValue(`${row}:${column}`),
+    );
+    const readPage = vi.fn(async () => initial);
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, 0, "b", 6),
+    );
+    const { grid } = renderGrid(readPage, undefined, navigationSummary, initial, {
+      documentId: "document-1",
+      findDataBoundary: resolver,
+    });
+    fireEvent.keyDown(grid, { key: "ArrowRight", ctrlKey: true });
+    await waitFor(() => expect(grid).toHaveAttribute("data-active-column", "1"));
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(resolver.mock.calls[0][0]).toMatchObject({
+      documentId: "document-1",
+      sessionId: navigationSummary.sessionId,
+      row: 0,
+      columnId: "a",
+      visibleColumnIds: names,
+      direction: "right",
+      mode: "dataBoundary",
+    });
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
+  it("NAV-RPC-002 reads only the resolved target page for unknown EOF", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, null);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      450,
+      (row) => occupiedValue(String(row)),
+      null,
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, 449, "a", 450),
+    );
+    const readPage = vi.fn(async (request: ReadPageRequest) =>
+      makeNavigationPage(request, names, 450, (row) => occupiedValue(String(row)), 450),
+    );
+    const { grid } = renderGrid(readPage, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+    });
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+    await waitFor(() => expect(grid).toHaveAttribute("data-active-row", "449"));
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(readPage).toHaveBeenCalledTimes(1);
+    expect(readPage).toHaveBeenCalledWith(expect.objectContaining({ offset: 400 }));
+  });
+
+  it("NAV-RPC-002 keeps selection and scroll unchanged when the target page fails", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, null);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      450,
+      (row) => occupiedValue(String(row)),
+      null,
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, 449, "a", 450),
+    );
+    const readPage = vi.fn(async () => {
+      throw new Error("target page failed");
+    });
+    const onReadError = vi.fn();
+    const { grid } = renderGrid(readPage, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+      onReadError,
+    });
+
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+
+    await waitFor(() => expect(onReadError).toHaveBeenCalledTimes(1));
+    expect(grid).toHaveAttribute("data-active-row", "0");
+    expect(grid).toHaveAttribute("data-selection-bottom", "0");
+    expect(grid.scrollTop).toBe(0);
+  });
+
+  it("NAV-RPC-003 sends visible order without hidden columns", async () => {
+    const names = ["a", "b", "c"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      (row, column) => occupiedValue(`${row}:${column}`),
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, 0, "c", 2),
+    );
+    const { grid } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(screen.getByRole("button", { name: "b" }));
+    fireEvent.keyDown(grid, { key: "ArrowRight", ctrlKey: true });
+    await waitFor(() => expect(grid).toHaveAttribute("data-active-column", "2"));
+    expect(resolver.mock.calls[0][0].visibleColumnIds).toEqual(["a", "c"]);
+  });
+
+  it("NAV-RPC-004 preserves the Shift anchor", async () => {
+    const names = ["a", "b", "c"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      () => occupiedValue(),
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, 0, "c", 2),
+    );
+    const { grid } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+    });
+    fireEvent.keyDown(grid, { key: "ArrowRight", ctrlKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(grid).toHaveAttribute("data-selection-left", "0");
+      expect(grid).toHaveAttribute("data-selection-right", "2");
+    });
+  });
+
+  it("NAV-RPC-004 serializes consecutive absolute and Shift boundary keys", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      () => occupiedValue(),
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) =>
+      boundaryResponse(request, request.direction === "down" ? 1 : 0, "a", 2),
+    );
+    const { grid } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+    });
+
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true, altKey: true });
+    fireEvent.keyDown(grid, { key: "ArrowUp", ctrlKey: true, shiftKey: true });
+
+    await waitFor(() => expect(grid).toHaveAttribute("data-active-row", "0"));
+    expect(resolver).toHaveBeenCalledWith(expect.objectContaining({ row: 1, direction: "up" }));
+    expect(grid).toHaveAttribute("data-selection-top", "0");
+    expect(grid).toHaveAttribute("data-selection-bottom", "1");
+  });
+
+  it("NAV-RPC-005 cancels on selection and discards late response", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      () => occupiedValue(),
+    );
+    let resolveBoundary: ((response: FindBoundaryResponse) => void) | undefined;
+    let request: FindBoundaryRequest | undefined;
+    const resolver = vi.fn(
+      (next: FindBoundaryRequest) =>
+        new Promise<FindBoundaryResponse>((resolve) => {
+          request = next;
+          resolveBoundary = resolve;
+        }),
+    );
+    const cancel = vi.fn(async () => undefined);
+    const { grid } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      cancelDataBoundaryNavigation: cancel,
+      findDataBoundary: resolver,
+    });
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+    await waitFor(() => expect(resolver).toHaveBeenCalledTimes(1));
+    const selectedCell = grid.querySelector<HTMLElement>(
+      '[data-grid-row="1"][data-grid-column="0"]',
+    )!;
+    fireEvent.pointerDown(selectedCell, { button: 0 });
+    fireEvent.click(selectedCell);
+    resolveBoundary?.(boundaryResponse(request!, 1, "a", 2));
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(grid).toHaveAttribute("data-active-row", "1");
+  });
+
+  it("NAV-RPC-006 cancels on result change and discards stale identity", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      () => occupiedValue(),
+    );
+    let resolveBoundary: ((response: FindBoundaryResponse) => void) | undefined;
+    let request: FindBoundaryRequest | undefined;
+    const resolver = vi.fn(
+      (next: FindBoundaryRequest) =>
+        new Promise<FindBoundaryResponse>((resolve) => {
+          request = next;
+          resolveBoundary = resolve;
+        }),
+    );
+    const cancel = vi.fn(async () => undefined);
+    const { grid, rerenderSummary } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      cancelDataBoundaryNavigation: cancel,
+      findDataBoundary: resolver,
+    });
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+    await waitFor(() => expect(resolver).toHaveBeenCalledTimes(1));
+    rerenderSummary(makeNavigationSummary(names, 2, "replacement-session"));
+    resolveBoundary?.({ ...boundaryResponse(request!, 1, "a", 2), navigationId: "stale" });
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(grid).toHaveAttribute("data-active-row", "0");
+  });
+
+  it("NAV-RPC-007 cancels on focus loss and never steals focus", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, 2);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      2,
+      () => occupiedValue(),
+    );
+    let resolveBoundary: ((response: FindBoundaryResponse) => void) | undefined;
+    let request: FindBoundaryRequest | undefined;
+    const resolver = vi.fn(
+      (next: FindBoundaryRequest) =>
+        new Promise<FindBoundaryResponse>((resolve) => {
+          request = next;
+          resolveBoundary = resolve;
+        }),
+    );
+    const cancel = vi.fn(async () => undefined);
+    const { grid } = renderGrid(undefined, undefined, navigationSummary, initial, {
+      cancelDataBoundaryNavigation: cancel,
+      findDataBoundary: resolver,
+    });
+    const input = document.createElement("input");
+    document.body.append(input);
+    grid.focus();
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+    await waitFor(() => expect(resolver).toHaveBeenCalledTimes(1));
+    input.focus();
+    resolveBoundary?.(boundaryResponse(request!, 1, "a", 2));
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(input).toHaveFocus();
+    expect(grid).toHaveAttribute("data-active-row", "0");
+    input.remove();
+  });
+
+  it("reuses the initial prop page after the bounded page cache evicts it", () => {
+    const propPage = makePage(0);
+    const cachedPages = [makePage(200), makePage(400), makePage(600)];
+
+    expect(compatiblePageFor(cachedPages, propPage, 0, ["column_0"])).toBe(propPage);
+    expect(compatiblePageFor(cachedPages, propPage, 600, ["column_0"])).toBe(cachedPages[2]);
   });
 
   it("cycles stable multi-column sorts and exposes their priorities", () => {

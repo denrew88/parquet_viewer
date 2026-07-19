@@ -387,6 +387,38 @@ export interface ReadPageRequest {
   columns?: string[];
 }
 
+export type DataBoundaryDirection = "up" | "down" | "left" | "right";
+export type DataBoundaryMode = "dataBoundary" | "tableBoundary";
+
+export interface FindBoundaryRequest {
+  navigationId: string;
+  documentId: string;
+  sessionId: string;
+  queryId?: string;
+  row: number;
+  columnId: string;
+  visibleColumnIds: string[];
+  direction: DataBoundaryDirection;
+  mode: DataBoundaryMode;
+}
+
+export interface FindBoundaryResponse {
+  navigationId: string;
+  documentId: string;
+  sessionId: string;
+  queryId?: string;
+  targetRow: number;
+  targetColumnId: string;
+  resolvedRowCount: number | null;
+}
+
+export interface CancelDataBoundaryNavigationRequest {
+  navigationId: string;
+  documentId: string;
+  sessionId: string;
+  queryId?: string;
+}
+
 export type OpenOrigin = "dialog" | "dragDrop" | "startupArg" | "fileAssociation";
 
 const openOrigins: readonly OpenOrigin[] = ["dialog", "dragDrop", "startupArg", "fileAssociation"];
@@ -460,6 +492,8 @@ export interface BackendAdapter {
     onError: OpenRequestErrorHandler,
   ): Promise<UnlistenFn>;
   readPage(request: ReadPageRequest): Promise<DataPage>;
+  findDataBoundary(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
+  cancelDataBoundaryNavigation(request: CancelDataBoundaryNavigationRequest): Promise<void>;
   configureCsv(
     documentId: string,
     sessionId: string,
@@ -2053,6 +2087,70 @@ function parseDocumentPageResponse(value: unknown, request: ReadPageRequest): Da
   return parseDataPage({ ...page, sessionId: response.sessionId });
 }
 
+const dataBoundaryDirections: readonly DataBoundaryDirection[] = ["up", "down", "left", "right"];
+const dataBoundaryModes: readonly DataBoundaryMode[] = ["dataBoundary", "tableBoundary"];
+
+function validatedFindBoundaryRequest(request: FindBoundaryRequest): FindBoundaryRequest {
+  if (
+    !isNonEmptyString(request.navigationId) ||
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId) ||
+    (request.queryId !== undefined && !isNonEmptyString(request.queryId)) ||
+    !isNonNegativeInteger(request.row) ||
+    !isNonEmptyString(request.columnId) ||
+    !Array.isArray(request.visibleColumnIds) ||
+    request.visibleColumnIds.length === 0 ||
+    !request.visibleColumnIds.every(isNonEmptyString) ||
+    !hasUniqueValues(request.visibleColumnIds) ||
+    !dataBoundaryDirections.includes(request.direction) ||
+    !dataBoundaryModes.includes(request.mode)
+  ) {
+    throw new DataViewerError("InvalidRequest", "The data-boundary request is invalid.");
+  }
+  return { ...request, visibleColumnIds: [...request.visibleColumnIds] };
+}
+
+export function parseFindBoundaryResponse(value: unknown): FindBoundaryResponse {
+  const response = record(value);
+  if (
+    !response ||
+    !isNonEmptyString(response.navigationId) ||
+    !isNonEmptyString(response.documentId) ||
+    !isNonEmptyString(response.sessionId) ||
+    (response.queryId !== undefined &&
+      response.queryId !== null &&
+      !isNonEmptyString(response.queryId)) ||
+    !isNonNegativeInteger(response.targetRow) ||
+    !isNonEmptyString(response.targetColumnId) ||
+    (response.resolvedRowCount !== null && !isNonNegativeInteger(response.resolvedRowCount))
+  ) {
+    throw new DataViewerError("InvalidResponse", "The backend returned an invalid data boundary.");
+  }
+  return {
+    navigationId: response.navigationId,
+    documentId: response.documentId,
+    sessionId: response.sessionId,
+    ...(response.queryId === undefined || response.queryId === null
+      ? {}
+      : { queryId: response.queryId }),
+    targetRow: response.targetRow,
+    targetColumnId: response.targetColumnId,
+    resolvedRowCount: response.resolvedRowCount,
+  };
+}
+
+function sameBoundaryIdentity(
+  request: FindBoundaryRequest,
+  response: FindBoundaryResponse,
+): boolean {
+  return (
+    response.navigationId === request.navigationId &&
+    response.documentId === request.documentId &&
+    response.sessionId === request.sessionId &&
+    response.queryId === request.queryId
+  );
+}
+
 function validatedExecuteQueryRequest(request: ExecuteQueryRequest): ExecuteQueryRequest {
   const plan = parseQueryPlan(request.plan);
   if (
@@ -2149,6 +2247,12 @@ async function validatedInvoke<T>(
   parse: (value: unknown) => T,
 ): Promise<T> {
   try {
+    const telemetry = (
+      globalThis as typeof globalThis & {
+        __DATA_VIEWER_IPC_TELEMETRY__?: { counts: Record<string, number> };
+      }
+    ).__DATA_VIEWER_IPC_TELEMETRY__;
+    if (telemetry) telemetry.counts[command] = (telemetry.counts[command] ?? 0) + 1;
     return parse(await invoke(command, args));
   } catch (error) {
     throw normalizeBackendError(error);
@@ -2220,6 +2324,30 @@ export const tauriBackend: BackendAdapter = {
     return validatedInvoke("read_page", { request }, (response) =>
       request.documentId ? parseDocumentPageResponse(response, request) : parseDataPage(response),
     );
+  },
+  async findDataBoundary(request) {
+    const validated = validatedFindBoundaryRequest(request);
+    return validatedInvoke("find_data_boundary", { request: validated }, (value) => {
+      const response = parseFindBoundaryResponse(value);
+      if (!sameBoundaryIdentity(validated, response)) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned a data boundary for another navigation request.",
+        );
+      }
+      return response;
+    });
+  },
+  async cancelDataBoundaryNavigation(request) {
+    if (
+      !isNonEmptyString(request.navigationId) ||
+      !isNonEmptyString(request.documentId) ||
+      !isNonEmptyString(request.sessionId) ||
+      (request.queryId !== undefined && !isNonEmptyString(request.queryId))
+    ) {
+      throw new DataViewerError("InvalidRequest", "The navigation cancellation is invalid.");
+    }
+    return validatedInvoke("cancel_data_boundary_navigation", { request }, () => undefined);
   },
   async configureCsv(documentId, sessionId, headerMode) {
     return validatedInvoke(
@@ -2768,6 +2896,7 @@ const browserQueryTasks = new Map<
   { request: ExecuteQueryRequest; status: QueryStatusResponse }
 >();
 const browserCancelledOpenRequests = new Set<string>();
+const browserCancelledBoundaryNavigations = new Set<string>();
 const browserOpenRequestHandlers = new Set<OpenRequestHandler>();
 let browserSettings = defaultAppSettings();
 
@@ -2981,6 +3110,53 @@ export const browserMockBackend: BackendAdapter = {
     )
       return browserOesPage(request);
     return browserFixturePage(request);
+  },
+  async findDataBoundary(request) {
+    const validated = validatedFindBoundaryRequest(request);
+    await wait(20);
+    if (browserCancelledBoundaryNavigations.delete(validated.navigationId)) {
+      throw new DataViewerError(
+        "NavigationCancelled",
+        "The data-boundary navigation was cancelled.",
+      );
+    }
+    const sourcePage = validated.sessionId.includes("csv-session")
+      ? browserCsvPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
+      : validated.sessionId.includes("oes-session") ||
+          validated.sessionId.includes("-h5-session") ||
+          validated.sessionId.includes("-hdf5-session")
+        ? browserOesPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
+        : browserFixturePage({
+            ...validated,
+            offset: 0,
+            limit: 1,
+            columns: [validated.columnId],
+          });
+    const columnIndex = validated.visibleColumnIds.indexOf(validated.columnId);
+    const targetColumnIndex =
+      validated.direction === "left"
+        ? 0
+        : validated.direction === "right"
+          ? validated.visibleColumnIds.length - 1
+          : Math.max(0, columnIndex);
+    const totalRows = sourcePage.totalRows ?? sourcePage.rows.length;
+    return {
+      navigationId: validated.navigationId,
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      ...(validated.queryId ? { queryId: validated.queryId } : {}),
+      targetRow:
+        validated.direction === "up"
+          ? 0
+          : validated.direction === "down"
+            ? Math.max(0, totalRows - 1)
+            : validated.row,
+      targetColumnId: validated.visibleColumnIds[targetColumnIndex],
+      resolvedRowCount: sourcePage.totalRows,
+    };
+  },
+  async cancelDataBoundaryNavigation(request) {
+    browserCancelledBoundaryNavigations.add(request.navigationId);
   },
   async configureCsv(_documentId, sessionId, headerMode) {
     const state = browserCsvStates.get(sessionId);

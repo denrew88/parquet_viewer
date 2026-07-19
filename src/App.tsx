@@ -324,6 +324,7 @@ function EmptyState({ formats, tab }: { formats: readonly FormatDescriptor[]; ta
 
 interface DataViewProps {
   active?: boolean;
+  cancelDataBoundaryNavigation: BackendAdapter["cancelDataBoundaryNavigation"];
   copyOptions: CopyOptions;
   copyPresetError: string | null;
   copyPresetSaving: boolean;
@@ -342,12 +343,15 @@ interface DataViewProps {
   page: DataPage;
   queryState: QueryUiState | null;
   distinctValuesForColumn(columnId: string): DistinctValuesState | undefined;
+  documentId: string;
+  findDataBoundary: BackendAdapter["findDataBoundary"];
   readPage(request: Parameters<BackendAdapter["readPage"]>[0]): Promise<DataPage>;
   summary: FileSummary;
 }
 
 function DataView({
   active = true,
+  cancelDataBoundaryNavigation,
   copyOptions,
   copyPresetError,
   copyPresetSaving,
@@ -366,6 +370,8 @@ function DataView({
   page,
   queryState,
   distinctValuesForColumn,
+  documentId,
+  findDataBoundary,
   readPage,
   summary,
 }: DataViewProps) {
@@ -414,10 +420,13 @@ function DataView({
       )}
       <VirtualDataGrid
         active={active}
+        cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
         copyOptions={copyOptions}
         copyPresetError={copyPresetError}
         copyPresetSaving={copyPresetSaving}
         distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
+        documentId={documentId}
+        findDataBoundary={findDataBoundary}
         findTarget={queryState?.findTarget ?? undefined}
         isLoading={isLoading}
         logicalColumnNames={queryState?.queryId ? page.columns : undefined}
@@ -432,6 +441,8 @@ function DataView({
         onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
         onReadError={onReadError}
         page={page}
+        queryActive={Boolean(queryState?.queryId)}
+        queryId={queryState?.queryId ?? undefined}
         queryPlan={queryState?.draftPlan}
         queryStatus={queryState ? formatQueryToolbarStatus(queryState) : undefined}
         readPage={readPage}
@@ -3115,10 +3126,13 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                 <div className="document-view" hidden={document.activeTab !== "data"}>
                   <DataView
                     active={activeDocumentId === document.id && document.activeTab === "data"}
+                    cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
                     copyOptions={activeCopyOptions(appSettings)}
                     copyPresetError={copyPresetSaveError}
                     copyPresetSaving={copyPresetSaving}
                     distinctValuesForColumn={(columnId) => distinctValuesState(document, columnId)}
+                    documentId={document.documentId!}
+                    findDataBoundary={backend.findDataBoundary}
                     isCancelling={document.isCancellingCsv}
                     isLoading={document.isPageLoading}
                     onCancel={() => void cancelCsvScan(document)}
