@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openMockFile, setMockScenario } from "./helpers";
+import { openMockFile } from "./helpers";
 
 test("opens multiple browserMock documents and retains independent view tabs", async ({ page }) => {
   await page.goto("/");
@@ -123,6 +123,19 @@ test("validates application settings and temporary-storage controls", async ({ p
   await expect(dialog.getByText(/20\.00 GiB available on disk/)).toBeVisible();
 
   const limit = dialog.getByRole("spinbutton", { name: "Query temporary storage limit" });
+  const copyCells = dialog.getByRole("spinbutton", { name: "Maximum cells" });
+  const copyMiB = dialog.getByRole("spinbutton", { name: "Maximum clipboard size" });
+  await expect(copyCells).toHaveValue("1000000");
+  await expect(copyMiB).toHaveValue("64");
+  await copyCells.fill("999");
+  await copyMiB.fill("257");
+  await expect(dialog.getByText("Enter an integer from 1,000 to 10,000,000 cells.")).toHaveRole(
+    "alert",
+  );
+  await expect(dialog.getByText("Enter an integer from 1 to 256 MiB.")).toHaveRole("alert");
+  await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
+  await copyCells.fill("1000");
+  await copyMiB.fill("256");
   await limit.fill("0.01");
   await expect(dialog.getByRole("alert")).toContainText("64 MiB");
   await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
@@ -140,5 +153,23 @@ test("validates application settings and temporary-storage controls", async ({ p
       name: "All Text",
     }),
   ).toHaveAttribute("aria-pressed", "true");
-  await setMockScenario(page, "parquet");
+  await expect(
+    page
+      .getByRole("dialog", { name: "Application settings" })
+      .getByRole("spinbutton", { name: "Maximum cells" }),
+  ).toHaveValue("1000");
+  await expect(
+    page
+      .getByRole("dialog", { name: "Application settings" })
+      .getByRole("spinbutton", { name: "Maximum clipboard size" }),
+  ).toHaveValue("256");
+  await dialog.press("Escape");
+
+  await openMockFile(page, "oes", "spectrometer.oes.h5");
+  const grid = page.getByRole("grid", { name: "Data preview" });
+  await grid.press("Control+A");
+  await page.getByRole("button", { name: "Copy selection" }).click();
+  await expect(page.locator(".copy-status")).toHaveText(
+    "Selection exceeds the configured 1,000-cell clipboard limit.",
+  );
 });

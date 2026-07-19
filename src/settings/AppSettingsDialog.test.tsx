@@ -65,6 +65,50 @@ describe("AppSettingsDialog", () => {
     expect(onOpenCopySettings).toHaveBeenCalledTimes(1);
   });
 
+  it("applies inclusive copy limits in cells and MiB", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderDialog();
+    const cells = screen.getByRole("spinbutton", { name: "Maximum cells" });
+    const bytes = screen.getByRole("spinbutton", { name: "Maximum clipboard size" });
+
+    await user.clear(cells);
+    await user.type(cells, "1000");
+    await user.clear(bytes);
+    await user.type(bytes, "256");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        copyLimits: { maxCells: 1_000, maxBytes: 256 * 1024 * 1024 },
+      }),
+    );
+  });
+
+  it("exposes copy-limit validation and blocks invalid values", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderDialog();
+    const cells = screen.getByRole("spinbutton", { name: "Maximum cells" });
+    const bytes = screen.getByRole("spinbutton", { name: "Maximum clipboard size" });
+
+    await user.clear(cells);
+    await user.type(cells, "999");
+    await user.clear(bytes);
+    await user.type(bytes, "257");
+
+    expect(cells).toHaveAttribute("aria-invalid", "true");
+    expect(bytes).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Enter an integer from 1,000 to 10,000,000 cells.")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByText("Enter an integer from 1 to 256 MiB.")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
   it("closes on Escape, traps Tab, and restores focus", async () => {
     const trigger = document.createElement("button");
     trigger.textContent = "Trigger";

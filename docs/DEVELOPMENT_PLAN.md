@@ -1,6 +1,6 @@
 # 개발 계획
 
-## 2026-07-17 최신 실행 상태
+## 2026-07-19 최신 실행 상태
 
 - Phase 0~8 제품 구현과 실행 가능한 자동 gate를 모두 실행했다.
 - frontend 266 tests, Playwright 24 tests, Rust 127 tests, format/lint/typecheck/clippy/build가 PASS했다.
@@ -21,6 +21,9 @@
   파일과 Windows clipboard native smoke, release/NSIS build와 static binary import audit는 PASS했다.
   adversarial vlen allocation, large/performance, DPI와 clean installer gate가 남아 전체 Phase 판정은
   BLOCKED다.
+- 64열 source projection 상한을 copy 상한으로 잘못 사용하던 회귀를 수정했다. 65열 이상 선택은
+  64열 이하 projection으로 분할하고, 설정 V2의 app-global hard limit(기본 1,000,000셀/64 MiB)을
+  적용한다. browser 480x65와 실제 OES 128x65의 전체 Windows clipboard 복사가 PASS했다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.

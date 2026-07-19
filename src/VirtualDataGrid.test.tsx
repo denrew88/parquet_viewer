@@ -68,6 +68,41 @@ function makeOesPage(
   };
 }
 
+function makeWideCopyFixture(columnCount: number, totalRows = 2) {
+  const columnNames = Array.from({ length: columnCount }, (_, index) => `wide_${index}`);
+  const fixtureSummary: FileSummary = {
+    ...summary,
+    sessionId: `copy-${columnCount}`,
+    rowCount: totalRows,
+    rowCountStatus: {
+      ...summary.rowCountStatus,
+      rowsScanned: totalRows,
+    },
+    columnCount,
+    columns: columnNames.map((name) => ({
+      name,
+      logicalType: "Utf8",
+      physicalType: "BYTE_ARRAY",
+      nullable: false,
+    })),
+  };
+  const pageFor = (offset = 0, projectedColumns: readonly string[] = columnNames.slice(0, 64)) => ({
+    sessionId: fixtureSummary.sessionId,
+    offset,
+    limit: Math.min(200, totalRows - offset),
+    totalRows,
+    hasMore: false,
+    columns: [...projectedColumns],
+    rows: Array.from({ length: Math.max(0, totalRows - offset) }, (_, rowOffset) =>
+      projectedColumns.map((column) => ({
+        kind: "string" as const,
+        display: `R${offset + rowOffset}C${columnNames.indexOf(column)}`,
+      })),
+    ),
+  });
+  return { columnNames, fixtureSummary, pageFor };
+}
+
 const summary: FileSummary = {
   sessionId: "wide-session",
   fileName: "wide.parquet",
@@ -329,6 +364,153 @@ describe("VirtualDataGrid", () => {
     expect(grid).toHaveAttribute("data-active-column", "64");
     fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
     await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith("0:64"));
+  });
+
+  it.each([65, 129])(
+    "copies all %i logical columns through projections of at most 64 columns",
+    async (columnCount) => {
+      const fixture = makeWideCopyFixture(columnCount);
+      const readPage = vi.fn(async (request: ReadPageRequest) =>
+        fixture.pageFor(request.offset, request.columns),
+      );
+      const writeClipboardText = vi.fn(async (text: string) => {
+        void text;
+      });
+      render(
+        <div style={{ width: 1024, height: 600 }}>
+          <VirtualDataGrid
+            isLoading={false}
+            onPageChange={vi.fn()}
+            onReadError={vi.fn()}
+            page={fixture.pageFor()}
+            readPage={readPage}
+            summary={fixture.fixtureSummary}
+            writeClipboardText={writeClipboardText}
+          />
+        </div>,
+      );
+      const grid = screen.getByRole("grid", { name: "Data preview" });
+      fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+      fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+
+      await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
+      expect(readPage).toHaveBeenCalledTimes(Math.ceil(columnCount / 64));
+      for (const [request] of readPage.mock.calls) {
+        expect(request.columns!.length).toBeLessThanOrEqual(64);
+      }
+      const copied = writeClipboardText.mock.calls[0]![0];
+      const lines = copied.split("\r\n");
+      expect(lines).toHaveLength(2);
+      expect(lines[0].split("\t")).toHaveLength(columnCount);
+      expect(lines[0]).toMatch(new RegExp(`^R0C0\\t.*R0C${columnCount - 1}$`));
+      expect(lines[1]).toMatch(new RegExp(`^R1C0\\t.*R1C${columnCount - 1}$`));
+    },
+  );
+
+  it("uses configured cell and byte limits without a partial clipboard write", async () => {
+    const fixture = makeWideCopyFixture(2);
+    const writeClipboardText = vi.fn(async () => undefined);
+    const rendered = render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          copyLimits={{ maxCells: 1, maxBytes: 64 * 1024 * 1024 }}
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={fixture.pageFor()}
+          readPage={vi.fn(async (request: ReadPageRequest) =>
+            fixture.pageFor(request.offset, request.columns),
+          )}
+          summary={fixture.fixtureSummary}
+          writeClipboardText={writeClipboardText}
+        />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    expect(screen.getByRole("status")).toHaveTextContent("configured 1-cell");
+    expect(writeClipboardText).not.toHaveBeenCalled();
+
+    rendered.rerender(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          copyLimits={{ maxCells: 10, maxBytes: 5 }}
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={fixture.pageFor()}
+          readPage={vi.fn(async (request: ReadPageRequest) =>
+            fixture.pageFor(request.offset, request.columns),
+          )}
+          summary={fixture.fixtureSummary}
+          writeClipboardText={writeClipboardText}
+        />
+      </div>,
+    );
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("5-byte"));
+    expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mismatched projection response without writing the clipboard", async () => {
+    const fixture = makeWideCopyFixture(65);
+    const writeClipboardText = vi.fn(async () => undefined);
+    const readPage = vi.fn(async (request: ReadPageRequest) => ({
+      ...fixture.pageFor(request.offset, request.columns),
+      columns: ["wrong-column"],
+    }));
+    render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={fixture.pageFor()}
+          readPage={readPage}
+          summary={fixture.fixtureSummary}
+          writeClipboardText={writeClipboardText}
+        />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("did not match the requested range"),
+    );
+    expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("rejects a short projection response when the selected row count is known", async () => {
+    const fixture = makeWideCopyFixture(65);
+    const writeClipboardText = vi.fn(async () => undefined);
+    const readPage = vi.fn(async (request: ReadPageRequest) => {
+      const response = fixture.pageFor(request.offset, request.columns);
+      return { ...response, rows: response.rows.slice(0, 1) };
+    });
+    render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={fixture.pageFor()}
+          readPage={readPage}
+          summary={fixture.fixtureSummary}
+          writeClipboardText={writeClipboardText}
+        />
+      </div>,
+    );
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("did not match the requested range"),
+    );
+    expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("discards a late horizontal projection instead of caching it for the active window", async () => {
@@ -1027,6 +1209,27 @@ describe("VirtualDataGrid", () => {
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copy cancelled"));
     expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("disables cancellation after the atomic clipboard commit starts", async () => {
+    let finishWrite: (() => void) | undefined;
+    const writeClipboardText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const { grid } = renderGrid(undefined, writeClipboardText);
+    fireEvent.click(within(grid).getByText("R0C0"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
+
+    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "Cancel copy" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finishing copy" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Writing clipboard");
+
+    finishWrite?.();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 rows"));
   });
 
   it("discards a pending copy when its grid unmounts", async () => {

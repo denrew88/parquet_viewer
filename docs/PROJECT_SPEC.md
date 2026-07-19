@@ -292,10 +292,21 @@ Excel/TSV 기본은 null과 empty를 빈 cell로 출력하며 구별 손실을 p
 기본은 null `NULL`, empty `""`, 실제 문자열 `NULL`은 quoted `"NULL"`로 구별한다. 설정은 앱
 전역에 atomic 저장되며 이미 시작한 copy는 시작 시점 snapshot을 사용한다.
 
-아직 읽지 않은 페이지는 백엔드에서 제한된 chunk로 가져온다. 큰 선택 범위에는 예상 셀
-수와 크기를 알리고 진행 상태와 취소를 제공한다. 소프트 제한을 넘으면 사용자 확인을 받고,
-하드 제한을 넘으면 무제한 메모리 사용을 시도하지 말고 제한을 설명한다. 구체적인 제한값은
-성능 측정 후 설정하고 테스트로 고정한다.
+아직 읽지 않은 페이지는 백엔드에서 제한된 chunk로 가져온다. 한 조회의 projection은 최대
+64열이지만 복사 가능한 열 수를 64열로 제한하지 않는다. 선택 열을 원래 순서대로 64열 이하
+그룹으로 나누고, 행 batch는 약 64,000 working cell을 목표로 최대 200행씩 조회한 뒤 완전한
+직사각형 TSV를 한 번만 clipboard에 기록한다.
+
+큰 선택 범위에는 예상 셀 수와 크기를 알리고 진행 상태와 취소를 제공한다. 100,000셀 또는
+8 MiB의 고정 soft limit을 넘으면 사용자 확인을 받는다. app-global hard limit 기본값은
+1,000,000셀과 64 MiB이며 Settings에서 셀은 1,000..10,000,000, byte는 1..256 MiB 범위로
+변경할 수 있다. 진행 중 copy는 시작 시점의 설정 snapshot을 사용하고, hard limit 초과나
+분할 조회 오류·취소·stale 응답에서는 clipboard에 부분 결과를 기록하지 않는다. settings
+wire schema V2는 `copyLimits { maxCells, maxBytes }`를 가지며 유효한 V1은 나머지 설정을
+보존한 채 기본 copy limit을 채워 atomic migration한다. copy 취소는 clipboard write를 시작하기
+전까지만 허용하고, 원자적 clipboard commit 중에는 취소 control을 비활성화한다. settings 저장
+중 process가 종료되어 canonical 파일 없이 `settings.previous-*`만 남으면 다음 load에서 backup을
+복구한 뒤 migration을 다시 수행한다.
 
 MVP는 읽기 전용이므로 뷰어에 값을 붙여넣어 원본 데이터를 변경하지 않는다. 여기서
 붙여넣기 지원은 뷰어에서 복사한 TSV를 Excel 등의 다른 애플리케이션에 붙여넣을 수 있다는
@@ -368,6 +379,8 @@ root dataset:   intensity[rows, columns]
 - 64열을 넘는 grid projection은 현재 mounted logical column을 먼저 모두 포함하고 남는 slot을 인접한
   source column으로 채운다. 숨긴 중간 열 때문에 `time`과 마지막 wavelength가 동시에 보이는 경우에도
   두 열이 같은 bounded projection에 포함되어야 한다.
+- 65열 이상의 전체 선택 복사는 source의 64열 page projection 상한을 유지한 채 여러 projection으로
+  나누고 행별 결과를 원래 logical column 순서로 결합한다.
 
 정확한 열 이름, 오류, fixture, packaging과 완료 gate는 `artifacts/phase-10/`의 확정 문서를 따른다.
 

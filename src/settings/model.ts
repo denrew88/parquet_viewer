@@ -12,20 +12,47 @@ import {
 } from "../copy/model";
 import { COPY_PRESETS, DEFAULT_COPY_PRESET } from "../copy/presets";
 
-export const APP_SETTINGS_SCHEMA_VERSION = 1 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 2 as const;
 export const DEFAULT_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const MIN_QUERY_TEMP_LIMIT_BYTES = 64 * 1024 * 1024;
 export const MAX_QUERY_TEMP_LIMIT_BYTES = 1024 * 1024 * 1024 * 1024;
+export const DEFAULT_COPY_MAX_CELLS = 1_000_000;
+export const MIN_COPY_MAX_CELLS = 1_000;
+export const MAX_COPY_MAX_CELLS = 10_000_000;
+export const DEFAULT_COPY_MAX_BYTES = 64 * 1024 * 1024;
+export const MIN_COPY_MAX_BYTES = 1024 * 1024;
+export const MAX_COPY_MAX_BYTES = 256 * 1024 * 1024;
 
 export type CsvDefaultParsingMode = "auto" | "allText" | "askEveryTime";
 
+export interface CopyLimits {
+  readonly maxCells: number;
+  readonly maxBytes: number;
+}
+
+export const DEFAULT_COPY_LIMITS: CopyLimits = Object.freeze({
+  maxCells: DEFAULT_COPY_MAX_CELLS,
+  maxBytes: DEFAULT_COPY_MAX_BYTES,
+});
+
 export interface AppSettingsV1 {
-  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly schemaVersion: 1;
   readonly copyPreset: CopyPreset;
   readonly copyCustomOptions: CopyOptions;
   readonly csvDefaultParsingMode: CsvDefaultParsingMode;
   readonly queryTempLimitBytes: number;
 }
+
+export interface AppSettingsV2 {
+  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly copyPreset: CopyPreset;
+  readonly copyCustomOptions: CopyOptions;
+  readonly csvDefaultParsingMode: CsvDefaultParsingMode;
+  readonly queryTempLimitBytes: number;
+  readonly copyLimits: CopyLimits;
+}
+
+export type AppSettings = AppSettingsV2;
 
 export interface SettingsValidationIssue {
   readonly path: string;
@@ -42,7 +69,7 @@ export class InvalidAppSettingsError extends Error {
 }
 
 export interface RecoveredAppSettings {
-  readonly settings: AppSettingsV1;
+  readonly settings: AppSettings;
   readonly warning: InvalidAppSettingsError | null;
 }
 
@@ -66,7 +93,10 @@ const settingsKeys = [
   "copyCustomOptions",
   "csvDefaultParsingMode",
   "queryTempLimitBytes",
+  "copyLimits",
 ] as const;
+const v1SettingsKeys = settingsKeys.filter((key) => key !== "copyLimits");
+const copyLimitKeys = ["maxCells", "maxBytes"] as const;
 const copyOptionKeys = [
   "preset",
   "delimiter",
@@ -186,30 +216,67 @@ function parseCustomOptions(value: unknown, issues: SettingsValidationIssue[]): 
   return options;
 }
 
-function freezeSettings(settings: AppSettingsV1): AppSettingsV1 {
+function parseCopyLimits(value: unknown, issues: SettingsValidationIssue[]): CopyLimits | null {
+  const item = record(value);
+  if (!item) {
+    issues.push({ path: "settings.copyLimits", message: "Expected an object." });
+    return null;
+  }
+  issues.push(...exactKeys(item, copyLimitKeys, "settings.copyLimits"));
+  if (
+    typeof item.maxCells !== "number" ||
+    !Number.isSafeInteger(item.maxCells) ||
+    item.maxCells < MIN_COPY_MAX_CELLS ||
+    item.maxCells > MAX_COPY_MAX_CELLS
+  ) {
+    issues.push({
+      path: "settings.copyLimits.maxCells",
+      message: `Expected an integer from ${MIN_COPY_MAX_CELLS} to ${MAX_COPY_MAX_CELLS}.`,
+    });
+  }
+  if (
+    typeof item.maxBytes !== "number" ||
+    !Number.isSafeInteger(item.maxBytes) ||
+    item.maxBytes < MIN_COPY_MAX_BYTES ||
+    item.maxBytes > MAX_COPY_MAX_BYTES
+  ) {
+    issues.push({
+      path: "settings.copyLimits.maxBytes",
+      message: `Expected an integer from ${MIN_COPY_MAX_BYTES} to ${MAX_COPY_MAX_BYTES}.`,
+    });
+  }
+  if (issues.some((issue) => issue.path.startsWith("settings.copyLimits"))) return null;
+  return { maxCells: item.maxCells as number, maxBytes: item.maxBytes as number };
+}
+
+function freezeSettings(settings: AppSettings): AppSettings {
   return Object.freeze({
     ...settings,
     copyCustomOptions: snapshotCopyOptions(settings.copyCustomOptions),
+    copyLimits: Object.freeze({ ...settings.copyLimits }),
   });
 }
 
-export function defaultAppSettings(): AppSettingsV1 {
+export function defaultAppSettings(): AppSettings {
   return freezeSettings({
     schemaVersion: APP_SETTINGS_SCHEMA_VERSION,
     copyPreset: DEFAULT_COPY_PRESET,
     copyCustomOptions: COPY_PRESETS.custom,
     csvDefaultParsingMode: "auto",
     queryTempLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+    copyLimits: DEFAULT_COPY_LIMITS,
   });
 }
 
-export function parseAppSettings(value: unknown): AppSettingsV1 {
+export function parseAppSettings(value: unknown): AppSettings {
   const item = record(value);
   if (!item)
     throw new InvalidAppSettingsError([{ path: "settings", message: "Expected an object." }]);
-  const issues = exactKeys(item, settingsKeys, "settings");
+  const isV1 = item.schemaVersion === 1;
+  const issues = exactKeys(item, isV1 ? v1SettingsKeys : settingsKeys, "settings");
   const customOptions = parseCustomOptions(item.copyCustomOptions, issues);
-  if (item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
+  const copyLimits = isV1 ? DEFAULT_COPY_LIMITS : parseCopyLimits(item.copyLimits, issues);
+  if (!isV1 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
     issues.push({ path: "settings.schemaVersion", message: "Unsupported settings version." });
   }
   if (!copyPresets.includes(item.copyPreset as CopyPreset)) {
@@ -229,17 +296,18 @@ export function parseAppSettings(value: unknown): AppSettingsV1 {
       message: `Expected an integer from ${MIN_QUERY_TEMP_LIMIT_BYTES} to ${MAX_QUERY_TEMP_LIMIT_BYTES}.`,
     });
   }
-  if (issues.length > 0 || !customOptions) throw new InvalidAppSettingsError(issues);
+  if (issues.length > 0 || !customOptions || !copyLimits) throw new InvalidAppSettingsError(issues);
   return freezeSettings({
     schemaVersion: APP_SETTINGS_SCHEMA_VERSION,
     copyPreset: item.copyPreset as CopyPreset,
     copyCustomOptions: customOptions,
     csvDefaultParsingMode: item.csvDefaultParsingMode as CsvDefaultParsingMode,
     queryTempLimitBytes: item.queryTempLimitBytes as number,
+    copyLimits,
   });
 }
 
-export function parseAppSettingsJson(json: string): AppSettingsV1 {
+export function parseAppSettingsJson(json: string): AppSettings {
   try {
     return parseAppSettings(JSON.parse(json) as unknown);
   } catch (error) {
@@ -262,7 +330,7 @@ export function recoverAppSettings(value: unknown): RecoveredAppSettings {
   }
 }
 
-export function activeCopyOptions(settings: AppSettingsV1): CopyOptions {
+export function activeCopyOptions(settings: AppSettings): CopyOptions {
   return settings.copyPreset === "custom"
     ? snapshotCopyOptions(settings.copyCustomOptions)
     : snapshotCopyOptions(COPY_PRESETS[settings.copyPreset]);

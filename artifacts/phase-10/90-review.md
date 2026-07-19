@@ -62,3 +62,30 @@ gate와 함께 확인해야 한다.
 
 따라서 구현과 현재 환경에서 실행 가능한 회귀 gate는 PASS지만, Phase 10 전체 완료 상태는 위 필수
 항목 때문에 BLOCKED로 유지한다.
+
+## 2026-07-19 wide copy 회귀 재검증
+
+OES의 65번째 열까지 선택한 전체 복사가 source projection 상한 64열 때문에 거부되던 문제를
+수정했다. copy는 64열 이하 요청으로 분할하고 원래 열 순서로 결합하며, Settings V2의 구성 가능한
+hard limit을 적용한다. V1 설정은 기존 값을 보존해 V2로 atomic migration한다.
+
+- frontend format/lint/typecheck: PASS
+- frontend unit/component: 302/302 PASS
+- Rust format/clippy: PASS
+- Rust 전체: 160 PASS, opt-in 2 ignored, 0 FAIL
+- Playwright: 27/27 PASS, 1440x900·1024x768·800x600
+- browser OES 전체 복사: 480 rows x 65 columns, checksum `7,838,522,640` PASS
+- native debug Tauri: committed 3x5와 실제 OES 128x65 전체 Windows clipboard PASS
+- release/NSIS build: PASS
+- release exe: 75,743,744 bytes
+- NSIS installer: 13,182,099 bytes
+
+설정 대화상자의 세 viewport geometry와 screenshot을 `artifacts/phase-10/ui/settings-*.png`에 남겼고,
+실제 OES 전체 복사 증거는 `native-oes-real-full-copy.png`에 남겼다. 기존 BLOCKED gate 범위는
+변하지 않으므로 Phase 10 전체 판정은 그대로 유지한다.
+
+독립 리뷰의 medium 지적 3건도 반영했다. known row count의 짧은 page는 clipboard write 전에
+거부하고, native clipboard write가 시작된 commit 구간에는 취소 button을 비활성화한다. settings
+교체 도중 process가 종료되어 canonical 파일이 사라진 경우에는 남은 `settings.previous-*`를 다음
+load에서 복구한 뒤 migration을 반복한다. 각각 component와 Rust crash-recovery 회귀 테스트를
+추가했다.

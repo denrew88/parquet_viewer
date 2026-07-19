@@ -17,6 +17,8 @@ const artifact = path.resolve(
 );
 const expectedFinalValue = process.argv[5] ?? "203";
 const expectedFinalWavelength = process.argv[6] ?? "900.0000000001";
+const usesCommittedFixture = process.argv[3] === undefined;
+const expectedColumnCount = Number(process.argv[7] ?? (usesCommittedFixture ? 5 : 65));
 const localAppData = path.join(path.dirname(artifact), "native-localappdata");
 
 await mkdir(path.dirname(artifact), { recursive: true });
@@ -69,7 +71,8 @@ try {
   await grid.waitFor({ timeout: 30_000 });
   const columnCount = Number(await grid.getAttribute("aria-colcount"));
   const rowCount = Number(await grid.getAttribute("aria-rowcount"));
-  assert.ok(Number.isSafeInteger(columnCount) && columnCount > 1);
+  assert.ok(Number.isSafeInteger(expectedColumnCount) && expectedColumnCount > 1);
+  assert.equal(columnCount, expectedColumnCount);
   assert.ok(Number.isSafeInteger(rowCount) && rowCount > 0);
   assert.equal(await page.getByRole("searchbox", { name: "Search data" }).count(), 0);
 
@@ -91,6 +94,33 @@ try {
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
   assert.equal(clipboard, expectedFinalValue);
 
+  await grid.press("Control+A");
+  assert.equal(await grid.getAttribute("data-selection-left"), "0");
+  assert.equal(await grid.getAttribute("data-selection-right"), String(columnCount - 1));
+  assert.equal(await grid.getAttribute("data-selection-top"), "0");
+  assert.equal(await grid.getAttribute("data-selection-bottom"), String(rowCount - 1));
+  await page.getByRole("button", { name: "Copy selection" }).click();
+  await page
+    .locator(".copy-status")
+    .filter({ hasText: `Copied ${rowCount} rows.` })
+    .waitFor();
+
+  const fullClipboard = await page.evaluate(() => navigator.clipboard.readText());
+  const copiedRows = fullClipboard.split(/\r?\n/).map((row) => row.split("\t"));
+  assert.equal(copiedRows.length, rowCount);
+  for (const [rowIndex, row] of copiedRows.entries()) {
+    assert.equal(row.length, columnCount, `clipboard row ${rowIndex} column count`);
+  }
+  const lastRow = copiedRows.at(-1);
+  assert.ok(lastRow);
+  assert.equal(lastRow.at(-1), expectedFinalValue);
+  if (columnCount === 65) {
+    assert.equal(lastRow.slice(0, 64).length, 64);
+    assert.equal(lastRow.slice(64).length, 1);
+    assert.notEqual(lastRow[63], undefined);
+    assert.equal(lastRow[64], expectedFinalValue);
+  }
+
   await page.screenshot({ path: artifact, fullPage: true });
   process.stdout.write(
     `${JSON.stringify(
@@ -98,8 +128,11 @@ try {
         title: await page.title(),
         fixture,
         format: "OES HDF5",
+        rowCount,
+        columnCount,
         finalWavelength: expectedFinalWavelength,
-        finalValue: clipboard,
+        finalValue: lastRow.at(-1),
+        projectionBoundary: columnCount === 65 ? "64+1 verified" : "not applicable",
         artifact,
       },
       null,

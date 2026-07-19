@@ -88,6 +88,36 @@ test("opens a projected OES matrix and reaches the final wavelength without quer
   await expect(grid).toHaveAttribute("data-selection-top", "0");
   await expect(grid).toHaveAttribute("data-selection-bottom", "479");
 
+  await grid.press("Control+A");
+  await expect(grid).toHaveAttribute("data-selection-left", "0");
+  await expect(grid).toHaveAttribute("data-selection-right", "64");
+  await expect(grid).toHaveAttribute("data-selection-top", "0");
+  await expect(grid).toHaveAttribute("data-selection-bottom", "479");
+  await page.getByRole("button", { name: "Copy selection" }).click();
+  await expect(page.locator(".copy-status")).toHaveText("Copied 480 rows.");
+
+  const copiedRows = (await page.evaluate(() => navigator.clipboard.readText()))
+    .split(/\r?\n/)
+    .map((row) => row.split("\t"));
+  expect(copiedRows).toHaveLength(480);
+  expect(copiedRows.every((row) => row.length === 65)).toBe(true);
+  expect(copiedRows[0]).toEqual([
+    "1000000",
+    ...Array.from({ length: 64 }, (_, index) => String(index)),
+  ]);
+  expect(copiedRows[239]?.[0]).toBe("1000239");
+  expect(copiedRows[239]?.[63]).toBe("239062");
+  expect(copiedRows[239]?.[64]).toBe("239063");
+  expect(copiedRows[479]?.[0]).toBe("1000479");
+  expect(copiedRows[479]?.[63]).toBe("479062");
+  expect(copiedRows[479]?.[64]).toBe("479063");
+  expect(
+    copiedRows.reduce(
+      (checksum, row) => checksum + row.reduce((sum, value) => sum + Number(value), 0),
+      0,
+    ),
+  ).toBe(7_838_522_640);
+
   await expectInsideViewport(page.locator(".virtual-grid-shell"));
   await expectNoHorizontalPageOverflow(page);
 });

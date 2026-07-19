@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { defaultAppSettings, parseAppSettings, type AppSettingsV1 } from "./settings/model";
+import { defaultAppSettings, parseAppSettings, type AppSettings } from "./settings/model";
 import type { QueryPlan } from "./query/model";
 
 export interface HealthCheckResponse {
@@ -480,8 +480,8 @@ export type OpenRequestErrorHandler = (error: DataViewerError) => void;
 export interface BackendAdapter {
   healthCheck(): Promise<HealthCheckResponse>;
   listSupportedFormats(): Promise<FormatDescriptor[]>;
-  getSettings(): Promise<AppSettingsV1>;
-  updateSettings(settings: AppSettingsV1): Promise<AppSettingsV1>;
+  getSettings(): Promise<AppSettings>;
+  updateSettings(settings: AppSettings): Promise<AppSettings>;
   selectDataFile(): Promise<FileSummary | null>;
   selectDataFilePath(requestId: string): Promise<OpenDataResponse | LegacyOpenedDataFile | null>;
   openDataFile(request: OpenDataRequest): Promise<OpenDataResponse | LegacyOpenedDataFile>;

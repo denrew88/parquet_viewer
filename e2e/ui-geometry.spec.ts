@@ -8,6 +8,12 @@ import {
 
 test("keeps primary UI, dialogs, and query popovers unclipped", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
+  const artifactName = {
+    "desktop-compact": "compact",
+    "desktop-minimum": "minimum",
+    "desktop-wide": "wide",
+  }[testInfo.project.name];
+  if (!artifactName) throw new Error(`Unexpected Playwright project: ${testInfo.project.name}`);
   await page.goto("/");
   await expectNoHorizontalPageOverflow(page);
   await expectInsideViewport(page.locator(".app-toolbar"));
@@ -35,6 +41,9 @@ test("keeps primary UI, dialogs, and query popovers unclipped", async ({ page },
   const settingsDialog = page.getByRole("dialog", { name: "Application settings" });
   await expectInsideViewport(settingsDialog);
   await expectVisibleControlsInside(settingsDialog);
+  await settingsDialog.screenshot({
+    path: `artifacts/phase-10/ui/settings-${artifactName}.png`,
+  });
   await settingsDialog.press("Escape");
 
   await page.getByRole("button", { name: "Close quoted-multiline.csv" }).click();
@@ -49,12 +58,6 @@ test("keeps primary UI, dialogs, and query popovers unclipped", async ({ page },
     body: await page.screenshot({ fullPage: true }),
     contentType: "image/png",
   });
-  const artifactName = {
-    "desktop-compact": "compact",
-    "desktop-minimum": "minimum",
-    "desktop-wide": "wide",
-  }[testInfo.project.name];
-  if (!artifactName) throw new Error(`Unexpected Playwright project: ${testInfo.project.name}`);
   await page.screenshot({
     fullPage: true,
     path: `artifacts/phase-9/ui/browser-${artifactName}.png`,

@@ -83,12 +83,8 @@ import {
   type QuerySearchColumn,
   type QueryToolbarStatus,
 } from "./query/QueryToolbar";
-import {
-  COPY_CHUNK_ROWS,
-  COPY_HARD_CELL_LIMIT,
-  COPY_SOFT_BYTE_LIMIT,
-  COPY_SOFT_CELL_LIMIT,
-} from "./tsv";
+import { COPY_CHUNK_ROWS, COPY_SOFT_BYTE_LIMIT, COPY_SOFT_CELL_LIMIT } from "./tsv";
+import { DEFAULT_COPY_LIMITS, type CopyLimits } from "./settings/model";
 
 export const GRID_ROW_HEIGHT = 34;
 export const GRID_HEADER_HEIGHT = 36;
@@ -101,10 +97,13 @@ export const GRID_COLUMN_OVERSCAN = 3;
 export const GRID_PREFETCH_DISTANCE = 40;
 const MAX_PAGE_WINDOW = 3;
 const MAX_CONCURRENT_REQUESTS = 2;
+const COPY_PROJECTION_COLUMN_LIMIT = 64;
+const COPY_TARGET_CHUNK_CELLS = 64_000;
 
 export interface VirtualDataGridProps {
   active?: boolean;
   copyOptions?: CopyOptions;
+  copyLimits?: CopyLimits;
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
@@ -143,7 +142,7 @@ function projectedPageKey(offset: number, columns: readonly string[]): string {
 interface CopyProgress {
   copiedRows: number;
   totalRows: number;
-  state: "copying" | "cancelling";
+  state: "copying" | "cancelling" | "committing";
 }
 
 async function defaultWriteClipboardText(text: string): Promise<void> {
@@ -206,6 +205,7 @@ function pageStatus(page: DataPage): string {
 
 export function VirtualDataGrid({
   active = true,
+  copyLimits = DEFAULT_COPY_LIMITS,
   copyOptions = COPY_PRESETS.excel,
   copyPresetError = null,
   copyPresetSaving = false,
@@ -899,14 +899,13 @@ export function VirtualDataGrid({
     const totalRows = bottom - top + 1;
     const selectedColumns = logicalColumnNames.slice(left, right + 1);
     const cellCount = totalRows * selectedColumns.length;
+    const activeCopyLimits = { ...copyLimits };
     setCopyMessage(null);
 
-    if (cellCount > COPY_HARD_CELL_LIMIT) {
-      setCopyMessage("Selection exceeds the 1,000,000-cell clipboard limit.");
-      return;
-    }
-    if (selectedColumns.length > 64) {
-      setCopyMessage("Copy at most 64 columns at a time.");
+    if (!Number.isSafeInteger(cellCount) || cellCount > activeCopyLimits.maxCells) {
+      setCopyMessage(
+        `Selection exceeds the configured ${activeCopyLimits.maxCells.toLocaleString()}-cell clipboard limit.`,
+      );
       return;
     }
     if (
@@ -922,19 +921,33 @@ export function VirtualDataGrid({
       ...options,
       includeHeaders: includeColumnHeaders ?? options.includeHeaders,
     };
-    const writer = new CopyAccumulator(activeCopyOptions);
+    const writer = new CopyAccumulator(activeCopyOptions, activeCopyLimits.maxBytes);
+    const copyChunkRows = Math.max(
+      1,
+      Math.min(COPY_CHUNK_ROWS, Math.floor(COPY_TARGET_CHUNK_CELLS / selectedColumns.length)),
+    );
+    const columnGroups: string[][] = [];
+    for (
+      let columnOffset = 0;
+      columnOffset < selectedColumns.length;
+      columnOffset += COPY_PROJECTION_COLUMN_LIMIT
+    ) {
+      columnGroups.push(
+        selectedColumns.slice(columnOffset, columnOffset + COPY_PROJECTION_COLUMN_LIMIT),
+      );
+    }
     let copiedRows = 0;
     let softBytesConfirmed = cellCount > COPY_SOFT_CELL_LIMIT;
     setCopyProgress({ copiedRows, totalRows, state: "copying" });
     try {
-      for (let offset = top; offset <= bottom; offset += COPY_CHUNK_ROWS) {
+      for (let offset = top; offset <= bottom; offset += copyChunkRows) {
         if (
           !mounted.current ||
           copyId !== copyGeneration.current ||
           copyResultKey !== latestResultKey.current
         )
           return;
-        const limit = Math.min(COPY_CHUNK_ROWS, bottom - offset + 1);
+        const limit = Math.min(copyChunkRows, bottom - offset + 1);
         const cachedRows: DataValue[][] = [];
         let cached = true;
         for (let row = offset; row < offset + limit; row += 1) {
@@ -950,16 +963,40 @@ export function VirtualDataGrid({
           if (!cached) break;
           cachedRows.push(values);
         }
-        const rows = cached
-          ? cachedRows
-          : (
-              await readPage({
-                sessionId,
-                offset,
-                limit,
-                columns: selectedColumns,
-              })
-            ).rows;
+        let rows = cached ? cachedRows : null;
+        if (!rows) {
+          let combinedRows: DataValue[][] | null = null;
+          for (const columns of columnGroups) {
+            const response = await readPage({ sessionId, offset, limit, columns });
+            if (
+              !mounted.current ||
+              copyId !== copyGeneration.current ||
+              copyResultKey !== latestResultKey.current
+            )
+              return;
+            if (
+              response.sessionId !== sessionId ||
+              response.offset !== offset ||
+              !sameProjectedColumns(response.columns, columns) ||
+              response.rows.length > limit ||
+              response.rows.some((row) => row.length !== columns.length)
+            ) {
+              throw new Error("The copy page response did not match the requested range.");
+            }
+            if (combinedRows === null) {
+              combinedRows = response.rows.map((row) => [...row]);
+            } else {
+              if (combinedRows.length !== response.rows.length) {
+                throw new Error("The copy page projections returned different row counts.");
+              }
+              response.rows.forEach((row, rowIndex) => combinedRows![rowIndex].push(...row));
+            }
+          }
+          rows = combinedRows ?? [];
+        }
+        if (knownCount !== null && rows.length !== limit) {
+          throw new Error("The copy page response did not match the requested range.");
+        }
         if (
           !mounted.current ||
           copyId !== copyGeneration.current ||
@@ -991,6 +1028,7 @@ export function VirtualDataGrid({
         copyResultKey !== latestResultKey.current
       )
         return;
+      setCopyProgress({ copiedRows, totalRows, state: "committing" });
       await writeClipboardText(writer.finish());
       if (
         mounted.current &&
@@ -1409,15 +1447,47 @@ export function VirtualDataGrid({
         </span>
         <div className="copy-controls">
           <button
-            aria-label={copyProgress ? "Cancel copy" : "Copy selection"}
+            aria-label={
+              !copyProgress
+                ? "Copy selection"
+                : copyProgress.state === "copying"
+                  ? "Cancel copy"
+                  : "Finishing copy"
+            }
             className="copy-selection-button"
-            disabled={rowCount === 0}
-            onClick={copyProgress ? cancelCopy : () => void copySelection()}
-            title={copyProgress ? "Cancel copy" : `Copy selection as ${copyOptions.preset}`}
+            disabled={rowCount === 0 || Boolean(copyProgress && copyProgress.state !== "copying")}
+            onClick={
+              !copyProgress
+                ? () => void copySelection()
+                : copyProgress.state === "copying"
+                  ? cancelCopy
+                  : undefined
+            }
+            title={
+              !copyProgress
+                ? `Copy selection as ${copyOptions.preset}`
+                : copyProgress.state === "copying"
+                  ? "Cancel copy"
+                  : "Finishing clipboard write"
+            }
             type="button"
           >
-            {copyProgress ? <X aria-hidden="true" /> : <ClipboardCopy aria-hidden="true" />}
-            <span>{copyProgress ? "Cancel" : `Copy (${copyOptions.preset.toUpperCase()})`}</span>
+            {copyProgress ? (
+              copyProgress.state === "copying" ? (
+                <X aria-hidden="true" />
+              ) : (
+                <LoaderCircle aria-hidden="true" />
+              )
+            ) : (
+              <ClipboardCopy aria-hidden="true" />
+            )}
+            <span>
+              {!copyProgress
+                ? `Copy (${copyOptions.preset.toUpperCase()})`
+                : copyProgress.state === "copying"
+                  ? "Cancel"
+                  : "Finishing"}
+            </span>
           </button>
           <div className="copy-split-menu" ref={copyMenuRef}>
             <button
@@ -1493,7 +1563,7 @@ export function VirtualDataGrid({
         {(copyProgress || copyMessage) && (
           <span className="copy-status" role="status" aria-live="polite">
             {copyProgress
-              ? `${copyProgress.state === "cancelling" ? "Cancelling" : "Copying"} ${copyProgress.copiedRows.toLocaleString()} / ${copyProgress.totalRows.toLocaleString()} rows`
+              ? `${copyProgress.state === "cancelling" ? "Cancelling" : copyProgress.state === "committing" ? "Writing clipboard" : "Copying"} ${copyProgress.copiedRows.toLocaleString()} / ${copyProgress.totalRows.toLocaleString()} rows`
               : copyMessage}
           </span>
         )}

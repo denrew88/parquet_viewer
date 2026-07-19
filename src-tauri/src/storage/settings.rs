@@ -1,11 +1,48 @@
 use std::{
     fs::{self, File, OpenOptions},
+    io::ErrorKind,
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
+    time::UNIX_EPOCH,
 };
 
-use crate::domain::{AppSettingsV1, DataError, DataErrorCode};
+use serde::Deserialize;
+
+use crate::domain::{
+    AppSettingsV1, CopyLimits, CopyOptions, CopyPreset, CsvDefaultParsingMode, DataError,
+    DataErrorCode, APP_SETTINGS_SCHEMA_VERSION,
+};
+
+const LEGACY_SETTINGS_SCHEMA_VERSION: u8 = 1;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAppSettingsV1 {
+    schema_version: u8,
+    copy_preset: CopyPreset,
+    copy_custom_options: CopyOptions,
+    csv_default_parsing_mode: CsvDefaultParsingMode,
+    query_temp_limit_bytes: u64,
+}
+
+impl LegacyAppSettingsV1 {
+    fn migrate(self) -> Result<AppSettingsV1, String> {
+        if self.schema_version != LEGACY_SETTINGS_SCHEMA_VERSION {
+            return Err(String::from("settings.schemaVersion is unsupported."));
+        }
+        let settings = AppSettingsV1 {
+            schema_version: APP_SETTINGS_SCHEMA_VERSION,
+            copy_preset: self.copy_preset,
+            copy_custom_options: self.copy_custom_options,
+            csv_default_parsing_mode: self.csv_default_parsing_mode,
+            query_temp_limit_bytes: self.query_temp_limit_bytes,
+            copy_limits: CopyLimits::default(),
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
@@ -21,33 +58,34 @@ impl SettingsStore {
 
     pub fn load(&self) -> Result<AppSettingsV1, DataError> {
         let path = self.path();
-        if !path.exists() {
+        if !path.exists() && !self.restore_interrupted_save(&path)? {
             return Ok(AppSettingsV1::default());
         }
-        let result = fs::read(&path)
-            .map_err(|error| io_error(&path, error))
-            .and_then(|bytes| {
-                serde_json::from_slice::<AppSettingsV1>(&bytes).map_err(|error| {
-                    DataError::invalid_request(format!("Invalid settings.json: {error}"))
-                })
-            })
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => return self.recover_invalid(&path, io_error(&path, error)),
+        };
+
+        let current_result = serde_json::from_slice::<AppSettingsV1>(&bytes)
+            .map_err(|error| DataError::invalid_request(format!("Invalid settings.json: {error}")))
             .and_then(|settings| {
                 settings
                     .validate()
                     .map_err(DataError::invalid_request)
                     .map(|()| settings)
             });
-        match result {
-            Ok(settings) => Ok(settings),
-            Err(error) => {
-                self.preserve_corrupt(&path)?;
-                let settings = AppSettingsV1::default();
-                self.save(&settings)?;
-                Err(DataError::settings_invalid(format!(
-                    "The invalid settings file was preserved and defaults were restored: {error}"
-                )))
-            }
+        if let Ok(settings) = current_result {
+            return Ok(settings);
         }
+
+        let legacy_result = serde_json::from_slice::<LegacyAppSettingsV1>(&bytes)
+            .map_err(|error| format!("Invalid legacy settings.json: {error}"))
+            .and_then(LegacyAppSettingsV1::migrate);
+        if let Ok(settings) = legacy_result {
+            return self.save(&settings);
+        }
+
+        self.recover_invalid(&path, current_result.unwrap_err())
     }
 
     pub fn save(&self, settings: &AppSettingsV1) -> Result<AppSettingsV1, DataError> {
@@ -72,9 +110,11 @@ impl SettingsStore {
         if path.exists() {
             let backup = self.unique_path("settings.previous", "json");
             fs::rename(&path, &backup).map_err(|error| io_error(&path, error))?;
+            sync_directory(&self.directory);
             if let Err(error) = fs::rename(&temporary, &path) {
                 let _ = fs::rename(&backup, &path);
                 let _ = fs::remove_file(&temporary);
+                sync_directory(&self.directory);
                 return Err(io_error(&path, error));
             }
             let _ = fs::remove_file(backup);
@@ -85,6 +125,40 @@ impl SettingsStore {
         Ok(settings.clone())
     }
 
+    fn restore_interrupted_save(&self, path: &Path) -> Result<bool, DataError> {
+        let entries = match fs::read_dir(&self.directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(io_error(&self.directory, error)),
+        };
+        let mut backups = Vec::new();
+        let mut stale_temporaries = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| io_error(&self.directory, error))?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let entry_path = entry.path();
+            if name.starts_with("settings.previous-") && name.ends_with(".json") {
+                let modified = entry
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(UNIX_EPOCH);
+                backups.push((modified, entry_path));
+            } else if name.starts_with("settings.tmp-") && name.ends_with(".json") {
+                stale_temporaries.push(entry_path);
+            }
+        }
+        let Some((_, backup)) = backups.into_iter().max_by_key(|(modified, _)| *modified) else {
+            return Ok(false);
+        };
+        fs::rename(&backup, path).map_err(|error| io_error(&backup, error))?;
+        for temporary in stale_temporaries {
+            let _ = fs::remove_file(temporary);
+        }
+        sync_directory(&self.directory);
+        Ok(true)
+    }
+
     fn path(&self) -> PathBuf {
         self.directory.join("settings.json")
     }
@@ -93,6 +167,19 @@ impl SettingsStore {
         fs::create_dir_all(&self.directory).map_err(|error| io_error(&self.directory, error))?;
         let destination = self.unique_path("settings.corrupt", "json");
         fs::rename(path, &destination).map_err(|error| io_error(path, error))
+    }
+
+    fn recover_invalid(
+        &self,
+        path: &Path,
+        error: impl std::fmt::Display,
+    ) -> Result<AppSettingsV1, DataError> {
+        self.preserve_corrupt(path)?;
+        let settings = AppSettingsV1::default();
+        self.save(&settings)?;
+        Err(DataError::settings_invalid(format!(
+            "The invalid settings file was preserved and defaults were restored: {error}"
+        )))
     }
 
     fn unique_path(&self, stem: &str, extension: &str) -> PathBuf {
@@ -122,6 +209,7 @@ mod tests {
     use crate::domain::{
         BooleanRepresentation, CopyEscapeMode, CopyLineEnding, CopyPreset, CopyQuoteMode,
         CsvDefaultParsingMode, DateTimeRepresentation, EmptyStringRepresentation,
+        DEFAULT_COPY_MAX_BYTES, DEFAULT_COPY_MAX_CELLS,
     };
 
     #[test]
@@ -181,6 +269,115 @@ mod tests {
     fn corrupt_settings_are_preserved_before_default_recovery() {
         let directory = tempfile::tempdir().unwrap();
         fs::write(directory.path().join("settings.json"), "{broken").unwrap();
+        let store = SettingsStore::new(directory.path());
+        let error = store.load().unwrap_err();
+        assert_eq!(error.code, crate::domain::DataErrorCode::SettingsInvalid);
+        assert_eq!(store.load().unwrap(), AppSettingsV1::default());
+        let names = fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(names
+            .iter()
+            .any(|name| name.starts_with("settings.corrupt-")));
+        assert!(names.iter().any(|name| name == "settings.json"));
+    }
+
+    #[test]
+    fn valid_v1_settings_are_migrated_atomically_and_preserve_existing_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let defaults = AppSettingsV1::default();
+        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(1);
+        legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy["copyPreset"] = serde_json::json!("custom");
+        legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
+        legacy["copyCustomOptions"]["includeHeaders"] = serde_json::json!(true);
+        legacy["copyCustomOptions"]["quoteMode"] = serde_json::json!("always");
+        legacy["csvDefaultParsingMode"] = serde_json::json!("allText");
+        legacy["queryTempLimitBytes"] = serde_json::json!(512 * 1024 * 1024_u64);
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let store = SettingsStore::new(directory.path());
+        let migrated = store.load().unwrap();
+        assert_eq!(migrated.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.copy_preset, CopyPreset::Custom);
+        assert_eq!(migrated.copy_custom_options.delimiter, ";");
+        assert!(migrated.copy_custom_options.include_headers);
+        assert_eq!(
+            migrated.copy_custom_options.quote_mode,
+            CopyQuoteMode::Always
+        );
+        assert_eq!(
+            migrated.csv_default_parsing_mode,
+            CsvDefaultParsingMode::AllText
+        );
+        assert_eq!(migrated.query_temp_limit_bytes, 512 * 1024 * 1024);
+        assert_eq!(migrated.copy_limits.max_cells, DEFAULT_COPY_MAX_CELLS);
+        assert_eq!(migrated.copy_limits.max_bytes, DEFAULT_COPY_MAX_BYTES);
+        assert_eq!(store.load().unwrap(), migrated);
+
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.path().join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(persisted["schemaVersion"], APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(persisted["copyLimits"]["maxCells"], DEFAULT_COPY_MAX_CELLS);
+        assert_eq!(persisted["copyLimits"]["maxBytes"], DEFAULT_COPY_MAX_BYTES);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn interrupted_v1_replacement_restores_backup_then_repeats_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let defaults = AppSettingsV1::default();
+        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(1);
+        legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy["copyPreset"] = serde_json::json!("custom");
+        legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
+        fs::write(
+            directory.path().join("settings.previous-crashed-1.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("settings.tmp-crashed-2.json"),
+            b"incomplete replacement",
+        )
+        .unwrap();
+
+        let store = SettingsStore::new(directory.path());
+        let restored = store.load().unwrap();
+        assert_eq!(restored.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(restored.copy_preset, CopyPreset::Custom);
+        assert_eq!(restored.copy_custom_options.delimiter, ";");
+        assert_eq!(restored.copy_limits, CopyLimits::default());
+        assert_eq!(store.load().unwrap(), restored);
+
+        let names = fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec![String::from("settings.json")]);
+    }
+
+    #[test]
+    fn invalid_v1_settings_follow_corrupt_preservation_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(1);
+        legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy["queryTempLimitBytes"] = serde_json::json!(1);
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
         let store = SettingsStore::new(directory.path());
         let error = store.load().unwrap_err();
         assert_eq!(error.code, crate::domain::DataErrorCode::SettingsInvalid);

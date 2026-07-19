@@ -4,13 +4,18 @@ import { COPY_PRESETS } from "../copy/presets";
 import type { QueryTempUsage } from "../backend";
 import {
   MAX_QUERY_TEMP_LIMIT_BYTES,
+  MAX_COPY_MAX_BYTES,
+  MAX_COPY_MAX_CELLS,
   MIN_QUERY_TEMP_LIMIT_BYTES,
+  MIN_COPY_MAX_BYTES,
+  MIN_COPY_MAX_CELLS,
   parseAppSettings,
-  type AppSettingsV1,
+  type AppSettings,
   type CsvDefaultParsingMode,
 } from "./model";
 
 const GIB = 1024 * 1024 * 1024;
+const MIB = 1024 * 1024;
 const focusableSelector = [
   "button:not([disabled])",
   "input:not([disabled])",
@@ -49,7 +54,7 @@ function delimiterLabel(delimiter: string): string {
   return delimiter;
 }
 
-function presetLabel(preset: AppSettingsV1["copyPreset"]): string {
+function presetLabel(preset: AppSettings["copyPreset"]): string {
   if (preset === "tsv") return "TSV";
   if (preset === "csv") return "CSV";
   return preset[0].toLocaleUpperCase() + preset.slice(1);
@@ -63,7 +68,7 @@ function formatStorage(bytes: number): string {
 }
 
 export interface AppSettingsDialogProps {
-  initialSettings: AppSettingsV1;
+  initialSettings: AppSettings;
   isObscured?: boolean;
   isSaving?: boolean;
   saveError?: string | null;
@@ -71,7 +76,7 @@ export interface AppSettingsDialogProps {
   tempUsageError?: string | null;
   tempClearMessage?: string | null;
   tempUsageLoading?: boolean;
-  onApply(settings: AppSettingsV1): void;
+  onApply(settings: AppSettings): void;
   onCancel(): void;
   onOpenCopySettings(): void;
   onClearTemp?(): void;
@@ -96,7 +101,11 @@ export function AppSettingsDialog({
   const [queryLimitGiB, setQueryLimitGiB] = useState(
     String(initialSettings.queryTempLimitBytes / GIB),
   );
+  const [copyMaxCells, setCopyMaxCells] = useState(String(initialSettings.copyLimits.maxCells));
+  const [copyMaxMiB, setCopyMaxMiB] = useState(String(initialSettings.copyLimits.maxBytes / MIB));
   const queryLimitBytes = Number(queryLimitGiB) * GIB;
+  const copyMaxCellsValue = Number(copyMaxCells);
+  const copyMaxBytesValue = Number(copyMaxMiB) * MIB;
   const queryLimitError = useMemo(() => {
     if (
       queryLimitGiB.trim() === "" ||
@@ -108,6 +117,28 @@ export function AppSettingsDialog({
     }
     return null;
   }, [queryLimitBytes, queryLimitGiB]);
+  const copyMaxCellsError = useMemo(() => {
+    if (
+      copyMaxCells.trim() === "" ||
+      !Number.isSafeInteger(copyMaxCellsValue) ||
+      copyMaxCellsValue < MIN_COPY_MAX_CELLS ||
+      copyMaxCellsValue > MAX_COPY_MAX_CELLS
+    ) {
+      return "Enter an integer from 1,000 to 10,000,000 cells.";
+    }
+    return null;
+  }, [copyMaxCells, copyMaxCellsValue]);
+  const copyMaxBytesError = useMemo(() => {
+    if (
+      copyMaxMiB.trim() === "" ||
+      !Number.isSafeInteger(copyMaxBytesValue) ||
+      copyMaxBytesValue < MIN_COPY_MAX_BYTES ||
+      copyMaxBytesValue > MAX_COPY_MAX_BYTES
+    ) {
+      return "Enter an integer from 1 to 256 MiB.";
+    }
+    return null;
+  }, [copyMaxBytesValue, copyMaxMiB]);
 
   const selectedMode = csvModes.find((mode) => mode.value === csvMode)!;
   const copyOptions =
@@ -220,6 +251,54 @@ export function AppSettingsDialog({
                 Copy settings
               </button>
             </div>
+            <label className="settings-number-field">
+              Maximum cells
+              <span>
+                <input
+                  aria-describedby="copy-max-cells-help"
+                  aria-invalid={copyMaxCellsError !== null}
+                  aria-label="Maximum cells"
+                  max={MAX_COPY_MAX_CELLS}
+                  min={MIN_COPY_MAX_CELLS}
+                  onChange={(event) => setCopyMaxCells(event.target.value)}
+                  step="1"
+                  type="number"
+                  value={copyMaxCells}
+                />
+                cells
+              </span>
+            </label>
+            <p
+              className={copyMaxCellsError ? "settings-field-error" : "settings-field-description"}
+              id="copy-max-cells-help"
+              role={copyMaxCellsError ? "alert" : undefined}
+            >
+              {copyMaxCellsError ?? "Allowed range: 1,000 to 10,000,000 cells."}
+            </p>
+            <label className="settings-number-field">
+              Maximum clipboard size
+              <span>
+                <input
+                  aria-describedby="copy-max-bytes-help"
+                  aria-invalid={copyMaxBytesError !== null}
+                  aria-label="Maximum clipboard size"
+                  max={MAX_COPY_MAX_BYTES / MIB}
+                  min={MIN_COPY_MAX_BYTES / MIB}
+                  onChange={(event) => setCopyMaxMiB(event.target.value)}
+                  step="1"
+                  type="number"
+                  value={copyMaxMiB}
+                />
+                MiB
+              </span>
+            </label>
+            <p
+              className={copyMaxBytesError ? "settings-field-error" : "settings-field-description"}
+              id="copy-max-bytes-help"
+              role={copyMaxBytesError ? "alert" : undefined}
+            >
+              {copyMaxBytesError ?? "Allowed range: 1 to 256 MiB."}
+            </p>
           </section>
 
           <section aria-labelledby="storage-heading" className="settings-section">
@@ -293,13 +372,22 @@ export function AppSettingsDialog({
             Cancel
           </button>
           <button
-            disabled={isSaving || queryLimitError !== null}
+            disabled={
+              isSaving ||
+              queryLimitError !== null ||
+              copyMaxCellsError !== null ||
+              copyMaxBytesError !== null
+            }
             onClick={() =>
               onApply(
                 parseAppSettings({
                   ...initialSettings,
                   csvDefaultParsingMode: csvMode,
                   queryTempLimitBytes: queryLimitBytes,
+                  copyLimits: {
+                    maxCells: copyMaxCellsValue,
+                    maxBytes: copyMaxBytesValue,
+                  },
                 }),
               )
             }

@@ -15,6 +15,18 @@
 - Browser PASS는 native dialog, OS drop, system clipboard, static dependency와 installer를 대신하지 않는다.
 - `.h5/.hdf5` Explorer association은 확정 제외 범위이므로 N/A다.
 
+## 2026-07-19 wide copy와 설정 한도 회귀 계획
+
+| ID | 계층 | 시나리오와 기대 결과 |
+| --- | --- | --- |
+| OES-CPY-001 | TS component | 65열과 129열 선택은 각각 64+1, 64+64+1 projection으로 읽고 원래 행·열 순서의 TSV를 만든다. |
+| OES-CPY-002 | Browser E2E | 480x65 OES 전체 선택 복사의 행·열 수, 모서리 값과 checksum이 일치한다. |
+| OES-CPY-003 | Native | 실제 OES HDF5 전체 선택이 요청당 64열을 넘지 않고 시스템 clipboard에 완전한 TSV를 기록한다. |
+| OES-CPY-004 | Lifecycle | 열 batch 오류, 취소, 문서·session·query 교체 시 부분 clipboard write와 stale 적용이 0건이다. |
+| OES-SET-001 | TS/Rust parity | V2 copyLimits 기본값은 1,000,000셀/64 MiB이고 cell 1,000..10,000,000, byte 1..256 MiB 경계를 양쪽이 동일하게 검증한다. |
+| OES-SET-002 | Migration | 유효한 V1 설정은 기존 copy/CSV/temp 값을 보존하고 copyLimits 기본값만 채워 V2로 atomic 저장한다. |
+| OES-SET-003 | UI | 변경한 hard limit은 다음 copy부터 적용되고 진행 중 copy는 시작 시점 snapshot을 유지한다. soft 확인은 100,000셀/8 MiB로 고정한다. |
+
 ## 2. Fixture와 생성 규칙
 
 작은 golden fixture는 `fixtures/phase-10/`에 저장하고 SHA-256을 manifest에 고정한다. Python 생성기는

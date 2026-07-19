@@ -36,3 +36,16 @@ axis 크기로 줄인다.
 - native Tauri: committed vlen fixture와 실제 기준 OES 마지막 셀/clipboard PASS
 
 최종 Rust 재검증과 release/NSIS 결과는 `90-review.md`에 기록했다.
+
+## 2026-07-19 wide copy와 설정 V2 통합
+
+- grid copy는 선택 열을 최대 64열 projection으로 나누고 같은 행 batch의 응답을 logical column
+  순서로 결합한다. 행 batch는 약 64,000 working cell, 최대 200행으로 제한한다.
+- clipboard hard limit을 Settings의 `copyLimits`로 옮겼다. 기본값은 1,000,000셀/64 MiB이고
+  허용 범위는 1,000..10,000,000셀/1..256 MiB다.
+- settings wire schema를 V2로 올리고 유효한 V1의 copy preset/custom options, CSV mode와 query temp
+  limit을 보존해 atomic 저장한다.
+- 65열·129열 component test, 480x65 browser 전체 복사, 실제 128x65 OES Windows clipboard 전체
+  복사가 PASS했다. 오류·취소·stale 응답에서는 clipboard write가 발생하지 않는다.
+- 독립 리뷰 후 known row count의 짧은 page를 오류로 처리하고, clipboard commit이 시작되면 취소
+  control을 비활성화했다. settings 교체 도중 종료되어 backup만 남은 경우 다음 load에서 복구한다.

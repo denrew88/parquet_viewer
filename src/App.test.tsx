@@ -16,7 +16,7 @@ import {
 } from "./backend";
 import { type DragDropAdapter, type FileDragDropEvent, type FileDragDropHandler } from "./dragDrop";
 import { COPY_PRESETS } from "./copy/presets";
-import { defaultAppSettings, type AppSettingsV1 } from "./settings/model";
+import { defaultAppSettings, type AppSettings } from "./settings/model";
 
 const csvDescriptor: FormatDescriptor = {
   id: "csv",
@@ -1641,7 +1641,7 @@ describe("App", () => {
       configurable: true,
       value: { writeText },
     });
-    const customSettings: AppSettingsV1 = {
+    const customSettings: AppSettings = {
       ...defaultAppSettings(),
       copyPreset: "custom",
       copyCustomOptions: {
@@ -2425,7 +2425,7 @@ describe("App", () => {
   });
 
   it("persists settings before committing them and restores the saved value", async () => {
-    const pending = deferred<AppSettingsV1>();
+    const pending = deferred<AppSettings>();
     const updateSettings = vi.fn(() => pending.promise);
     render(<App backend={backend({ updateSettings })} />);
 
@@ -2481,7 +2481,7 @@ describe("App", () => {
   });
 
   it("changes the default copy preset without copying immediately", async () => {
-    const pending = deferred<AppSettingsV1>();
+    const pending = deferred<AppSettings>();
     const updateSettings = vi.fn(() => pending.promise);
     render(<App backend={backend({ updateSettings })} />);
     await openFile();
@@ -2515,7 +2515,7 @@ describe("App", () => {
     const updateSettings = vi
       .fn()
       .mockRejectedValueOnce(new Error("Atomic preset write failed."))
-      .mockImplementationOnce(async (settings: AppSettingsV1) => settings);
+      .mockImplementationOnce(async (settings: AppSettings) => settings);
     render(<App backend={backend({ updateSettings })} />);
     await openFile();
 
@@ -2540,7 +2540,7 @@ describe("App", () => {
     const updateSettings = vi
       .fn()
       .mockRejectedValueOnce(new Error("Quick preset write failed."))
-      .mockImplementationOnce(async (settings: AppSettingsV1) => settings);
+      .mockImplementationOnce(async (settings: AppSettings) => settings);
     render(<App backend={backend({ updateSettings })} />);
     await openFile();
 
@@ -2586,7 +2586,7 @@ describe("App", () => {
   });
 
   it("opens Copy settings from application settings and updates its summary after save", async () => {
-    const updateSettings = vi.fn(async (settings: AppSettingsV1) => settings);
+    const updateSettings = vi.fn(async (settings: AppSettings) => settings);
     render(<App backend={backend({ updateSettings })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));

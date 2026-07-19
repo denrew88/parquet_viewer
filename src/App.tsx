@@ -66,7 +66,8 @@ import {
   activeCopyOptions,
   defaultAppSettings,
   parseAppSettings,
-  type AppSettingsV1,
+  type AppSettings,
+  type CopyLimits,
 } from "./settings/model";
 import { VirtualDataGrid } from "./VirtualDataGrid";
 import { EMPTY_QUERY_PLAN, resultKey, type QueryPlan } from "./query/model";
@@ -325,6 +326,7 @@ function EmptyState({ formats, tab }: { formats: readonly FormatDescriptor[]; ta
 interface DataViewProps {
   active?: boolean;
   cancelDataBoundaryNavigation: BackendAdapter["cancelDataBoundaryNavigation"];
+  copyLimits: CopyLimits;
   copyOptions: CopyOptions;
   copyPresetError: string | null;
   copyPresetSaving: boolean;
@@ -352,6 +354,7 @@ interface DataViewProps {
 function DataView({
   active = true,
   cancelDataBoundaryNavigation,
+  copyLimits,
   copyOptions,
   copyPresetError,
   copyPresetSaving,
@@ -421,6 +424,7 @@ function DataView({
       <VirtualDataGrid
         active={active}
         cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
+        copyLimits={copyLimits}
         copyOptions={copyOptions}
         copyPresetError={copyPresetError}
         copyPresetSaving={copyPresetSaving}
@@ -973,7 +977,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   const [openingCount, setOpeningCount] = useState(0);
   const [globalError, setGlobalError] = useState<OpenFileError | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
-  const [appSettings, setAppSettings] = useState<AppSettingsV1>(() => defaultAppSettings());
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => defaultAppSettings());
   const [settingsWarning, setSettingsWarning] = useState<string | null>(null);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [copySettingsOpen, setCopySettingsOpen] = useState(false);
@@ -2738,7 +2742,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     document.getElementById(`document-tab-${target.id}`)?.focus();
   }
 
-  async function applySettings(nextSettings: AppSettingsV1, source: "app" | "copy" | "preset") {
+  async function applySettings(nextSettings: AppSettings, source: "app" | "copy" | "preset") {
     if (settingsSavingRef.current) {
       if (source === "preset") {
         setCopyPresetSaveError("Another settings change is still being saved.");
@@ -3127,6 +3131,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                   <DataView
                     active={activeDocumentId === document.id && document.activeTab === "data"}
                     cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
+                    copyLimits={appSettings.copyLimits}
                     copyOptions={activeCopyOptions(appSettings)}
                     copyPresetError={copyPresetSaveError}
                     copyPresetSaving={copyPresetSaving}

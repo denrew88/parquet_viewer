@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 1;
+pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 2;
 pub const DEFAULT_QUERY_TEMP_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const MIN_QUERY_TEMP_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
+pub const DEFAULT_COPY_MAX_CELLS: u64 = 1_000_000;
+pub const MIN_COPY_MAX_CELLS: u64 = 1_000;
+pub const MAX_COPY_MAX_CELLS: u64 = 10_000_000;
+pub const DEFAULT_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+pub const MIN_COPY_MAX_BYTES: u64 = 1024 * 1024;
+pub const MAX_COPY_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +89,22 @@ pub enum CsvDefaultParsingMode {
     AskEveryTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CopyLimits {
+    pub max_cells: u64,
+    pub max_bytes: u64,
+}
+
+impl Default for CopyLimits {
+    fn default() -> Self {
+        Self {
+            max_cells: DEFAULT_COPY_MAX_CELLS,
+            max_bytes: DEFAULT_COPY_MAX_BYTES,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppSettingsV1 {
@@ -91,6 +113,7 @@ pub struct AppSettingsV1 {
     pub copy_custom_options: CopyOptions,
     pub csv_default_parsing_mode: CsvDefaultParsingMode,
     pub query_temp_limit_bytes: u64,
+    pub copy_limits: CopyLimits,
 }
 
 impl Default for AppSettingsV1 {
@@ -113,6 +136,7 @@ impl Default for AppSettingsV1 {
             },
             csv_default_parsing_mode: CsvDefaultParsingMode::Auto,
             query_temp_limit_bytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+            copy_limits: CopyLimits::default(),
         }
     }
 }
@@ -155,6 +179,16 @@ impl AppSettingsV1 {
                 "settings.queryTempLimitBytes must be between {MIN_QUERY_TEMP_LIMIT_BYTES} and {MAX_QUERY_TEMP_LIMIT_BYTES}."
             ));
         }
+        if !(MIN_COPY_MAX_CELLS..=MAX_COPY_MAX_CELLS).contains(&self.copy_limits.max_cells) {
+            return Err(format!(
+                "settings.copyLimits.maxCells must be between {MIN_COPY_MAX_CELLS} and {MAX_COPY_MAX_CELLS}."
+            ));
+        }
+        if !(MIN_COPY_MAX_BYTES..=MAX_COPY_MAX_BYTES).contains(&self.copy_limits.max_bytes) {
+            return Err(format!(
+                "settings.copyLimits.maxBytes must be between {MIN_COPY_MAX_BYTES} and {MAX_COPY_MAX_BYTES}."
+            ));
+        }
         Ok(())
     }
 }
@@ -175,11 +209,13 @@ mod tests {
     #[test]
     fn settings_default_matches_frontend_contract() {
         let value = serde_json::to_value(AppSettingsV1::default()).unwrap();
-        assert_eq!(value["schemaVersion"], 1);
+        assert_eq!(value["schemaVersion"], 2);
         assert_eq!(value["copyPreset"], "excel");
         assert_eq!(value["copyCustomOptions"]["preset"], "custom");
         assert_eq!(value["csvDefaultParsingMode"], "auto");
         assert_eq!(value["queryTempLimitBytes"], DEFAULT_QUERY_TEMP_LIMIT_BYTES);
+        assert_eq!(value["copyLimits"]["maxCells"], DEFAULT_COPY_MAX_CELLS);
+        assert_eq!(value["copyLimits"]["maxBytes"], DEFAULT_COPY_MAX_BYTES);
     }
 
     #[test]
@@ -187,8 +223,76 @@ mod tests {
         let mut value = serde_json::to_value(AppSettingsV1::default()).unwrap();
         value["unknown"] = serde_json::json!(true);
         assert!(serde_json::from_value::<AppSettingsV1>(value).is_err());
+        let mut value = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        value["copyLimits"]["unknown"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<AppSettingsV1>(value).is_err());
         let mut settings = AppSettingsV1::default();
         settings.copy_custom_options.delimiter = String::from("||");
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn copy_limits_accept_inclusive_bounds() {
+        for (max_cells, max_bytes) in [
+            (MIN_COPY_MAX_CELLS, MIN_COPY_MAX_BYTES),
+            (MAX_COPY_MAX_CELLS, MAX_COPY_MAX_BYTES),
+        ] {
+            let settings = AppSettingsV1 {
+                copy_limits: CopyLimits {
+                    max_cells,
+                    max_bytes,
+                },
+                ..AppSettingsV1::default()
+            };
+            assert_eq!(settings.validate(), Ok(()));
+        }
+    }
+
+    #[test]
+    fn copy_limits_reject_values_outside_bounds_with_wire_paths() {
+        for (limits, expected) in [
+            (
+                CopyLimits {
+                    max_cells: MIN_COPY_MAX_CELLS - 1,
+                    max_bytes: DEFAULT_COPY_MAX_BYTES,
+                },
+                format!(
+                    "settings.copyLimits.maxCells must be between {MIN_COPY_MAX_CELLS} and {MAX_COPY_MAX_CELLS}."
+                ),
+            ),
+            (
+                CopyLimits {
+                    max_cells: MAX_COPY_MAX_CELLS + 1,
+                    max_bytes: DEFAULT_COPY_MAX_BYTES,
+                },
+                format!(
+                    "settings.copyLimits.maxCells must be between {MIN_COPY_MAX_CELLS} and {MAX_COPY_MAX_CELLS}."
+                ),
+            ),
+            (
+                CopyLimits {
+                    max_cells: DEFAULT_COPY_MAX_CELLS,
+                    max_bytes: MIN_COPY_MAX_BYTES - 1,
+                },
+                format!(
+                    "settings.copyLimits.maxBytes must be between {MIN_COPY_MAX_BYTES} and {MAX_COPY_MAX_BYTES}."
+                ),
+            ),
+            (
+                CopyLimits {
+                    max_cells: DEFAULT_COPY_MAX_CELLS,
+                    max_bytes: MAX_COPY_MAX_BYTES + 1,
+                },
+                format!(
+                    "settings.copyLimits.maxBytes must be between {MIN_COPY_MAX_BYTES} and {MAX_COPY_MAX_BYTES}."
+                ),
+            ),
+        ] {
+            let settings = AppSettingsV1 {
+                copy_limits: limits,
+                ..AppSettingsV1::default()
+            };
+            assert_eq!(settings.validate(), Err(expected));
+        }
     }
 }
