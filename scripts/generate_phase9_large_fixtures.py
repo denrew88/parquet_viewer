@@ -53,8 +53,14 @@ FULL40_FIELDS = BASE_FIELDS + [
     *[pa.field(f"float64_{index:02d}", pa.float64(), nullable=False) for index in range(10)],
     *[pa.field(f"int32_{index:02d}", pa.int32(), nullable=False) for index in range(10)],
 ]
+FULL15_FIELDS = BASE_FIELDS + [
+    *[pa.field(f"int64_{index:02d}", pa.int64(), nullable=False) for index in range(2)],
+    *[pa.field(f"float64_{index:02d}", pa.float64(), nullable=False) for index in range(2)],
+    pa.field("int32_00", pa.int32(), nullable=False),
+]
 SCHEMAS = {
     "full40": pa.schema(FULL40_FIELDS),
+    "full15": pa.schema(FULL15_FIELDS),
     "repeated10": pa.schema(BASE_FIELDS),
 }
 
@@ -130,8 +136,16 @@ def make_batch(start: int, count: int, profile: str, cardinality: str) -> pa.Rec
         code,
     ]
 
-    if profile == "full40":
-        for column in range(10):
+    if profile == "full15":
+        label = pa.array(
+            ("" if int(index) % 89 == 0 else value.as_py() for index, value in zip(indices, label)),
+            type=pa.string(),
+        )
+        arrays[7] = label
+
+    if profile in {"full15", "full40"}:
+        extra_count = 2 if profile == "full15" else 10
+        for column in range(extra_count):
             if cardinality == "low":
                 values = (indices + column * 17) % (256 + column * 32)
             else:
@@ -139,7 +153,7 @@ def make_batch(start: int, count: int, profile: str, cardinality: str) -> pa.Rec
                     0x7FFF_FFFF_FFFF_FFFF
                 )
             arrays.append(pa.array(values.astype(np.int64), type=pa.int64()))
-        for column in range(10):
+        for column in range(extra_count):
             if cardinality == "low":
                 values = ((indices + column * 13) % (512 + column * 64)).astype(np.float64) / 7.0
             else:
@@ -147,7 +161,8 @@ def make_batch(start: int, count: int, profile: str, cardinality: str) -> pa.Rec
                     2**31
                 )
             arrays.append(pa.array(values, type=pa.float64()))
-        for column in range(10):
+        int32_count = 1 if profile == "full15" else 10
+        for column in range(int32_count):
             if cardinality == "low":
                 values = ((indices + column * 11) % (128 + column * 16)).astype(np.int32)
             else:

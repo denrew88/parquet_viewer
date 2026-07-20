@@ -16,6 +16,24 @@ pub(crate) fn find_boundary(
     known_row_count: Option<u64>,
     request: &BoundarySearchRequest,
     cancel: &AtomicBool,
+    read: impl FnMut(u64, usize, &[String]) -> Result<DataPage, DataError>,
+) -> Result<BoundarySearchResult, DataError> {
+    find_boundary_batched(
+        columns,
+        known_row_count,
+        request,
+        cancel,
+        BOUNDARY_ROW_BATCH,
+        read,
+    )
+}
+
+pub(crate) fn find_boundary_batched(
+    columns: &[ColumnSchema],
+    known_row_count: Option<u64>,
+    request: &BoundarySearchRequest,
+    cancel: &AtomicBool,
+    row_batch: usize,
     mut read: impl FnMut(u64, usize, &[String]) -> Result<DataPage, DataError>,
 ) -> Result<BoundarySearchResult, DataError> {
     validate_request(columns, known_row_count, request)?;
@@ -61,7 +79,7 @@ pub(crate) fn find_boundary(
 
     match request.direction {
         DataBoundaryDirection::Up | DataBoundaryDirection::Down => {
-            find_vertical(known_row_count, request, cancel, &mut read)
+            find_vertical(known_row_count, request, cancel, row_batch, &mut read)
         }
         DataBoundaryDirection::Left | DataBoundaryDirection::Right => {
             find_horizontal(known_row_count, request, current_column, cancel, &mut read)
@@ -113,6 +131,7 @@ fn find_vertical(
     known_row_count: Option<u64>,
     request: &BoundarySearchRequest,
     cancel: &AtomicBool,
+    row_batch: usize,
     read: &mut impl FnMut(u64, usize, &[String]) -> Result<DataPage, DataError>,
 ) -> Result<BoundarySearchResult, DataError> {
     let projection = [request.column_id.clone()];
@@ -144,17 +163,15 @@ fn find_vertical(
                     return Ok(result(request, target, &request.column_id, resolved));
                 }
                 let limit = resolved
-                    .map(|total| {
-                        total.saturating_sub(offset).min(BOUNDARY_ROW_BATCH as u64) as usize
-                    })
-                    .unwrap_or(BOUNDARY_ROW_BATCH);
+                    .map(|total| total.saturating_sub(offset).min(row_batch as u64) as usize)
+                    .unwrap_or(row_batch);
                 (offset, limit.max(1), false)
             }
             DataBoundaryDirection::Up => {
                 if offset == 0 {
                     return Ok(result(request, target, &request.column_id, resolved));
                 }
-                let start = offset.saturating_sub(BOUNDARY_ROW_BATCH as u64);
+                let start = offset.saturating_sub(row_batch as u64);
                 (start, (offset - start) as usize, true)
             }
             _ => unreachable!(),

@@ -220,6 +220,29 @@ mod tests {
             initialize_hdf5_runtime().expect("the static HDF5 runtime must initialize");
             assert_eq!(current_plugin_loading_state(), Ok(NO_DYNAMIC_PLUGINS));
             assert!(hdf5::filters::blosc_available());
+
+            let directory = tempfile::tempdir().expect("create isolated Blosc-Zstd fixture");
+            let path = directory.path().join("static-blosc-zstd.h5");
+            let expected = (0..4_096).map(|value| value % 17).collect::<Vec<i32>>();
+            {
+                let file = hdf5::File::create(&path).expect("create HDF5 fixture");
+                let dataset = file
+                    .new_dataset_builder()
+                    .with_data(&expected)
+                    .blosc_zstd(5, true)
+                    .create("oes")
+                    .expect("write static Blosc-Zstd dataset");
+                assert_eq!(
+                    dataset.filters(),
+                    vec![hdf5::filters::Filter::blosc_zstd(5, true)]
+                );
+            }
+            let file = hdf5::File::open(&path).expect("reopen HDF5 fixture read-only");
+            let actual = file
+                .dataset("oes")
+                .and_then(|dataset| dataset.read_raw::<i32>())
+                .expect("decode Blosc-Zstd without dynamic plugins");
+            assert_eq!(actual, expected);
             return;
         }
 

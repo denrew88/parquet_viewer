@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 2;
+pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 3;
 pub const DEFAULT_QUERY_TEMP_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const MIN_QUERY_TEMP_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
-pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
+pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = DEFAULT_QUERY_TEMP_LIMIT_BYTES;
 pub const DEFAULT_COPY_MAX_CELLS: u64 = 1_000_000;
 pub const MIN_COPY_MAX_CELLS: u64 = 1_000;
 pub const MAX_COPY_MAX_CELLS: u64 = 10_000_000;
@@ -55,6 +55,207 @@ pub enum BooleanRepresentation {
     Lowercase,
     Uppercase,
     Numeric,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DigitGrouping {
+    None,
+    Comma,
+    Dot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FloatingNotation {
+    General,
+    Fixed,
+    Scientific,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase", deny_unknown_fields)]
+pub enum DecimalScale {
+    Preserve,
+    Fixed { digits: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DateDisplayFormat {
+    #[serde(rename = "YYYY-MM-DD")]
+    YearMonthDayDash,
+    #[serde(rename = "YYYY/MM/DD")]
+    YearMonthDaySlash,
+    #[serde(rename = "DD-MM-YYYY")]
+    DayMonthYearDash,
+    #[serde(rename = "MM-DD-YYYY")]
+    MonthDayYearDash,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase", deny_unknown_fields)]
+pub enum TimestampFractionalDigits {
+    Preserve,
+    Fixed { digits: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BinaryDisplayEncoding {
+    Hex,
+    Base64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NestedDisplayFormat {
+    Compact,
+    Pretty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IntegerDisplayFormat {
+    pub grouping: DigitGrouping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FloatingPointDisplayFormat {
+    pub notation: FloatingNotation,
+    pub precision: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DecimalDisplayFormat {
+    pub scale: DecimalScale,
+    pub grouping: DigitGrouping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DateDisplaySettings {
+    pub format: DateDisplayFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TimestampDisplayFormat {
+    pub fractional_digits: TimestampFractionalDigits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BooleanDisplayFormat {
+    pub representation: BooleanRepresentation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryDisplayFormat {
+    pub encoding: BinaryDisplayEncoding,
+    pub preview_bytes: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StringDisplayFormat {
+    pub render_line_breaks: bool,
+    pub wrap_long_lines: bool,
+    pub maximum_visible_lines: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NestedValueDisplayFormat {
+    pub format: NestedDisplayFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayFormats {
+    pub integer: IntegerDisplayFormat,
+    pub floating_point: FloatingPointDisplayFormat,
+    pub decimal: DecimalDisplayFormat,
+    pub date: DateDisplaySettings,
+    pub timestamp: TimestampDisplayFormat,
+    pub boolean: BooleanDisplayFormat,
+    pub binary: BinaryDisplayFormat,
+    pub string: StringDisplayFormat,
+    pub nested: NestedValueDisplayFormat,
+}
+
+impl Default for DisplayFormats {
+    fn default() -> Self {
+        Self {
+            integer: IntegerDisplayFormat {
+                grouping: DigitGrouping::None,
+            },
+            floating_point: FloatingPointDisplayFormat {
+                notation: FloatingNotation::General,
+                precision: 17,
+            },
+            decimal: DecimalDisplayFormat {
+                scale: DecimalScale::Preserve,
+                grouping: DigitGrouping::None,
+            },
+            date: DateDisplaySettings {
+                format: DateDisplayFormat::YearMonthDayDash,
+            },
+            timestamp: TimestampDisplayFormat {
+                fractional_digits: TimestampFractionalDigits::Preserve,
+            },
+            boolean: BooleanDisplayFormat {
+                representation: BooleanRepresentation::Lowercase,
+            },
+            binary: BinaryDisplayFormat {
+                encoding: BinaryDisplayEncoding::Hex,
+                preview_bytes: 32,
+            },
+            string: StringDisplayFormat {
+                render_line_breaks: true,
+                wrap_long_lines: true,
+                maximum_visible_lines: 2,
+            },
+            nested: NestedValueDisplayFormat {
+                format: NestedDisplayFormat::Compact,
+            },
+        }
+    }
+}
+
+impl DisplayFormats {
+    fn validate(&self) -> Result<(), String> {
+        if !(1..=17).contains(&self.floating_point.precision) {
+            return Err(String::from(
+                "settings.displayFormats.floatingPoint.precision must be between 1 and 17.",
+            ));
+        }
+        if matches!(self.decimal.scale, DecimalScale::Fixed { digits } if digits > 38) {
+            return Err(String::from(
+                "settings.displayFormats.decimal.scale.digits must be between 0 and 38.",
+            ));
+        }
+        if matches!(self.timestamp.fractional_digits, TimestampFractionalDigits::Fixed { digits } if digits > 9)
+        {
+            return Err(String::from(
+                "settings.displayFormats.timestamp.fractionalDigits.digits must be between 0 and 9.",
+            ));
+        }
+        if !(1..=256).contains(&self.binary.preview_bytes) {
+            return Err(String::from(
+                "settings.displayFormats.binary.previewBytes must be between 1 and 256.",
+            ));
+        }
+        if self.string.maximum_visible_lines != 2 {
+            return Err(String::from(
+                "settings.displayFormats.string.maximumVisibleLines must be 2.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +315,7 @@ pub struct AppSettingsV1 {
     pub csv_default_parsing_mode: CsvDefaultParsingMode,
     pub query_temp_limit_bytes: u64,
     pub copy_limits: CopyLimits,
+    pub display_formats: DisplayFormats,
 }
 
 impl Default for AppSettingsV1 {
@@ -137,6 +339,7 @@ impl Default for AppSettingsV1 {
             csv_default_parsing_mode: CsvDefaultParsingMode::Auto,
             query_temp_limit_bytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
             copy_limits: CopyLimits::default(),
+            display_formats: DisplayFormats::default(),
         }
     }
 }
@@ -189,6 +392,7 @@ impl AppSettingsV1 {
                 "settings.copyLimits.maxBytes must be between {MIN_COPY_MAX_BYTES} and {MAX_COPY_MAX_BYTES}."
             ));
         }
+        self.display_formats.validate()?;
         Ok(())
     }
 }
@@ -209,13 +413,24 @@ mod tests {
     #[test]
     fn settings_default_matches_frontend_contract() {
         let value = serde_json::to_value(AppSettingsV1::default()).unwrap();
-        assert_eq!(value["schemaVersion"], 2);
+        assert_eq!(value["schemaVersion"], 3);
         assert_eq!(value["copyPreset"], "excel");
         assert_eq!(value["copyCustomOptions"]["preset"], "custom");
         assert_eq!(value["csvDefaultParsingMode"], "auto");
         assert_eq!(value["queryTempLimitBytes"], DEFAULT_QUERY_TEMP_LIMIT_BYTES);
         assert_eq!(value["copyLimits"]["maxCells"], DEFAULT_COPY_MAX_CELLS);
         assert_eq!(value["copyLimits"]["maxBytes"], DEFAULT_COPY_MAX_BYTES);
+        assert_eq!(value["displayFormats"]["integer"]["grouping"], "none");
+        assert_eq!(
+            value["displayFormats"]["floatingPoint"]["notation"],
+            "general"
+        );
+        assert_eq!(
+            value["displayFormats"]["timestamp"]["fractionalDigits"]["mode"],
+            "preserve"
+        );
+        assert_eq!(value["displayFormats"]["binary"]["previewBytes"], 32);
+        assert_eq!(value["displayFormats"]["string"]["maximumVisibleLines"], 2);
     }
 
     #[test]
@@ -293,6 +508,105 @@ mod tests {
                 ..AppSettingsV1::default()
             };
             assert_eq!(settings.validate(), Err(expected));
+        }
+    }
+
+    #[test]
+    fn display_formats_accept_documented_inclusive_bounds() {
+        for (precision, decimal_digits, timestamp_digits, preview_bytes) in
+            [(1, 0, 0, 1), (17, 38, 9, 256)]
+        {
+            let settings = AppSettingsV1 {
+                display_formats: DisplayFormats {
+                    floating_point: FloatingPointDisplayFormat {
+                        notation: FloatingNotation::Scientific,
+                        precision,
+                    },
+                    decimal: DecimalDisplayFormat {
+                        scale: DecimalScale::Fixed {
+                            digits: decimal_digits,
+                        },
+                        grouping: DigitGrouping::Comma,
+                    },
+                    timestamp: TimestampDisplayFormat {
+                        fractional_digits: TimestampFractionalDigits::Fixed {
+                            digits: timestamp_digits,
+                        },
+                    },
+                    binary: BinaryDisplayFormat {
+                        encoding: BinaryDisplayEncoding::Base64,
+                        preview_bytes,
+                    },
+                    ..DisplayFormats::default()
+                },
+                ..AppSettingsV1::default()
+            };
+            assert_eq!(settings.validate(), Ok(()));
+        }
+    }
+
+    #[test]
+    fn display_formats_reject_out_of_range_values_with_wire_paths() {
+        let cases = [
+            (
+                DisplayFormats {
+                    floating_point: FloatingPointDisplayFormat {
+                        precision: 0,
+                        ..DisplayFormats::default().floating_point
+                    },
+                    ..DisplayFormats::default()
+                },
+                "settings.displayFormats.floatingPoint.precision",
+            ),
+            (
+                DisplayFormats {
+                    decimal: DecimalDisplayFormat {
+                        scale: DecimalScale::Fixed { digits: 39 },
+                        ..DisplayFormats::default().decimal
+                    },
+                    ..DisplayFormats::default()
+                },
+                "settings.displayFormats.decimal.scale.digits",
+            ),
+            (
+                DisplayFormats {
+                    timestamp: TimestampDisplayFormat {
+                        fractional_digits: TimestampFractionalDigits::Fixed { digits: 10 },
+                    },
+                    ..DisplayFormats::default()
+                },
+                "settings.displayFormats.timestamp.fractionalDigits.digits",
+            ),
+            (
+                DisplayFormats {
+                    binary: BinaryDisplayFormat {
+                        preview_bytes: 0,
+                        ..DisplayFormats::default().binary
+                    },
+                    ..DisplayFormats::default()
+                },
+                "settings.displayFormats.binary.previewBytes",
+            ),
+            (
+                DisplayFormats {
+                    string: StringDisplayFormat {
+                        maximum_visible_lines: 3,
+                        ..DisplayFormats::default().string
+                    },
+                    ..DisplayFormats::default()
+                },
+                "settings.displayFormats.string.maximumVisibleLines",
+            ),
+        ];
+
+        for (display_formats, expected_path) in cases {
+            let error = AppSettingsV1 {
+                display_formats,
+                ..AppSettingsV1::default()
+            }
+            .validate()
+            .unwrap_err();
+            assert!(error.starts_with(expected_path), "{error}");
         }
     }
 }

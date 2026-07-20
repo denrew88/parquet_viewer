@@ -10,7 +10,7 @@ use crate::domain::{
 use csv::{ByteRecord, Position, Reader, ReaderBuilder};
 use duckdb::{appender_params_from_iter, types::Value};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     fs::{self, File},
     io::{BufReader, Read},
     path::{Path, PathBuf},
@@ -45,6 +45,7 @@ const MAX_STRUCTURE_ISSUES: usize = 100;
 const MAX_HEADER_AUDIT_ITEMS: usize = 100;
 const MAX_HEADER_AUDIT_CHARS: usize = 256;
 const BOUNDARY_CANCEL_INTERVAL: u64 = 4_096;
+const MAX_BOUNDARY_CACHE_ENTRIES: usize = 128;
 
 pub const CSV_FORMAT_DESCRIPTOR: FormatDescriptor = FormatDescriptor {
     id: DataFormat::Csv,
@@ -143,6 +144,28 @@ pub struct CsvSource {
     state: Arc<Mutex<IndexState>>,
     cancel: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
+    boundary_cache: Mutex<VecDeque<(BoundaryCacheKey, BoundarySearchResult)>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BoundaryCacheKey {
+    row: u64,
+    column_id: String,
+    visible_column_ids: Vec<String>,
+    direction: DataBoundaryDirection,
+    mode: DataBoundaryMode,
+}
+
+impl From<&BoundarySearchRequest> for BoundaryCacheKey {
+    fn from(request: &BoundarySearchRequest) -> Self {
+        Self {
+            row: request.row,
+            column_id: request.column_id.clone(),
+            visible_column_ids: request.visible_column_ids.clone(),
+            direction: request.direction,
+            mode: request.mode,
+        }
+    }
 }
 
 impl CsvSource {
@@ -260,6 +283,7 @@ impl CsvSource {
             state,
             cancel,
             worker: Some(worker),
+            boundary_cache: Mutex::new(VecDeque::new()),
         })
     }
 
@@ -1156,7 +1180,28 @@ impl TabularSource for CsvSource {
         request: &BoundarySearchRequest,
         cancel: &AtomicBool,
     ) -> Result<BoundarySearchResult, DataError> {
-        self.find_boundary_sequential(request, cancel)
+        let key = BoundaryCacheKey::from(request);
+        if let Some((_, result)) = self
+            .boundary_cache
+            .lock()
+            .map_err(|_| DataError::io(&self.path, "CSV boundary cache is unavailable"))?
+            .iter()
+            .find(|(candidate, _)| candidate == &key)
+        {
+            return Ok(result.clone());
+        }
+        let result = self.find_boundary_sequential(request, cancel)?;
+        if !cancel.load(Ordering::Acquire) {
+            let mut cache = self
+                .boundary_cache
+                .lock()
+                .map_err(|_| DataError::io(&self.path, "CSV boundary cache is unavailable"))?;
+            if cache.len() == MAX_BOUNDARY_CACHE_ENTRIES {
+                cache.pop_front();
+            }
+            cache.push_back((key, result.clone()));
+        }
+        Ok(result)
     }
 
     fn cancel_task(&self, generation: u64) -> Result<FileSummary, DataError> {
@@ -1677,6 +1722,20 @@ mod tests {
             )
             .unwrap();
         assert_eq!(down.target_row, 1);
+        let cached_request = boundary_request(
+            0,
+            DataBoundaryDirection::Down,
+            DataBoundaryMode::DataBoundary,
+        );
+        assert_eq!(
+            source.find_boundary(&cached_request, &cancel).unwrap(),
+            down
+        );
+        assert_eq!(
+            source.find_boundary(&cached_request, &cancel).unwrap(),
+            down
+        );
+        assert_eq!(source.boundary_cache.lock().unwrap().len(), 1);
         let next_region = source
             .find_boundary_sequential(
                 &boundary_request(

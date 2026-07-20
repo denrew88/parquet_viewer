@@ -32,6 +32,8 @@ blob-report/
 fixtures/*
 !fixtures/phase-10/
 !fixtures/phase-10/**
+!fixtures/phase-11/
+!fixtures/phase-11/**
 
 # Local UI validation captures and intermediate evidence
 artifacts/bugfix-*/

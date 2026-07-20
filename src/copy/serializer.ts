@@ -46,7 +46,10 @@ const isoDateTimePattern =
   /^(?<year>[+-]?\d{4,6})-(?<month>\d{2})-(?<day>\d{2})(?:[T ](?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?:\.(?<fraction>\d{1,9}))?(?<zone>Z|[+-]\d{2}:\d{2})?)?$/;
 
 function booleanText(value: DataValue, options: CopyOptions): string {
-  const normalized = value.display?.toLocaleLowerCase();
+  const canonical =
+    value.sourceDisplay?.toLocaleLowerCase() ?? value.rawDisplay?.toLocaleLowerCase();
+  const normalized =
+    canonical === "true" || canonical === "false" ? canonical : value.display?.toLocaleLowerCase();
   if (normalized !== "true" && normalized !== "false") {
     throw new CopyValueFormatError("Boolean display value must be true or false.");
   }

@@ -10,22 +10,30 @@ const executable = path.resolve(
   process.argv[2] ?? path.join(root, "src-tauri", "target", "debug", "data-viewer.exe"),
 );
 const fixture = path.resolve(
-  process.argv[3] ?? path.join(root, "fixtures", "phase-10", "oes-core-vlen-time.oes.h5"),
+  process.argv[3] ?? path.join(root, "fixtures", "phase-11", "oef-v3-int32.oes.h5"),
 );
 const artifact = path.resolve(
-  process.argv[4] ?? path.join(root, "artifacts", "phase-10", "ui", "native-oes.png"),
+  process.argv[4] ?? path.join(root, "artifacts", "phase-11", "ui", "native-oes.png"),
 );
-const expectedFinalValue = process.argv[5] ?? "203";
-const expectedFinalWavelength = process.argv[6] ?? "900.0000000001";
-const usesCommittedFixture = process.argv[3] === undefined;
-const expectedColumnCount = Number(process.argv[7] ?? (usesCommittedFixture ? 5 : 65));
+const expectedFinalValue = process.argv[5] ?? "479063";
+const expectedFinalWavelength = process.argv[6] ?? "463";
+const expectedColumnCount = Number(process.argv[7] ?? 65);
 const localAppData = path.join(path.dirname(artifact), "native-localappdata");
 
 await mkdir(path.dirname(artifact), { recursive: true });
 await mkdir(localAppData, { recursive: true });
 const app = spawn(executable, ["--file", fixture], {
   cwd: root,
-  env: { ...process.env, LOCALAPPDATA: localAppData },
+  env: {
+    ...process.env,
+    LOCALAPPDATA: localAppData,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: [
+      process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS,
+      "--remote-debugging-port=9333",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  },
   windowsHide: true,
   stdio: ["ignore", "pipe", "pipe"],
 });

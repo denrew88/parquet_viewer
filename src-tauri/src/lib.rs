@@ -58,6 +58,7 @@ pub fn run() {
             commands::open_data_paths,
             commands::take_pending_open_requests,
             commands::read_page,
+            commands::read_cell_value,
             commands::configure_csv,
             commands::get_csv_profile,
             commands::preview_csv_profile,

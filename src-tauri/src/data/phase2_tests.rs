@@ -101,7 +101,7 @@ fn page_cap_fixture() -> (TempDir, PathBuf) {
     (directory, path)
 }
 
-fn type_fixture() -> (TempDir, PathBuf) {
+pub(crate) fn type_fixture() -> (TempDir, PathBuf) {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("types.parquet");
 
@@ -489,7 +489,11 @@ fn t_p2_011_018_preserves_precision_and_structured_value_displays() {
     assert_eq!(page.rows[0][4].kind, ValueKind::Timestamp);
     assert_eq!(
         page.rows[0][4].display.as_deref(),
-        Some("2023-11-14T22:13:20.123456789Z [unit=ns, timezone=Asia/Seoul]")
+        Some("2023-11-15 07:13:20.123456789")
+    );
+    assert_eq!(
+        page.rows[0][4].raw_display.as_deref(),
+        Some("1700000000123456789 [unit=ns, timezone=Asia/Seoul]")
     );
     assert_eq!(page.rows[0][5].kind, ValueKind::Binary);
     assert_eq!(

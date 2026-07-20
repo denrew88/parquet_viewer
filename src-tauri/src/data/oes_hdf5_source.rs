@@ -5,7 +5,7 @@ use std::{
     mem,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Mutex,
     },
 };
@@ -18,7 +18,8 @@ use hdf5::{
 use ndarray::s;
 
 use crate::domain::{
-    ColumnSchema, DataError, DataFormat, DataPage, DataValue, FileSummary, FormatDescriptor,
+    BoundarySearchRequest, BoundarySearchResult, ColumnSchema, DataBoundaryDirection,
+    DataBoundaryMode, DataError, DataFormat, DataPage, DataValue, FileSummary, FormatDescriptor,
     FormatDetailsContent, FormatDetailsSection, MetadataEntry, RowCountState, RowCountStatus,
     SourceCapability, ValueKind,
 };
@@ -32,6 +33,7 @@ const MAX_WAVELENGTHS: usize = 4_096;
 const MAX_AXIS_BYTES_PER_FILE: usize = 128 * 1024 * 1024;
 const MAX_AXIS_BYTES_PER_PROCESS: usize = 256 * 1024 * 1024;
 const MAX_AXIS_ELEMENT_BYTES: usize = 1024 * 1024;
+const VLEN_AXIS_READ_BATCH: usize = 64;
 const MAX_DECODED_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 const MAX_WAVELENGTH_METADATA_ROWS: usize = 100;
 
@@ -69,10 +71,9 @@ pub struct OesHdf5Source {
     path: PathBuf,
     summary: FileSummary,
     _file: File,
-    intensity: Dataset,
+    oes: Dataset,
+    oes_type: OesElementType,
     time: AxisValues,
-    datetime_time: bool,
-    time_timezone: Option<String>,
     _wavelength: AxisValues,
     bindings: Vec<OesColumnBinding>,
     _axis_lease: AxisBudgetLease,
@@ -101,24 +102,26 @@ impl OesHdf5Source {
 
         let file = File::open(path)
             .map_err(|_| DataError::invalid_oes_hdf5(path, "could not open the HDF5 container"))?;
-        validate_axis_locations(path, &file)?;
-        validate_intensity_link(path, &file)?;
-        let intensity = file.dataset("intensity").map_err(|_| {
-            DataError::invalid_oes_hdf5(path, "missing required /intensity dataset")
-        })?;
-        let intensity_layout = validate_intensity(path, &intensity)?;
+        let declared_shape = validate_v3_attributes(path, &file, metadata.len())?;
+        for name in ["time", "wavelength", "oes"] {
+            validate_dataset_link(path, &file, name)?;
+        }
+        let oes = file
+            .dataset("oes")
+            .map_err(|_| DataError::invalid_oes_hdf5(path, "missing required /oes dataset"))?;
+        let (intensity_layout, oes_type) = validate_oes(path, &oes, declared_shape)?;
 
-        let time_attr = file.attr("time").map_err(|_| {
-            DataError::invalid_oes_hdf5(path, "missing required root time attribute")
+        let time_dataset = file
+            .dataset("time")
+            .map_err(|_| DataError::invalid_oes_hdf5(path, "missing required /time dataset"))?;
+        let wavelength_dataset = file.dataset("wavelength").map_err(|_| {
+            DataError::invalid_oes_hdf5(path, "missing required /wavelength dataset")
         })?;
-        let wavelength_attr = file.attr("wavelength").map_err(|_| {
-            DataError::invalid_oes_hdf5(path, "missing required root wavelength attribute")
-        })?;
-        validate_axis_shape(path, "time", &time_attr, intensity_layout.rows)?;
+        validate_axis_shape(path, "time", &time_dataset, intensity_layout.rows)?;
         validate_axis_shape(
             path,
             "wavelength",
-            &wavelength_attr,
+            &wavelength_dataset,
             intensity_layout.columns,
         )?;
         if intensity_layout.columns == 0 {
@@ -137,8 +140,8 @@ impl OesHdf5Source {
             ));
         }
 
-        let time_descriptor = attribute_descriptor(path, "time", &time_attr)?;
-        let wavelength_descriptor = attribute_descriptor(path, "wavelength", &wavelength_attr)?;
+        let time_descriptor = dataset_descriptor(path, "time", &time_dataset)?;
+        let wavelength_descriptor = dataset_descriptor(path, "wavelength", &wavelength_dataset)?;
         let preflight = axis_preflight(
             path,
             [
@@ -156,8 +159,13 @@ impl OesHdf5Source {
             .transpose()?;
         let mut axis_lease = AxisBudgetLease::acquire(path, preflight.reservation_bytes)?;
 
-        let time = read_axis(path, "time", &time_attr, &time_descriptor)?;
-        let wavelength = read_axis(path, "wavelength", &wavelength_attr, &wavelength_descriptor)?;
+        let time = read_axis(path, "time", &time_dataset, &time_descriptor)?;
+        let wavelength = read_axis(
+            path,
+            "wavelength",
+            &wavelength_dataset,
+            &wavelength_descriptor,
+        )?;
         validate_wavelength_values(path, &wavelength)?;
         let bindings = build_column_bindings(path, &wavelength)?;
         let decoded_axis_bytes = decoded_axis_bytes(path, &time, &wavelength, &bindings)?;
@@ -173,12 +181,7 @@ impl OesHdf5Source {
         axis_lease.shrink_to(decoded_axis_bytes);
         drop(vlen_read_guard);
 
-        let time_kind = optional_string_attr(&file, "time_kind", metadata.len());
-        let time_timezone =
-            optional_string_attr(&file, "time_timezone", metadata.len()).unwrap_or_default();
-        let datetime_time =
-            time_kind.as_deref() == Some("datetime64ns") && matches!(time, AxisValues::I64(_));
-        let columns = build_schema(&time, datetime_time, &time_timezone, &bindings);
+        let columns = build_schema(&time, oes_type, &bindings);
         let row_count = u64::try_from(intensity_layout.rows).map_err(|_| {
             DataError::oes_hdf5_limit(path, "intensity row count does not fit the viewer model")
         })?;
@@ -218,10 +221,9 @@ impl OesHdf5Source {
             path: path.to_path_buf(),
             summary,
             _file: file,
-            intensity,
+            oes,
+            oes_type,
             time,
-            datetime_time,
-            time_timezone: (!time_timezone.is_empty()).then_some(time_timezone),
             _wavelength: wavelength,
             bindings,
             _axis_lease: axis_lease,
@@ -269,27 +271,54 @@ impl OesHdf5Source {
             DataError::invalid_request("Page end does not fit the platform address space.")
         })?;
         let plans = plan_hyperslabs(&projection.intensity_columns)?;
-        let mut decoded: Vec<Option<Vec<i32>>> = std::iter::repeat_with(|| None)
+        let mut decoded: Vec<Option<Vec<i64>>> = std::iter::repeat_with(|| None)
             .take(projection.names.len())
             .collect();
         for plan in plans {
             #[cfg(test)]
             self.intensity_reads.fetch_add(1, Ordering::Relaxed);
-            let values = self
-                .intensity
-                .read_slice_2d::<i32, _>(s![
-                    row_start..row_end,
-                    plan.start_column..plan.start_column + plan.column_count
-                ])
-                .map_err(|_| {
-                    DataError::invalid_oes_hdf5(
-                        &self.path,
-                        "could not decode a bounded intensity hyperslab",
-                    )
-                })?;
-            for output in plan.outputs {
-                decoded[output.projection_position] =
-                    Some(values.column(output.slice_column).iter().copied().collect());
+            match self.oes_type {
+                OesElementType::I32 => {
+                    let values = self
+                        .oes
+                        .read_slice_2d::<i32, _>(s![
+                            plan.start_column..plan.start_column + plan.column_count,
+                            row_start..row_end
+                        ])
+                        .map_err(|_| {
+                            DataError::invalid_oes_hdf5(
+                                &self.path,
+                                "could not decode a bounded /oes hyperslab",
+                            )
+                        })?;
+                    for output in plan.outputs {
+                        decoded[output.projection_position] = Some(
+                            values
+                                .row(output.slice_column)
+                                .iter()
+                                .map(|value| i64::from(*value))
+                                .collect(),
+                        );
+                    }
+                }
+                OesElementType::I64 => {
+                    let values = self
+                        .oes
+                        .read_slice_2d::<i64, _>(s![
+                            plan.start_column..plan.start_column + plan.column_count,
+                            row_start..row_end
+                        ])
+                        .map_err(|_| {
+                            DataError::invalid_oes_hdf5(
+                                &self.path,
+                                "could not decode a bounded /oes hyperslab",
+                            )
+                        })?;
+                    for output in plan.outputs {
+                        decoded[output.projection_position] =
+                            Some(values.row(output.slice_column).iter().copied().collect());
+                    }
+                }
             }
         }
 
@@ -298,11 +327,9 @@ impl OesHdf5Source {
             let mut row = Vec::with_capacity(projection.columns.len());
             for column in &projection.columns {
                 match column {
-                    ProjectedColumn::Time => row.push(self.time.data_value(
-                        row_start + local_row,
-                        self.datetime_time,
-                        self.time_timezone.as_deref(),
-                    )),
+                    ProjectedColumn::Time => {
+                        row.push(self.time.data_value(row_start + local_row, false, None))
+                    }
                     ProjectedColumn::Intensity {
                         projection_position,
                     } => {
@@ -414,6 +441,121 @@ impl TabularSource for OesHdf5Source {
     ) -> Result<DataPage, DataError> {
         OesHdf5Source::read_page_projected(self, offset, limit, columns)
     }
+
+    fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        super::boundary::validate_request(&self.summary.columns, self.summary.row_count, request)?;
+        if cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        if request.mode == DataBoundaryMode::TableBoundary {
+            return super::boundary::find_boundary(
+                &self.summary.columns,
+                self.summary.row_count,
+                request,
+                cancel,
+                |offset, limit, columns| self.read_page_projected(offset, limit, Some(columns)),
+            );
+        }
+        if matches!(
+            request.direction,
+            DataBoundaryDirection::Left | DataBoundaryDirection::Right
+        ) {
+            let current = request
+                .visible_column_ids
+                .iter()
+                .position(|column| column == &request.column_id)
+                .expect("validated visible boundary column");
+            let last = request.visible_column_ids.len() - 1;
+            let time_visible = request
+                .visible_column_ids
+                .first()
+                .is_some_and(|name| name == "time");
+            let time_occupied = match &self.time {
+                AxisValues::Utf8(values) => values
+                    .get(request.row as usize)
+                    .is_some_and(|value| !value.is_empty()),
+                _ => true,
+            };
+            let target = match request.direction {
+                DataBoundaryDirection::Right if current == 0 && time_visible && !time_occupied => {
+                    1.min(last)
+                }
+                DataBoundaryDirection::Right => last,
+                DataBoundaryDirection::Left if current > 1 && time_visible && !time_occupied => 1,
+                DataBoundaryDirection::Left => 0,
+                _ => unreachable!(),
+            };
+            return Ok(BoundarySearchResult {
+                target_row: request.row,
+                target_column_id: request.visible_column_ids[target].clone(),
+                resolved_row_count: self.summary.row_count,
+            });
+        }
+        let total = self.summary.row_count.unwrap_or_default();
+        let target_row = if request.column_id != "time" || !matches!(self.time, AxisValues::Utf8(_))
+        {
+            match request.direction {
+                DataBoundaryDirection::Up => 0,
+                DataBoundaryDirection::Down => total.saturating_sub(1),
+                _ => unreachable!(),
+            }
+        } else {
+            self.find_time_boundary(request.row, request.direction, cancel)?
+        };
+        Ok(BoundarySearchResult {
+            target_row,
+            target_column_id: request.column_id.clone(),
+            resolved_row_count: Some(total),
+        })
+    }
+}
+
+impl OesHdf5Source {
+    fn find_time_boundary(
+        &self,
+        row: u64,
+        direction: DataBoundaryDirection,
+        cancel: &AtomicBool,
+    ) -> Result<u64, DataError> {
+        let len = self.time.len();
+        let current = usize::try_from(row)
+            .map_err(|_| DataError::invalid_request("Boundary row is too large."))?;
+        let current_occupied = self.time.is_occupied(current);
+        let mut target = current;
+        let mut first_neighbor = true;
+        let mut seek_occupied = false;
+        let mut cursor = current;
+        loop {
+            cursor = match direction {
+                DataBoundaryDirection::Down if cursor + 1 < len => cursor + 1,
+                DataBoundaryDirection::Up if cursor > 0 => cursor - 1,
+                _ => break,
+            };
+            if cursor % 4096 == 0 && cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            let occupied = self.time.is_occupied(cursor);
+            if first_neighbor {
+                seek_occupied = !(current_occupied && occupied);
+                first_neighbor = false;
+            }
+            if seek_occupied {
+                if occupied {
+                    return Ok(cursor as u64);
+                }
+                target = cursor;
+            } else if occupied {
+                target = cursor;
+            } else {
+                return Ok(target as u64);
+            }
+        }
+        Ok(target as u64)
+    }
 }
 
 #[derive(Debug)]
@@ -422,8 +564,15 @@ struct IntensityLayout {
     columns: usize,
     chunk_rows: usize,
     chunk_columns: usize,
+    dtype: &'static str,
     compression_level: u8,
     shuffle: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OesElementType {
+    I32,
+    I64,
 }
 
 #[derive(Debug)]
@@ -455,6 +604,13 @@ impl AxisValues {
             Self::F32(values) => values.len(),
             Self::F64(values) => values.len(),
             Self::Utf8(values) => values.len(),
+        }
+    }
+
+    fn is_occupied(&self, index: usize) -> bool {
+        match self {
+            Self::Utf8(values) => !values[index].is_empty(),
+            _ => true,
         }
     }
 
@@ -690,22 +846,117 @@ fn validate_signature(path: &Path, file_size: u64) -> Result<(), DataError> {
     Ok(())
 }
 
-fn validate_axis_locations(path: &Path, file: &File) -> Result<(), DataError> {
-    for name in ["time", "wavelength"] {
-        if file.link_exists(name) {
-            return Err(DataError::invalid_oes_hdf5(
-                path,
-                format!("{name} must be a root attribute, not an HDF5 object"),
-            ));
-        }
+fn validate_v3_attributes(
+    path: &Path,
+    file: &File,
+    source_file_size: u64,
+) -> Result<[usize; 2], DataError> {
+    let format = optional_string_attr(file, "format", source_file_size).ok_or_else(|| {
+        DataError::invalid_oes_hdf5(path, "missing or invalid root format attribute")
+    })?;
+    if format != "oefh5" {
+        return Err(DataError::invalid_oes_hdf5(
+            path,
+            "root format attribute must equal 'oefh5'",
+        ));
     }
-    Ok(())
+
+    let version_attr = file
+        .attr("format_version")
+        .map_err(|_| DataError::invalid_oes_hdf5(path, "missing root format_version attribute"))?;
+    if !version_attr.is_scalar() {
+        return Err(DataError::invalid_oes_hdf5(
+            path,
+            "format_version must be a scalar integer",
+        ));
+    }
+    let version = read_integer_attribute(path, "format_version", &version_attr)?;
+    if version != vec![3] {
+        return Err(DataError::invalid_oes_hdf5(
+            path,
+            "format_version must equal 3",
+        ));
+    }
+
+    let shape_attr = file
+        .attr("shape")
+        .map_err(|_| DataError::invalid_oes_hdf5(path, "missing root shape attribute"))?;
+    if shape_attr.shape().as_slice() != [2] {
+        return Err(DataError::invalid_oes_hdf5(
+            path,
+            "shape must be a one-dimensional integer array containing exactly two values",
+        ));
+    }
+    let shape = read_integer_attribute(path, "shape", &shape_attr)?;
+    let n_time = usize::try_from(shape[0]).map_err(|_| {
+        DataError::invalid_oes_hdf5(path, "shape n_time must be a non-negative platform integer")
+    })?;
+    let n_wavelength = usize::try_from(shape[1]).map_err(|_| {
+        DataError::invalid_oes_hdf5(
+            path,
+            "shape n_wavelength must be a non-negative platform integer",
+        )
+    })?;
+    Ok([n_time, n_wavelength])
 }
 
-fn validate_intensity_link(path: &Path, file: &File) -> Result<(), DataError> {
+fn read_integer_attribute(
+    path: &Path,
+    name: &str,
+    attribute: &hdf5::Attribute,
+) -> Result<Vec<u64>, DataError> {
+    let descriptor = attribute
+        .dtype()
+        .and_then(|datatype| datatype.to_descriptor())
+        .map_err(|_| DataError::invalid_oes_hdf5(path, format!("could not inspect {name}")))?;
+    let invalid =
+        || DataError::invalid_oes_hdf5(path, format!("{name} must use an integer datatype"));
+    match descriptor {
+        TypeDescriptor::Integer(IntSize::U1) => attribute
+            .read_raw::<i8>()
+            .map_err(|_| invalid())?
+            .into_iter()
+            .map(|value| u64::try_from(value).map_err(|_| invalid()))
+            .collect(),
+        TypeDescriptor::Integer(IntSize::U2) => attribute
+            .read_raw::<i16>()
+            .map_err(|_| invalid())?
+            .into_iter()
+            .map(|value| u64::try_from(value).map_err(|_| invalid()))
+            .collect(),
+        TypeDescriptor::Integer(IntSize::U4) => attribute
+            .read_raw::<i32>()
+            .map_err(|_| invalid())?
+            .into_iter()
+            .map(|value| u64::try_from(value).map_err(|_| invalid()))
+            .collect(),
+        TypeDescriptor::Integer(IntSize::U8) => attribute
+            .read_raw::<i64>()
+            .map_err(|_| invalid())?
+            .into_iter()
+            .map(|value| u64::try_from(value).map_err(|_| invalid()))
+            .collect(),
+        TypeDescriptor::Unsigned(IntSize::U1) => attribute
+            .read_raw::<u8>()
+            .map(|values| values.into_iter().map(u64::from).collect())
+            .map_err(|_| invalid()),
+        TypeDescriptor::Unsigned(IntSize::U2) => attribute
+            .read_raw::<u16>()
+            .map(|values| values.into_iter().map(u64::from).collect())
+            .map_err(|_| invalid()),
+        TypeDescriptor::Unsigned(IntSize::U4) => attribute
+            .read_raw::<u32>()
+            .map(|values| values.into_iter().map(u64::from).collect())
+            .map_err(|_| invalid()),
+        TypeDescriptor::Unsigned(IntSize::U8) => attribute.read_raw::<u64>().map_err(|_| invalid()),
+        _ => Err(invalid()),
+    }
+}
+
+fn validate_dataset_link(path: &Path, file: &File, dataset_name: &str) -> Result<(), DataError> {
     let link_type = file
         .iter_visit_default(None, |_, name, info, found| {
-            if name == "intensity" {
+            if name == dataset_name {
                 *found = Some(info.link_type);
                 false
             } else {
@@ -717,76 +968,96 @@ fn validate_intensity_link(path: &Path, file: &File) -> Result<(), DataError> {
         Some(LinkType::Hard) => Ok(()),
         Some(LinkType::Soft) => Err(DataError::invalid_oes_hdf5(
             path,
-            "/intensity must not be a soft link",
+            format!("/{dataset_name} must not be a soft link"),
         )),
         Some(LinkType::External) => Err(DataError::invalid_oes_hdf5(
             path,
-            "/intensity must not be an external link",
+            format!("/{dataset_name} must not be an external link"),
         )),
         None => Err(DataError::invalid_oes_hdf5(
             path,
-            "missing required /intensity dataset",
+            format!("missing required /{dataset_name} dataset"),
         )),
     }
 }
 
-fn validate_intensity(path: &Path, dataset: &Dataset) -> Result<IntensityLayout, DataError> {
+fn validate_oes(
+    path: &Path,
+    dataset: &Dataset,
+    declared_shape: [usize; 2],
+) -> Result<(IntensityLayout, OesElementType), DataError> {
     if dataset.ndim() != 2 {
         return Err(DataError::invalid_oes_hdf5(
             path,
-            "intensity dataset must have rank 2",
+            "/oes dataset must have rank 2",
         ));
     }
     let descriptor = dataset
         .dtype()
         .and_then(|datatype| datatype.to_descriptor())
-        .map_err(|_| DataError::invalid_oes_hdf5(path, "could not inspect intensity datatype"))?;
-    if descriptor != TypeDescriptor::Integer(IntSize::U4) {
-        return Err(DataError::invalid_oes_hdf5(
-            path,
-            "intensity datatype must be signed int32",
-        ));
-    }
+        .map_err(|_| DataError::invalid_oes_hdf5(path, "could not inspect /oes datatype"))?;
+    let oes_type = match descriptor {
+        TypeDescriptor::Integer(IntSize::U4) => OesElementType::I32,
+        TypeDescriptor::Integer(IntSize::U8) => OesElementType::I64,
+        _ => {
+            return Err(DataError::invalid_oes_hdf5(
+                path,
+                "/oes datatype must be signed int32 or int64",
+            ))
+        }
+    };
     let create_plist = dataset.create_plist().map_err(|_| {
         DataError::invalid_oes_hdf5(path, "could not inspect intensity storage properties")
     })?;
     if !create_plist.external().is_empty() {
         return Err(DataError::invalid_oes_hdf5(
             path,
-            "intensity external storage is not supported",
+            "/oes external storage is not supported",
         ));
     }
     if !dataset.is_chunked() {
         return Err(DataError::invalid_oes_hdf5(
             path,
-            "intensity must use local chunked storage; contiguous and virtual layouts are unsupported",
+            "/oes must use local chunked storage; contiguous and virtual layouts are unsupported",
         ));
     }
     let filters = dataset.filters();
     let (compression_level, shuffle) = match filters.as_slice() {
         [Filter::Blosc(Blosc::ZStd, level, shuffle)] => (*level, format!("{shuffle:?}")),
         _ => {
-            return Err(DataError::invalid_oes_hdf5(
+            return Err(DataError::unsupported_oes_hdf5_compression(
                 path,
-                "intensity must use only Blosc v1 filter 32001 with Zstd",
+                "/oes must use only Blosc v1 filter 32001 with Zstd",
             ))
         }
     };
     let shape = dataset.shape();
     let chunk = dataset
         .chunk()
-        .ok_or_else(|| DataError::invalid_oes_hdf5(path, "intensity chunk shape is unavailable"))?;
+        .ok_or_else(|| DataError::invalid_oes_hdf5(path, "/oes chunk shape is unavailable"))?;
     if shape.len() != 2 || chunk.len() != 2 || chunk.contains(&0) {
         return Err(DataError::invalid_oes_hdf5(
             path,
-            "intensity shape and chunk shape must both be two-dimensional",
+            "/oes shape and chunk shape must both be two-dimensional",
+        ));
+    }
+    let expected_physical_shape = [declared_shape[1], declared_shape[0]];
+    if shape.as_slice() != expected_physical_shape {
+        return Err(DataError::invalid_oes_hdf5(
+            path,
+            format!(
+                "/oes shape {shape:?} must equal [n_wavelength, n_time] {expected_physical_shape:?}"
+            ),
         ));
     }
     let chunk_elements = chunk[0]
         .checked_mul(chunk[1])
         .ok_or_else(|| DataError::oes_hdf5_limit(path, "decoded chunk element overflow"))?;
     let chunk_bytes = chunk_elements
-        .checked_mul(mem::size_of::<i32>())
+        .checked_mul(match oes_type {
+            OesElementType::I32 => mem::size_of::<i32>(),
+            OesElementType::I64 => mem::size_of::<i64>(),
+        })
         .ok_or_else(|| DataError::oes_hdf5_limit(path, "decoded chunk byte overflow"))?;
     if chunk_bytes > MAX_DECODED_CHUNK_BYTES {
         return Err(DataError::oes_hdf5_limit(
@@ -796,40 +1067,47 @@ fn validate_intensity(path: &Path, dataset: &Dataset) -> Result<IntensityLayout,
             ),
         ));
     }
-    Ok(IntensityLayout {
-        rows: shape[0],
-        columns: shape[1],
-        chunk_rows: chunk[0],
-        chunk_columns: chunk[1],
-        compression_level,
-        shuffle,
-    })
+    Ok((
+        IntensityLayout {
+            rows: declared_shape[0],
+            columns: declared_shape[1],
+            chunk_rows: chunk[1],
+            chunk_columns: chunk[0],
+            dtype: match oes_type {
+                OesElementType::I32 => "int32",
+                OesElementType::I64 => "int64",
+            },
+            compression_level,
+            shuffle,
+        },
+        oes_type,
+    ))
 }
 
 fn validate_axis_shape(
     path: &Path,
     name: &str,
-    attribute: &hdf5::Attribute,
+    dataset: &Dataset,
     expected: usize,
 ) -> Result<(), DataError> {
-    let shape = attribute.shape();
+    let shape = dataset.shape();
     if shape.as_slice() != [expected] {
         return Err(DataError::invalid_oes_hdf5(
             path,
             format!(
-                "{name} attribute shape {shape:?} does not match the expected length {expected}"
+                "/{name} dataset shape {shape:?} does not match the expected length {expected}"
             ),
         ));
     }
     Ok(())
 }
 
-fn attribute_descriptor(
+fn dataset_descriptor(
     path: &Path,
     name: &str,
-    attribute: &hdf5::Attribute,
+    dataset: &Dataset,
 ) -> Result<TypeDescriptor, DataError> {
-    let descriptor = attribute
+    let descriptor = dataset
         .dtype()
         .and_then(|datatype| datatype.to_descriptor())
         .map_err(|_| {
@@ -910,62 +1188,79 @@ fn axis_preflight(
 fn read_axis(
     path: &Path,
     name: &str,
-    attribute: &hdf5::Attribute,
+    dataset: &Dataset,
     descriptor: &TypeDescriptor,
 ) -> Result<AxisValues, DataError> {
     let invalid =
         || DataError::invalid_oes_hdf5(path, format!("could not decode the {name} attribute"));
     let values = match descriptor {
         TypeDescriptor::Integer(IntSize::U1) => {
-            AxisValues::I8(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::I8(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Integer(IntSize::U2) => {
-            AxisValues::I16(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::I16(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Integer(IntSize::U4) => {
-            AxisValues::I32(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::I32(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Integer(IntSize::U8) => {
-            AxisValues::I64(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::I64(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Unsigned(IntSize::U1) => {
-            AxisValues::U8(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::U8(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Unsigned(IntSize::U2) => {
-            AxisValues::U16(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::U16(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Unsigned(IntSize::U4) => {
-            AxisValues::U32(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::U32(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Unsigned(IntSize::U8) => {
-            AxisValues::U64(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::U64(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Float(FloatSize::U4) => {
-            AxisValues::F32(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::F32(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::Float(FloatSize::U8) => {
-            AxisValues::F64(attribute.read_raw().map_err(|_| invalid())?)
+            AxisValues::F64(dataset.read_raw().map_err(|_| invalid())?)
         }
         TypeDescriptor::FixedUnicode(_) | TypeDescriptor::VarLenUnicode => {
-            let raw: Vec<VarLenUnicode> = attribute.read_raw().map_err(|_| invalid())?;
-            let mut strings = Vec::with_capacity(raw.len());
-            for value in raw {
-                if value.len() > MAX_AXIS_ELEMENT_BYTES {
-                    return Err(DataError::oes_hdf5_limit(
-                        path,
-                        format!(
-                            "{name} contains a {} byte element; the element limit is {MAX_AXIS_ELEMENT_BYTES}",
-                            value.len()
-                        ),
-                    ));
+            let mut strings = Vec::with_capacity(dataset.size());
+            let mut decoded_bytes = 0_usize;
+            for start in (0..dataset.size()).step_by(VLEN_AXIS_READ_BATCH) {
+                let end = (start + VLEN_AXIS_READ_BATCH).min(dataset.size());
+                let raw = dataset
+                    .read_slice_1d::<VarLenUnicode, _>(s![start..end])
+                    .map_err(|_| invalid())?;
+                for value in raw {
+                    if value.len() > MAX_AXIS_ELEMENT_BYTES {
+                        return Err(DataError::oes_hdf5_limit(
+                            path,
+                            format!(
+                                "{name} contains a {} byte element; the element limit is {MAX_AXIS_ELEMENT_BYTES}",
+                                value.len()
+                            ),
+                        ));
+                    }
+                    decoded_bytes = decoded_bytes.checked_add(value.len()).ok_or_else(|| {
+                        DataError::oes_hdf5_limit(path, "axis string byte count overflow")
+                    })?;
+                    if decoded_bytes > MAX_AXIS_BYTES_PER_FILE {
+                        return Err(DataError::oes_hdf5_limit(
+                            path,
+                            format!(
+                                "{name} decoded strings exceed the {MAX_AXIS_BYTES_PER_FILE} byte per-file limit"
+                            ),
+                        ));
+                    }
+                    strings.push(value.as_str().to_owned());
                 }
-                strings.push(value.as_str().to_owned());
             }
             AxisValues::Utf8(strings)
         }
         _ => return Err(invalid()),
     };
-    if values.len() != attribute.size() {
+    if values.len() != dataset.size() {
         return Err(DataError::invalid_oes_hdf5(
             path,
             format!("decoded {name} length does not match its dataspace"),
@@ -1062,31 +1357,25 @@ fn decoded_axis_bytes(
 
 fn build_schema(
     time: &AxisValues,
-    datetime_time: bool,
-    timezone: &str,
+    oes_type: OesElementType,
     bindings: &[OesColumnBinding],
 ) -> Vec<ColumnSchema> {
-    let time_logical = if datetime_time {
-        if timezone.is_empty() {
-            String::from("Timestamp(ns)")
-        } else {
-            format!("Timestamp(ns, {timezone})")
-        }
-    } else {
-        time.logical_type().to_owned()
+    let (oes_logical, oes_physical) = match oes_type {
+        OesElementType::I32 => ("Int32", "HDF5 signed 32-bit integer"),
+        OesElementType::I64 => ("Int64", "HDF5 signed 64-bit integer"),
     };
     let mut columns = Vec::with_capacity(bindings.len() + 1);
     columns.push(ColumnSchema {
         name: String::from("time"),
-        logical_type: time_logical,
+        logical_type: time.logical_type().to_owned(),
         nullable: false,
         physical_type: time.physical_type().to_owned(),
     });
     columns.extend(bindings.iter().map(|binding| ColumnSchema {
         name: binding.public_name.clone(),
-        logical_type: String::from("Int32"),
+        logical_type: oes_logical.to_owned(),
         nullable: false,
-        physical_type: String::from("HDF5 signed 32-bit integer"),
+        physical_type: oes_physical.to_owned(),
     }));
     columns
 }
@@ -1109,8 +1398,8 @@ fn oes_format_details(
                         value: format!("{} × {}", layout.rows, layout.columns),
                     },
                     MetadataEntry {
-                        label: String::from("Intensity dtype"),
-                        value: String::from("int32"),
+                        label: String::from("OES dtype"),
+                        value: layout.dtype.to_owned(),
                     },
                     MetadataEntry {
                         label: String::from("Chunk shape"),
@@ -1125,7 +1414,7 @@ fn oes_format_details(
                     },
                     MetadataEntry {
                         label: String::from("Axis storage"),
-                        value: String::from("root attributes: time, wavelength"),
+                        value: String::from("root datasets: /time, /wavelength"),
                     },
                     MetadataEntry {
                         label: String::from("Time type"),
@@ -1266,32 +1555,75 @@ mod tests {
             .join(name)
     }
 
+    fn committed_v3_fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/phase-11")
+            .join(name)
+    }
+
+    fn write_v3_attributes(file: &File, shape: [i64; 2]) {
+        let format = VarLenUnicode::from_str("oefh5").expect("format value");
+        file.new_attr::<VarLenUnicode>()
+            .shape(())
+            .create("format")
+            .expect("format attribute")
+            .write_scalar(&format)
+            .expect("write format");
+        file.new_attr::<i64>()
+            .shape(())
+            .create("format_version")
+            .expect("format version")
+            .write_scalar(&3_i64)
+            .expect("write format version");
+        file.new_attr_builder()
+            .with_data(&shape)
+            .create("shape")
+            .expect("shape attribute");
+    }
+
     fn fixture() -> (TempDir, PathBuf) {
         crate::platform::initialize_hdf5_runtime().expect("HDF5 runtime");
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("numeric.oes.h5");
         let file = File::create(&path).expect("create HDF5 fixture");
-        file.new_attr_builder()
+        write_v3_attributes(&file, [4, 3]);
+        file.new_dataset_builder()
             .with_data(&[10_i64, 20, 30, 40])
             .create("time")
-            .expect("time attribute");
-        file.new_attr_builder()
+            .expect("time dataset");
+        file.new_dataset_builder()
             .with_data(&[200.0_f64, 300.0, 400.0])
             .create("wavelength")
-            .expect("wavelength attribute");
+            .expect("wavelength dataset");
         file.new_dataset_builder()
             .with_data(&arr2(&[
-                [1_i32, 2, 3],
-                [4, 5, 6],
-                [7, 8, 9],
-                [i32::MIN, 11, i32::MAX],
+                [1_i32, 4, 7, i32::MIN],
+                [2, 5, 8, 11],
+                [3, 6, 9, i32::MAX],
             ]))
             .chunk((2, 2))
             .blosc_zstd(5, BloscShuffle::Byte)
-            .create("intensity")
-            .expect("intensity dataset");
+            .create("oes")
+            .expect("oes dataset");
         drop(file);
         (directory, path)
+    }
+
+    fn write_minimal_valid_payload(file: &File) {
+        file.new_dataset_builder()
+            .with_data(&[10_i64, 20])
+            .create("time")
+            .expect("time dataset");
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .expect("wavelength dataset");
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .expect("oes dataset");
     }
 
     #[test]
@@ -1322,6 +1654,40 @@ mod tests {
 
         assert!(preflight.has_vlen);
         assert_eq!(preflight.reservation_bytes, MAX_AXIS_BYTES_PER_FILE);
+    }
+
+    #[test]
+    fn oversized_vlen_axis_element_is_rejected_during_bounded_batch_decode() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("oversized-vlen.h5");
+        let file = File::create(&path).expect("create fixture");
+        write_v3_attributes(&file, [2, 1]);
+        let oversized = "x".repeat(MAX_AXIS_ELEMENT_BYTES + 1);
+        let times = [oversized.as_str(), "ok"]
+            .into_iter()
+            .map(|value| VarLenUnicode::from_str(value).expect("UTF-8 time"))
+            .collect::<Vec<_>>();
+        file.new_dataset_builder()
+            .with_data(&times)
+            .create("time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert_eq!(
+            OesHdf5Source::open(path)
+                .expect_err("oversized VLEN rejected")
+                .code,
+            DataErrorCode::OesHdf5LimitExceeded
+        );
     }
 
     #[test]
@@ -1357,69 +1723,314 @@ mod tests {
     }
 
     #[test]
-    fn committed_vlen_fixture_decodes_actual_blosc_zstd_payload() {
-        let source = OesHdf5Source::open(committed_fixture("oes-core-vlen-time.oes.h5"))
-            .expect("open committed vlen fixture");
-        assert_eq!(source.summary().row_count, Some(3));
-        assert_eq!(source.summary().column_count, 5);
-        let page = source
+    fn committed_blosc_zstd_v3_fixtures_match_the_transposed_contract() {
+        let numeric = OesHdf5Source::open(committed_v3_fixture("oef-v3-int32.oes.h5"))
+            .expect("open committed numeric v3 fixture");
+        assert_eq!(numeric.summary().row_count, Some(480));
+        assert_eq!(numeric.summary().column_count, 65);
+        let projection = vec![String::from("time"), String::from("463")];
+        let last = numeric
+            .read_page_projected(479, 1, Some(&projection))
+            .expect("read committed final row");
+        assert_eq!(last.rows[0][0].display.as_deref(), Some("1000479"));
+        assert_eq!(last.rows[0][1].display.as_deref(), Some("479063"));
+
+        let string_int64 = OesHdf5Source::open(committed_v3_fixture("oef-v3-string-int64.oes.h5"))
+            .expect("open committed string/int64 v3 fixture");
+        let page = string_int64
             .read_page_projected(0, 3, None)
-            .expect("decode committed fixture");
+            .expect("read committed string/int64 page");
+        assert_eq!(page.rows[1][0].state, DataValueState::Empty);
         assert_eq!(
-            page.rows[0][0].display.as_deref(),
-            Some("2026-07-17T12:00:00.000+09:00")
+            page.rows[0][1].display.as_deref(),
+            Some("-9223372036854775808")
         );
-        assert_eq!(page.rows[0][1].display.as_deref(), Some("-2147483648"));
-        assert_eq!(page.rows[1][3].display.as_deref(), Some("102"));
-        assert_eq!(page.rows[2][4].display.as_deref(), Some("203"));
-    }
-
-    #[test]
-    fn committed_numeric_fixture_preserves_precision_and_int32_boundaries() {
-        let source = OesHdf5Source::open(committed_fixture("oes-core-numeric.oes.h5"))
-            .expect("open committed numeric fixture");
-        let page = source
-            .read_page_projected(0, 3, None)
-            .expect("numeric page");
-        assert_eq!(page.rows[0][0].display.as_deref(), Some("9007199254740993"));
-        assert_eq!(page.rows[0][4].display.as_deref(), Some("2147483647"));
-        assert_eq!(page.rows[2][1].display.as_deref(), Some("200"));
-    }
-
-    #[test]
-    fn unknown_root_content_does_not_change_core_semantics() {
-        let core = OesHdf5Source::open(committed_fixture("oes-core-vlen-time.oes.h5"))
-            .expect("open core fixture");
-        let unknown = OesHdf5Source::open(committed_fixture("oes-core-unknown-attrs.oes.h5"))
-            .expect("open unknown-content fixture");
-        assert_eq!(core.summary().columns, unknown.summary().columns);
-        assert_eq!(core.summary().row_count, unknown.summary().row_count);
         assert_eq!(
-            core.read_page_projected(0, 3, None).expect("core page"),
-            unknown
-                .read_page_projected(0, 3, None)
-                .expect("unknown-content page")
+            page.rows[2][1].display.as_deref(),
+            Some("9223372036854775807")
         );
     }
 
     #[test]
-    fn committed_name_collisions_have_deterministic_projectable_names() {
-        let source = OesHdf5Source::open(committed_fixture("oes-name-collisions.oes.h5"))
-            .expect("open name-collision fixture");
+    fn v3_accepts_unsigned_integer_version_and_shape_attributes() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("unsigned-attrs.h5");
+        let file = File::create(&path).expect("create fixture");
+        let format = VarLenUnicode::from_str("oefh5").expect("format value");
+        file.new_attr::<VarLenUnicode>()
+            .shape(())
+            .create("format")
+            .expect("format")
+            .write_scalar(&format)
+            .expect("write format");
+        file.new_attr::<u32>()
+            .shape(())
+            .create("format_version")
+            .expect("format version")
+            .write_scalar(&3)
+            .expect("write version");
+        file.new_attr_builder()
+            .with_data(&[2_u64, 2])
+            .create("shape")
+            .expect("shape");
+        write_minimal_valid_payload(&file);
+        drop(file);
         assert_eq!(
-            source
-                .summary()
-                .columns
-                .iter()
-                .map(|column| column.name.as_str())
-                .collect::<Vec<_>>(),
-            ["time", "wavelength_1", "time [2]", "500", "500 [2]"]
+            OesHdf5Source::open(path)
+                .expect("open unsigned attributes")
+                .summary
+                .row_count,
+            Some(2)
         );
-        let projection = vec![String::from("500 [2]"), String::from("wavelength_1")];
-        let page = source
-            .read_page_projected(0, 1, Some(&projection))
-            .expect("collision projection");
-        assert_eq!(page.columns, projection);
+    }
+
+    #[test]
+    fn v3_invalid_rank_dtype_shape_and_filter_reach_their_own_validators() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+
+        let rank_path = directory.path().join("rank.h5");
+        let file = File::create(&rank_path).expect("create rank fixture");
+        write_v3_attributes(&file, [2, 2]);
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i64, 2]]))
+            .create("time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert!(OesHdf5Source::open(&rank_path)
+            .expect_err("rank rejected")
+            .message
+            .contains("/time dataset shape"));
+
+        let dtype_path = directory.path().join("dtype.h5");
+        let file = File::create(&dtype_path).expect("create dtype fixture");
+        write_v3_attributes(&file, [2, 2]);
+        file.new_dataset_builder()
+            .with_data(&[true, false])
+            .create("time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert!(OesHdf5Source::open(&dtype_path)
+            .expect_err("axis dtype rejected")
+            .message
+            .contains("numeric primitive or UTF-8"));
+
+        let shape_path = directory.path().join("shape.h5");
+        let file = File::create(&shape_path).expect("create shape fixture");
+        write_v3_attributes(&file, [3, 2]);
+        file.new_dataset_builder()
+            .with_data(&[10_i64, 20])
+            .create("time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert!(OesHdf5Source::open(&shape_path)
+            .expect_err("shape rejected")
+            .message
+            .contains("shape"));
+
+        let filter_path = directory.path().join("filter.h5");
+        let file = File::create(&filter_path).expect("create filter fixture");
+        write_v3_attributes(&file, [2, 2]);
+        file.new_dataset_builder()
+            .with_data(&[10_i64, 20])
+            .create("time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert_eq!(
+            OesHdf5Source::open(&filter_path)
+                .expect_err("filter rejected")
+                .code,
+            DataErrorCode::UnsupportedOesHdf5Compression
+        );
+
+        let soft_path = directory.path().join("soft-link.h5");
+        let file = File::create(&soft_path).expect("create soft-link fixture");
+        write_v3_attributes(&file, [2, 2]);
+        file.new_dataset_builder()
+            .with_data(&[10_i64, 20])
+            .create("_time")
+            .unwrap();
+        file.link_soft("/_time", "time").unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert!(OesHdf5Source::open(&soft_path)
+            .expect_err("soft link rejected")
+            .message
+            .contains("soft link"));
+
+        let external_path = directory.path().join("external-link.h5");
+        let file = File::create(&external_path).expect("create external-link fixture");
+        write_v3_attributes(&file, [2, 2]);
+        file.link_external("missing-never-opened.h5", "/time", "time")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .unwrap();
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[1_i32, 2], [3, 4]]))
+            .chunk((1, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .unwrap();
+        drop(file);
+        assert!(OesHdf5Source::open(&external_path)
+            .expect_err("external link rejected")
+            .message
+            .contains("external link"));
+    }
+
+    #[test]
+    fn v3_string_time_and_int64_oes_preserve_empty_and_integer_semantics() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("string-int64.h5");
+        let file = File::create(&path).expect("create fixture");
+        write_v3_attributes(&file, [3, 2]);
+        let time = ["first", "", "third"]
+            .into_iter()
+            .map(|value| VarLenUnicode::from_str(value).expect("UTF-8 time"))
+            .collect::<Vec<_>>();
+        file.new_dataset_builder()
+            .with_data(&time)
+            .create("time")
+            .expect("time dataset");
+        file.new_dataset_builder()
+            .with_data(&[300_i64, 400])
+            .create("wavelength")
+            .expect("wavelength dataset");
+        file.new_dataset_builder()
+            .with_data(&arr2(&[[i64::MIN, 2, 3], [4, 5, i64::MAX]]))
+            .chunk((1, 3))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .expect("oes dataset");
+        drop(file);
+
+        let source = OesHdf5Source::open(&path).expect("open v3 fixture");
+        let page = source.read_page_projected(0, 3, None).expect("read page");
+        assert_eq!(page.rows[1][0].state, DataValueState::Empty);
+        assert_eq!(
+            page.rows[0][1].display.as_deref(),
+            Some("-9223372036854775808")
+        );
+        assert_eq!(
+            page.rows[2][2].display.as_deref(),
+            Some("9223372036854775807")
+        );
+        assert_eq!(source.summary.columns[1].logical_type, "Int64");
+        let cancel = AtomicBool::new(false);
+        let time_boundary = source
+            .find_boundary(
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("time"),
+                    visible_column_ids: vec![String::from("time"), String::from("300")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &cancel,
+            )
+            .expect("string time boundary");
+        assert_eq!(time_boundary.target_row, 2);
+        let oes_boundary = source
+            .find_boundary(
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("300"),
+                    visible_column_ids: vec![String::from("time"), String::from("300")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &cancel,
+            )
+            .expect("integer OES boundary");
+        assert_eq!(oes_boundary.target_row, 2);
+
+        for (column_id, direction, expected) in [
+            ("time", DataBoundaryDirection::Right, "300"),
+            ("300", DataBoundaryDirection::Left, "time"),
+            ("400", DataBoundaryDirection::Left, "300"),
+            ("300", DataBoundaryDirection::Right, "400"),
+        ] {
+            let boundary = source
+                .find_boundary(
+                    &BoundarySearchRequest {
+                        row: 1,
+                        column_id: column_id.to_owned(),
+                        visible_column_ids: vec![
+                            String::from("time"),
+                            String::from("300"),
+                            String::from("400"),
+                        ],
+                        direction,
+                        mode: DataBoundaryMode::DataBoundary,
+                    },
+                    &cancel,
+                )
+                .expect("OES horizontal boundary");
+            assert_eq!(boundary.target_column_id, expected);
+        }
+    }
+
+    #[test]
+    fn legacy_phase_10_layout_is_rejected_after_the_v3_contract_change() {
+        for name in [
+            "oes-core-vlen-time.oes.h5",
+            "oes-core-numeric.oes.h5",
+            "oes-core-unknown-attrs.oes.h5",
+            "oes-name-collisions.oes.h5",
+        ] {
+            let error =
+                OesHdf5Source::open(committed_fixture(name)).expect_err("legacy fixture rejected");
+            assert_eq!(error.code, DataErrorCode::InvalidOesHdf5, "{name}");
+        }
     }
 
     #[test]

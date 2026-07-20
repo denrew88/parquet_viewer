@@ -43,6 +43,9 @@ export interface DataValue {
   kind: DataValueKind;
   display: string | null;
   state?: DataValueState;
+  sourceDisplay?: string | null;
+  unit?: string | null;
+  timezone?: string | null;
   rawDisplay?: string | null;
   diagnostic?: CellDiagnostic | null;
 }
@@ -254,6 +257,10 @@ export interface QueryTempUsage {
   limitBytes: number;
   availableBytes: number;
   activeQueries: number;
+  estimatedTempBytes: number | null;
+  safetyReserveBytes: number;
+  hardCapBytes: number;
+  freeBytes: number;
 }
 
 export interface QueryTempCleanupResult {
@@ -387,6 +394,14 @@ export interface ReadPageRequest {
   columns?: string[];
 }
 
+export interface ReadCellValueRequest {
+  documentId: string;
+  sessionId: string;
+  queryId?: string;
+  row: number;
+  columnId: string;
+}
+
 export type DataBoundaryDirection = "up" | "down" | "left" | "right";
 export type DataBoundaryMode = "dataBoundary" | "tableBoundary";
 
@@ -492,6 +507,7 @@ export interface BackendAdapter {
     onError: OpenRequestErrorHandler,
   ): Promise<UnlistenFn>;
   readPage(request: ReadPageRequest): Promise<DataPage>;
+  readCellValue(request: ReadCellValueRequest): Promise<DataValue>;
   findDataBoundary(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
   cancelDataBoundaryNavigation(request: CancelDataBoundaryNavigationRequest): Promise<void>;
   configureCsv(
@@ -1293,12 +1309,25 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
   const item = record(value);
   if (
     !item ||
-    !exactObjectKeys(item, ["processBytes", "limitBytes", "availableBytes", "activeQueries"]) ||
+    !exactObjectKeys(item, [
+      "processBytes",
+      "limitBytes",
+      "availableBytes",
+      "activeQueries",
+      "estimatedTempBytes",
+      "safetyReserveBytes",
+      "hardCapBytes",
+      "freeBytes",
+    ]) ||
     !isNonNegativeInteger(item.processBytes) ||
     !isNonNegativeInteger(item.limitBytes) ||
     item.limitBytes === 0 ||
     !isNonNegativeInteger(item.availableBytes) ||
-    !isNonNegativeInteger(item.activeQueries)
+    !isNonNegativeInteger(item.activeQueries) ||
+    (item.estimatedTempBytes !== null && !isNonNegativeInteger(item.estimatedTempBytes)) ||
+    !isNonNegativeInteger(item.safetyReserveBytes) ||
+    !isNonNegativeInteger(item.hardCapBytes) ||
+    !isNonNegativeInteger(item.freeBytes)
   ) {
     throw new DataViewerError("InvalidResponse", "The query temporary-storage usage is invalid.");
   }
@@ -1689,8 +1718,8 @@ export function parseDataValue(value: unknown): DataValue | null {
     return null;
   }
 
-  const extended = ["state", "rawDisplay", "diagnostic"].some((key) =>
-    Object.prototype.hasOwnProperty.call(dataValue, key),
+  const extended = ["state", "sourceDisplay", "unit", "timezone", "rawDisplay", "diagnostic"].some(
+    (key) => Object.prototype.hasOwnProperty.call(dataValue, key),
   );
   if (!extended) {
     if (dataValue.kind === "null") {
@@ -1702,6 +1731,9 @@ export function parseDataValue(value: unknown): DataValue | null {
   }
 
   const state = dataValue.state;
+  const sourceDisplay = dataValue.sourceDisplay;
+  const unit = dataValue.unit;
+  const timezone = dataValue.timezone;
   const rawDisplay = dataValue.rawDisplay;
   const diagnostic = record(dataValue.diagnostic);
   const diagnosticValue =
@@ -1715,6 +1747,9 @@ export function parseDataValue(value: unknown): DataValue | null {
         : undefined;
   const commonValid =
     ["valid", "null", "empty", "invalid"].includes(state as string) &&
+    (sourceDisplay === undefined || sourceDisplay === null || typeof sourceDisplay === "string") &&
+    (unit === undefined || unit === null || typeof unit === "string") &&
+    (timezone === undefined || timezone === null || typeof timezone === "string") &&
     (rawDisplay === null || typeof rawDisplay === "string") &&
     diagnosticValue !== undefined;
   const semanticValid =
@@ -1740,6 +1775,9 @@ export function parseDataValue(value: unknown): DataValue | null {
     kind: dataValue.kind as DataValueKind,
     display: dataValue.display as string | null,
     state: state as DataValueState,
+    sourceDisplay: (sourceDisplay ?? null) as string | null,
+    unit: (unit ?? null) as string | null,
+    timezone: (timezone ?? null) as string | null,
     rawDisplay: rawDisplay as string | null,
     diagnostic: diagnosticValue,
   };
@@ -2325,6 +2363,25 @@ export const tauriBackend: BackendAdapter = {
       request.documentId ? parseDocumentPageResponse(response, request) : parseDataPage(response),
     );
   },
+  async readCellValue(request) {
+    return validatedInvoke("read_cell_value", { request }, (value) => {
+      const response = record(value);
+      const parsed = parseDataValue(response?.value);
+      if (
+        !response ||
+        response.documentId !== request.documentId ||
+        response.sessionId !== request.sessionId ||
+        (response.queryId ?? undefined) !== request.queryId ||
+        !parsed
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The backend returned a cell value for another document or query.",
+        );
+      }
+      return parsed;
+    });
+  },
   async findDataBoundary(request) {
     const validated = validatedFindBoundaryRequest(request);
     return validatedInvoke("find_data_boundary", { request: validated }, (value) => {
@@ -2683,6 +2740,104 @@ const browserFixtureSummary: FileSummary = {
   ],
 };
 
+const browserLargeColumnNames = [
+  "row_id",
+  "category",
+  "label",
+  "nullable_value",
+  "group_id",
+  "amount",
+  "recorded_at",
+  "flag",
+  "int64_a",
+  "int64_b",
+  "float64_a",
+  "float64_b",
+  "int32_a",
+  "payload",
+  "detail",
+];
+
+const browserLargeSummary: FileSummary = {
+  sessionId: "browser-large-parquet-session",
+  fileName: "large-5850000.parquet",
+  path: "C:\\Data\\large-5850000.parquet",
+  format: "parquet",
+  formatDescriptor: browserSupportedFormats[1],
+  fileSize: 780_000_000,
+  rowCount: 5_850_000,
+  rowCountStatus: {
+    state: "complete",
+    rowsScanned: 5_850_000,
+    bytesScanned: 780_000_000,
+    totalBytes: 780_000_000,
+    generation: 0,
+    message: null,
+  },
+  columnCount: browserLargeColumnNames.length,
+  rowGroupCount: 0,
+  columns: browserLargeColumnNames.map((name, index) => ({
+    name,
+    logicalType:
+      index === 6
+        ? "Timestamp(Nanosecond, UTC)"
+        : index === 7
+          ? "Boolean"
+          : [2, 3, 13, 14].includes(index)
+            ? "Utf8"
+            : [5, 10, 11].includes(index)
+              ? "Float64"
+              : "Int64",
+    nullable: index === 3,
+    physicalType: index === 6 ? "INT64" : [2, 3, 13, 14].includes(index) ? "BYTE_ARRAY" : "INT64",
+  })),
+  rowGroups: [],
+  csvMetadata: null,
+  formatDetails: [],
+};
+
+function browserLargeValue(row: number, column: number): DataValue {
+  if (column === 1) return { kind: "string", display: `category-${row % 17}` };
+  if (column === 2) return { kind: "string", display: row % 89 === 0 ? "" : `label-${row}` };
+  if (column === 3)
+    return row % 97 === 0
+      ? { kind: "null", display: null }
+      : { kind: "string", display: `optional-${row % 31}` };
+  if (column === 5 || column === 10 || column === 11)
+    return { kind: "float", display: `${row}.${String(column).padStart(2, "0")}` };
+  if (column === 6)
+    return {
+      kind: "timestamp",
+      display: "2025-12-18T01:23:34.111111111Z",
+      rawDisplay: "1766021014111111111 [unit=ns, timezone=UTC]",
+    };
+  if (column === 7) return { kind: "boolean", display: row % 2 === 0 ? "true" : "false" };
+  if (column === 13) return { kind: "binary", display: `base64:AAECAwQ= (${row + 5} bytes)` };
+  if (column === 14) return { kind: "struct", display: `{"row":${row},"active":${row % 2 === 0}}` };
+  return { kind: "int", display: String(row * 100 + column) };
+}
+
+function browserLargePage(request: ReadPageRequest): DataPage {
+  const columns = request.columns ?? browserLargeColumnNames;
+  const ordinals = columns.map((name) => browserLargeColumnNames.indexOf(name));
+  if (ordinals.some((ordinal) => ordinal < 0)) {
+    throw new DataViewerError("InvalidRequest", "The large mock projection is invalid.");
+  }
+  const end = Math.min(request.offset + request.limit, browserLargeSummary.rowCount ?? 0);
+  return {
+    sessionId: request.sessionId,
+    offset: request.offset,
+    limit: request.limit,
+    totalRows: browserLargeSummary.rowCount,
+    hasMore: end < (browserLargeSummary.rowCount ?? 0),
+    columns: [...columns],
+    rows: Array.from({ length: Math.max(0, end - request.offset) }, (_, rowOffset) => {
+      const row = request.offset + rowOffset;
+      return ordinals.map((ordinal) => browserLargeValue(row, ordinal));
+    }),
+  };
+}
+
 function browserFixturePage(request: ReadPageRequest): DataPage {
   const end = Math.min(request.offset + request.limit, browserFixtureSummary.rowCount ?? 0);
   const rows = Array.from({ length: Math.max(0, end - request.offset) }, (_, rowOffset) => {
@@ -2741,7 +2896,7 @@ const browserOesSummary: FileSummary = {
     name,
     logicalType: index === 0 ? "Int64" : "Int32",
     nullable: false,
-    physicalType: index === 0 ? "HDF5 int64 attribute" : "HDF5 int32",
+    physicalType: index === 0 ? "HDF5 int64 dataset" : "HDF5 /oes int32",
   })),
   rowGroups: [],
   csvMetadata: null,
@@ -2751,8 +2906,9 @@ const browserOesSummary: FileSummary = {
       title: "OES matrix",
       kind: "keyValue",
       entries: [
-        { label: "Intensity shape", value: "480 x 64" },
-        { label: "Chunk shape", value: "200 x 64" },
+        { label: "Logical shape [time, wavelength]", value: "480 x 64" },
+        { label: "Physical /oes shape [wavelength, time]", value: "64 x 480" },
+        { label: "Chunk shape [wavelength, time]", value: "64 x 128" },
         { label: "Filter", value: "Blosc v1 / Zstd (32001)" },
       ],
     },
@@ -2941,7 +3097,10 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
   const fileName = path.split(/[\\/]/).pop() ?? path;
   const identity = `${itemIndex}-${fileName.replace(/[^a-z0-9]/gi, "-")}`;
   const documentId = `browser-document-${identity}`;
-  const sessionId = `browser-${extension}-session-${identity}`;
+  const sessionId =
+    fileName === browserLargeSummary.fileName
+      ? `browser-large-parquet-session-${identity}`
+      : `browser-${extension}-session-${identity}`;
   if (descriptor.id === "csv") {
     browserCsvStates.set(sessionId, {
       headerMode: "auto",
@@ -2978,6 +3137,18 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
         limit: 200,
         columns: browserOesColumnNames.slice(0, 64),
       }),
+    };
+  }
+  if (fileName === browserLargeSummary.fileName) {
+    const summary = { ...browserLargeSummary, sessionId, fileName, path };
+    return {
+      itemIndex,
+      path,
+      disposition: "opened",
+      documentId,
+      sessionId,
+      summary,
+      initialPage: browserLargePage({ sessionId, offset: 0, limit: 200 }),
     };
   }
   const summary = { ...browserFixtureSummary, sessionId, fileName, path };
@@ -3035,6 +3206,7 @@ export const browserMockBackend: BackendAdapter = {
       return summary;
     }
     if (scenario === "oes") return browserOesSummary;
+    if (scenario === "large") return browserLargeSummary;
     return browserFixtureSummary;
   },
   async selectDataFilePath(requestId) {
@@ -3103,6 +3275,7 @@ export const browserMockBackend: BackendAdapter = {
   async readPage(request) {
     await wait(request.offset >= 200 ? 240 : 60);
     if (request.sessionId.includes("csv-session")) return browserCsvPage(request);
+    if (request.sessionId.includes("large-parquet-session")) return browserLargePage(request);
     if (
       request.sessionId.includes("oes-session") ||
       request.sessionId.includes("-h5-session") ||
@@ -3110,6 +3283,49 @@ export const browserMockBackend: BackendAdapter = {
     )
       return browserOesPage(request);
     return browserFixturePage(request);
+  },
+  async readCellValue(request) {
+    const columnNames = request.sessionId.includes("csv-session")
+      ? browserCsvSummary("auto", false, 0).columns.map((column) => column.name)
+      : request.sessionId.includes("large-parquet-session")
+        ? browserLargeColumnNames
+        : request.sessionId.includes("oes-session") ||
+            request.sessionId.includes("-h5-session") ||
+            request.sessionId.includes("-hdf5-session")
+          ? browserOesColumnNames
+          : browserFixtureSummary.columns.map((column) => column.name);
+    const column = columnNames.indexOf(request.columnId);
+    if (column < 0 || request.row < 0) {
+      throw new DataViewerError("InvalidRequest", "The requested cell does not exist.");
+    }
+    if (request.sessionId.includes("large-parquet-session")) {
+      return browserLargeValue(request.row, column);
+    }
+    const page = request.sessionId.includes("csv-session")
+      ? browserCsvPage({
+          sessionId: request.sessionId,
+          offset: request.row,
+          limit: 1,
+          columns: [request.columnId],
+        })
+      : request.sessionId.includes("oes-session") ||
+          request.sessionId.includes("-h5-session") ||
+          request.sessionId.includes("-hdf5-session")
+        ? browserOesPage({
+            sessionId: request.sessionId,
+            offset: request.row,
+            limit: 1,
+            columns: [request.columnId],
+          })
+        : browserFixturePage({
+            sessionId: request.sessionId,
+            offset: request.row,
+            limit: 1,
+            columns: [request.columnId],
+          });
+    const value = page.rows[0]?.[0];
+    if (!value) throw new DataViewerError("InvalidRequest", "The requested cell does not exist.");
+    return value;
   },
   async findDataBoundary(request) {
     const validated = validatedFindBoundaryRequest(request);
@@ -3122,16 +3338,18 @@ export const browserMockBackend: BackendAdapter = {
     }
     const sourcePage = validated.sessionId.includes("csv-session")
       ? browserCsvPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
-      : validated.sessionId.includes("oes-session") ||
-          validated.sessionId.includes("-h5-session") ||
-          validated.sessionId.includes("-hdf5-session")
-        ? browserOesPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
-        : browserFixturePage({
-            ...validated,
-            offset: 0,
-            limit: 1,
-            columns: [validated.columnId],
-          });
+      : validated.sessionId.includes("large-parquet-session")
+        ? browserLargePage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
+        : validated.sessionId.includes("oes-session") ||
+            validated.sessionId.includes("-h5-session") ||
+            validated.sessionId.includes("-hdf5-session")
+          ? browserOesPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
+          : browserFixturePage({
+              ...validated,
+              offset: 0,
+              limit: 1,
+              columns: [validated.columnId],
+            });
     const columnIndex = validated.visibleColumnIds.indexOf(validated.columnId);
     const targetColumnIndex =
       validated.direction === "left"
@@ -3333,6 +3551,7 @@ export const browserMockBackend: BackendAdapter = {
       throw new DataViewerError("QueryNotFound", `Query result not found: ${queryId}`);
     }
     if (task.status.state === "queued" || task.status.state === "running") {
+      await wait(120);
       const totalRows = task.status.progress.totalRows ?? 0;
       task.status = {
         ...task.status,
@@ -3438,6 +3657,10 @@ export const browserMockBackend: BackendAdapter = {
       limitBytes: browserSettings.queryTempLimitBytes,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 0,
+      estimatedTempBytes: null,
+      safetyReserveBytes: 5 * 1024 ** 3,
+      hardCapBytes: 10 * 1024 ** 3,
+      freeBytes: 20 * 1024 ** 3,
     };
   },
   async clearQueryTemp() {

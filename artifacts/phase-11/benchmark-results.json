@@ -1,0 +1,58 @@
+{
+  "fixture": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase11-large\\query-low-5850000-15c.parquet",
+  "rows": 5850000,
+  "column": "row_id",
+  "columnIndex": 0,
+  "warmupMs": 128.47199999999998,
+  "warmupCommandCounts": {
+    "find_data_boundary": 1,
+    "read_page": 2
+  },
+  "timingsMs": [
+    60.78059999999982,
+    31.079300000000103,
+    32.540899999999965,
+    57.71720000000005,
+    35.70550000000003
+  ],
+  "measurements": [
+    {
+      "elapsedMs": 60.78059999999982,
+      "commandCounts": {
+        "find_data_boundary": 1,
+        "read_page": 1
+      }
+    },
+    {
+      "elapsedMs": 31.079300000000103,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 32.540899999999965,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 57.71720000000005,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    },
+    {
+      "elapsedMs": 35.70550000000003,
+      "commandCounts": {
+        "find_data_boundary": 1
+      }
+    }
+  ],
+  "p95Ms": 60.78059999999982,
+  "navigationIpcPerMove": 1,
+  "readPageIpcPerMoveMax": 1,
+  "rssBeforeBytes": 42209280,
+  "rssAfterBytes": 45281280,
+  "rssDeltaBytes": 3072000,
+  "measuredAt": "2026-07-20T18:36:58.555Z"
+}

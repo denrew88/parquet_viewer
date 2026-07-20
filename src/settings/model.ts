@@ -12,10 +12,10 @@ import {
 } from "../copy/model";
 import { COPY_PRESETS, DEFAULT_COPY_PRESET } from "../copy/presets";
 
-export const APP_SETTINGS_SCHEMA_VERSION = 2 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 3 as const;
 export const DEFAULT_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const MIN_QUERY_TEMP_LIMIT_BYTES = 64 * 1024 * 1024;
-export const MAX_QUERY_TEMP_LIMIT_BYTES = 1024 * 1024 * 1024 * 1024;
+export const MAX_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const DEFAULT_COPY_MAX_CELLS = 1_000_000;
 export const MIN_COPY_MAX_CELLS = 1_000;
 export const MAX_COPY_MAX_CELLS = 10_000_000;
@@ -44,7 +44,7 @@ export interface AppSettingsV1 {
 }
 
 export interface AppSettingsV2 {
-  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly schemaVersion: 2;
   readonly copyPreset: CopyPreset;
   readonly copyCustomOptions: CopyOptions;
   readonly csvDefaultParsingMode: CsvDefaultParsingMode;
@@ -52,7 +52,36 @@ export interface AppSettingsV2 {
   readonly copyLimits: CopyLimits;
 }
 
-export type AppSettings = AppSettingsV2;
+export type DigitGrouping = "none" | "comma" | "dot";
+export type FloatingNotation = "general" | "fixed" | "scientific";
+export type FixedDigits =
+  { readonly mode: "preserve" } | { readonly mode: "fixed"; readonly digits: number };
+export type DateDisplayFormat = "YYYY-MM-DD" | "YYYY/MM/DD" | "DD-MM-YYYY" | "MM-DD-YYYY";
+export type BinaryDisplayEncoding = "hex" | "base64";
+export type NestedDisplayFormat = "compact" | "pretty";
+
+export interface DisplayFormats {
+  readonly integer: { readonly grouping: DigitGrouping };
+  readonly floatingPoint: { readonly notation: FloatingNotation; readonly precision: number };
+  readonly decimal: { readonly scale: FixedDigits; readonly grouping: DigitGrouping };
+  readonly date: { readonly format: DateDisplayFormat };
+  readonly timestamp: { readonly fractionalDigits: FixedDigits };
+  readonly boolean: { readonly representation: BooleanRepresentation };
+  readonly binary: { readonly encoding: BinaryDisplayEncoding; readonly previewBytes: number };
+  readonly string: {
+    readonly renderLineBreaks: boolean;
+    readonly wrapLongLines: boolean;
+    readonly maximumVisibleLines: 2;
+  };
+  readonly nested: { readonly format: NestedDisplayFormat };
+}
+
+export interface AppSettingsV3 extends Omit<AppSettingsV2, "schemaVersion"> {
+  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly displayFormats: DisplayFormats;
+}
+
+export type AppSettings = AppSettingsV3;
 
 export interface SettingsValidationIssue {
   readonly path: string;
@@ -94,8 +123,10 @@ const settingsKeys = [
   "csvDefaultParsingMode",
   "queryTempLimitBytes",
   "copyLimits",
+  "displayFormats",
 ] as const;
-const v1SettingsKeys = settingsKeys.filter((key) => key !== "copyLimits");
+const v2SettingsKeys = settingsKeys.filter((key) => key !== "displayFormats");
+const v1SettingsKeys = v2SettingsKeys.filter((key) => key !== "copyLimits");
 const copyLimitKeys = ["maxCells", "maxBytes"] as const;
 const copyOptionKeys = [
   "preset",
@@ -249,11 +280,235 @@ function parseCopyLimits(value: unknown, issues: SettingsValidationIssue[]): Cop
   return { maxCells: item.maxCells as number, maxBytes: item.maxBytes as number };
 }
 
+export const DEFAULT_DISPLAY_FORMATS: DisplayFormats = Object.freeze({
+  integer: Object.freeze({ grouping: "none" }),
+  floatingPoint: Object.freeze({ notation: "general", precision: 17 }),
+  decimal: Object.freeze({ scale: Object.freeze({ mode: "preserve" }), grouping: "none" }),
+  date: Object.freeze({ format: "YYYY-MM-DD" }),
+  timestamp: Object.freeze({ fractionalDigits: Object.freeze({ mode: "preserve" }) }),
+  boolean: Object.freeze({ representation: "lowercase" }),
+  binary: Object.freeze({ encoding: "hex", previewBytes: 32 }),
+  string: Object.freeze({ renderLineBreaks: true, wrapLongLines: true, maximumVisibleLines: 2 }),
+  nested: Object.freeze({ format: "compact" }),
+});
+
+function enumValue<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  path: string,
+  issues: SettingsValidationIssue[],
+): value is T {
+  if (typeof value === "string" && allowed.includes(value as T)) return true;
+  issues.push({ path, message: "Invalid value." });
+  return false;
+}
+
+function parseFixedDigits(
+  value: unknown,
+  path: string,
+  maximum: number,
+  issues: SettingsValidationIssue[],
+): FixedDigits | null {
+  const item = record(value);
+  if (!item || (item.mode !== "preserve" && item.mode !== "fixed")) {
+    issues.push({ path, message: "Expected preserve or fixed digits." });
+    return null;
+  }
+  issues.push(...exactKeys(item, item.mode === "fixed" ? ["mode", "digits"] : ["mode"], path));
+  if (item.mode === "preserve") return { mode: "preserve" };
+  if (
+    !Number.isSafeInteger(item.digits) ||
+    (item.digits as number) < 0 ||
+    (item.digits as number) > maximum
+  ) {
+    issues.push({ path: `${path}.digits`, message: `Expected an integer from 0 to ${maximum}.` });
+    return null;
+  }
+  return { mode: "fixed", digits: item.digits as number };
+}
+
+function parseDisplayFormats(
+  value: unknown,
+  issues: SettingsValidationIssue[],
+): DisplayFormats | null {
+  const root = record(value);
+  const path = "settings.displayFormats";
+  const keys = [
+    "integer",
+    "floatingPoint",
+    "decimal",
+    "date",
+    "timestamp",
+    "boolean",
+    "binary",
+    "string",
+    "nested",
+  ];
+  if (!root) {
+    issues.push({ path, message: "Expected an object." });
+    return null;
+  }
+  issues.push(...exactKeys(root, keys, path));
+  const integer = record(root.integer);
+  const floating = record(root.floatingPoint);
+  const decimal = record(root.decimal);
+  const date = record(root.date);
+  const timestamp = record(root.timestamp);
+  const boolean = record(root.boolean);
+  const binary = record(root.binary);
+  const string = record(root.string);
+  const nested = record(root.nested);
+  for (const [name, item] of Object.entries({
+    integer,
+    floatingPoint: floating,
+    decimal,
+    date,
+    timestamp,
+    boolean,
+    binary,
+    string,
+    nested,
+  })) {
+    if (!item) issues.push({ path: `${path}.${name}`, message: "Expected an object." });
+  }
+  if (
+    !integer ||
+    !floating ||
+    !decimal ||
+    !date ||
+    !timestamp ||
+    !boolean ||
+    !binary ||
+    !string ||
+    !nested
+  )
+    return null;
+  issues.push(...exactKeys(integer, ["grouping"], `${path}.integer`));
+  issues.push(...exactKeys(floating, ["notation", "precision"], `${path}.floatingPoint`));
+  issues.push(...exactKeys(decimal, ["scale", "grouping"], `${path}.decimal`));
+  issues.push(...exactKeys(date, ["format"], `${path}.date`));
+  issues.push(...exactKeys(timestamp, ["fractionalDigits"], `${path}.timestamp`));
+  issues.push(...exactKeys(boolean, ["representation"], `${path}.boolean`));
+  issues.push(...exactKeys(binary, ["encoding", "previewBytes"], `${path}.binary`));
+  issues.push(
+    ...exactKeys(
+      string,
+      ["renderLineBreaks", "wrapLongLines", "maximumVisibleLines"],
+      `${path}.string`,
+    ),
+  );
+  issues.push(...exactKeys(nested, ["format"], `${path}.nested`));
+  const grouping = ["none", "comma", "dot"] as const;
+  const integerGrouping = enumValue(integer.grouping, grouping, `${path}.integer.grouping`, issues);
+  const notation = enumValue(
+    floating.notation,
+    ["general", "fixed", "scientific"],
+    `${path}.floatingPoint.notation`,
+    issues,
+  );
+  const floatPrecision =
+    Number.isSafeInteger(floating.precision) &&
+    (floating.precision as number) >= 1 &&
+    (floating.precision as number) <= 17;
+  if (!floatPrecision)
+    issues.push({
+      path: `${path}.floatingPoint.precision`,
+      message: "Expected an integer from 1 to 17.",
+    });
+  const decimalScale = parseFixedDigits(decimal.scale, `${path}.decimal.scale`, 38, issues);
+  const decimalGrouping = enumValue(decimal.grouping, grouping, `${path}.decimal.grouping`, issues);
+  const dateFormat = enumValue(
+    date.format,
+    ["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY", "MM-DD-YYYY"],
+    `${path}.date.format`,
+    issues,
+  );
+  const fractionalDigits = parseFixedDigits(
+    timestamp.fractionalDigits,
+    `${path}.timestamp.fractionalDigits`,
+    9,
+    issues,
+  );
+  const booleanRepresentation = enumValue(
+    boolean.representation,
+    booleanRepresentations,
+    `${path}.boolean.representation`,
+    issues,
+  );
+  const binaryEncoding = enumValue(
+    binary.encoding,
+    ["hex", "base64"],
+    `${path}.binary.encoding`,
+    issues,
+  );
+  const previewBytes =
+    Number.isSafeInteger(binary.previewBytes) &&
+    (binary.previewBytes as number) >= 1 &&
+    (binary.previewBytes as number) <= 256;
+  if (!previewBytes)
+    issues.push({
+      path: `${path}.binary.previewBytes`,
+      message: "Expected an integer from 1 to 256.",
+    });
+  const validString =
+    typeof string.renderLineBreaks === "boolean" &&
+    typeof string.wrapLongLines === "boolean" &&
+    string.maximumVisibleLines === 2;
+  if (!validString)
+    issues.push({
+      path: `${path}.string`,
+      message: "Expected booleans and maximumVisibleLines equal to 2.",
+    });
+  const nestedFormat = enumValue(
+    nested.format,
+    ["compact", "pretty"],
+    `${path}.nested.format`,
+    issues,
+  );
+  if (
+    !integerGrouping ||
+    !notation ||
+    !floatPrecision ||
+    !decimalScale ||
+    !decimalGrouping ||
+    !dateFormat ||
+    !fractionalDigits ||
+    !booleanRepresentation ||
+    !binaryEncoding ||
+    !previewBytes ||
+    !validString ||
+    !nestedFormat
+  )
+    return null;
+  return {
+    integer: { grouping: integer.grouping as DigitGrouping },
+    floatingPoint: {
+      notation: floating.notation as FloatingNotation,
+      precision: floating.precision as number,
+    },
+    decimal: { scale: decimalScale, grouping: decimal.grouping as DigitGrouping },
+    date: { format: date.format as DateDisplayFormat },
+    timestamp: { fractionalDigits },
+    boolean: { representation: boolean.representation as BooleanRepresentation },
+    binary: {
+      encoding: binary.encoding as BinaryDisplayEncoding,
+      previewBytes: binary.previewBytes as number,
+    },
+    string: {
+      renderLineBreaks: string.renderLineBreaks as boolean,
+      wrapLongLines: string.wrapLongLines as boolean,
+      maximumVisibleLines: 2,
+    },
+    nested: { format: nested.format as NestedDisplayFormat },
+  };
+}
+
 function freezeSettings(settings: AppSettings): AppSettings {
   return Object.freeze({
     ...settings,
     copyCustomOptions: snapshotCopyOptions(settings.copyCustomOptions),
     copyLimits: Object.freeze({ ...settings.copyLimits }),
+    displayFormats: structuredClone(settings.displayFormats),
   });
 }
 
@@ -265,6 +520,7 @@ export function defaultAppSettings(): AppSettings {
     csvDefaultParsingMode: "auto",
     queryTempLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
     copyLimits: DEFAULT_COPY_LIMITS,
+    displayFormats: DEFAULT_DISPLAY_FORMATS,
   });
 }
 
@@ -273,10 +529,17 @@ export function parseAppSettings(value: unknown): AppSettings {
   if (!item)
     throw new InvalidAppSettingsError([{ path: "settings", message: "Expected an object." }]);
   const isV1 = item.schemaVersion === 1;
-  const issues = exactKeys(item, isV1 ? v1SettingsKeys : settingsKeys, "settings");
+  const isV2 = item.schemaVersion === 2;
+  const issues = exactKeys(
+    item,
+    isV1 ? v1SettingsKeys : isV2 ? v2SettingsKeys : settingsKeys,
+    "settings",
+  );
   const customOptions = parseCustomOptions(item.copyCustomOptions, issues);
   const copyLimits = isV1 ? DEFAULT_COPY_LIMITS : parseCopyLimits(item.copyLimits, issues);
-  if (!isV1 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
+  const displayFormats =
+    isV1 || isV2 ? DEFAULT_DISPLAY_FORMATS : parseDisplayFormats(item.displayFormats, issues);
+  if (!isV1 && !isV2 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
     issues.push({ path: "settings.schemaVersion", message: "Unsupported settings version." });
   }
   if (!copyPresets.includes(item.copyPreset as CopyPreset)) {
@@ -296,7 +559,8 @@ export function parseAppSettings(value: unknown): AppSettings {
       message: `Expected an integer from ${MIN_QUERY_TEMP_LIMIT_BYTES} to ${MAX_QUERY_TEMP_LIMIT_BYTES}.`,
     });
   }
-  if (issues.length > 0 || !customOptions || !copyLimits) throw new InvalidAppSettingsError(issues);
+  if (issues.length > 0 || !customOptions || !copyLimits || !displayFormats)
+    throw new InvalidAppSettingsError(issues);
   return freezeSettings({
     schemaVersion: APP_SETTINGS_SCHEMA_VERSION,
     copyPreset: item.copyPreset as CopyPreset,
@@ -304,6 +568,7 @@ export function parseAppSettings(value: unknown): AppSettings {
     csvDefaultParsingMode: item.csvDefaultParsingMode as CsvDefaultParsingMode,
     queryTempLimitBytes: item.queryTempLimitBytes as number,
     copyLimits,
+    displayFormats,
   });
 }
 

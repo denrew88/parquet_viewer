@@ -220,6 +220,9 @@ pub struct DataValue {
     pub kind: ValueKind,
     pub display: Option<String>,
     pub state: DataValueState,
+    pub source_display: Option<String>,
+    pub unit: Option<String>,
+    pub timezone: Option<String>,
     pub raw_display: Option<String>,
     pub diagnostic: Option<CellDiagnostic>,
 }
@@ -230,6 +233,9 @@ impl DataValue {
             kind: ValueKind::Null,
             display: None,
             state: DataValueState::Null,
+            source_display: None,
+            unit: None,
+            timezone: None,
             raw_display: None,
             diagnostic: None,
         }
@@ -244,18 +250,25 @@ impl DataValue {
         };
         Self {
             kind,
-            display: Some(display),
+            display: Some(display.clone()),
             state,
+            source_display: Some(display.clone()),
+            unit: None,
+            timezone: None,
             raw_display: None,
             diagnostic: None,
         }
     }
 
     pub fn converted(kind: ValueKind, display: impl Into<String>, raw: impl Into<String>) -> Self {
+        let display = display.into();
         Self {
             kind,
-            display: Some(display.into()),
+            display: Some(display.clone()),
             state: DataValueState::Valid,
+            source_display: Some(display),
+            unit: None,
+            timezone: None,
             raw_display: Some(raw.into()),
             diagnostic: None,
         }
@@ -266,6 +279,9 @@ impl DataValue {
             kind: ValueKind::String,
             display: Some(String::new()),
             state: DataValueState::Empty,
+            source_display: Some(String::new()),
+            unit: None,
+            timezone: None,
             raw_display: Some(raw.into()),
             diagnostic: None,
         }
@@ -276,6 +292,9 @@ impl DataValue {
             kind: ValueKind::Null,
             display: None,
             state: DataValueState::Null,
+            source_display: None,
+            unit: None,
+            timezone: None,
             raw_display: Some(raw.into()),
             diagnostic: None,
         }
@@ -292,12 +311,30 @@ impl DataValue {
             kind,
             display: Some(raw.clone()),
             state: DataValueState::Invalid,
+            source_display: None,
+            unit: None,
+            timezone: None,
             raw_display: Some(raw),
             diagnostic: Some(CellDiagnostic {
                 code: code.into(),
                 message: message.into(),
             }),
         }
+    }
+
+    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+        self.source_display = Some(source.into());
+        self
+    }
+
+    pub fn with_temporal_metadata(
+        mut self,
+        unit: impl Into<String>,
+        timezone: Option<&str>,
+    ) -> Self {
+        self.unit = Some(unit.into());
+        self.timezone = timezone.map(str::to_owned);
+        self
     }
 }
 

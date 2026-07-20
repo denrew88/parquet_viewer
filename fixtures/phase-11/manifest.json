@@ -1,0 +1,28 @@
+{
+  "contract": {
+    "compression": "Blosc/Zstd filter 32001",
+    "format": "oefh5",
+    "formatVersion": 3,
+    "logicalShape": "[time,wavelength]",
+    "physicalOesShape": "[wavelength,time]"
+  },
+  "files": [
+    {
+      "bytes": 15955,
+      "name": "oef-v3-int32.oes.h5",
+      "sha256": "d0f347257430219493b35eb1616379b03148ef70fb0152d3bb256a894457d505"
+    },
+    {
+      "bytes": 10808,
+      "name": "oef-v3-string-int64.oes.h5",
+      "sha256": "f6086fc30e11b63eb67941c7d10798fd00beccf45c046eece971f1aa41e104ac"
+    }
+  ],
+  "generator": {
+    "h5py": "3.16.0",
+    "hdf5": "2.0.0",
+    "hdf5plugin": "7.0.0",
+    "numpy": "1.26.4",
+    "python": "3.11.14"
+  }
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COPY_PRESETS } from "../copy/presets";
 import {
   APP_SETTINGS_SCHEMA_VERSION,
+  DEFAULT_DISPLAY_FORMATS,
   DEFAULT_QUERY_TEMP_LIMIT_BYTES,
   InvalidAppSettingsError,
   activeCopyOptions,
@@ -25,6 +26,7 @@ describe("app settings model", () => {
         maxCells: 1_000_000,
         maxBytes: 64 * 1024 * 1024,
       },
+      displayFormats: DEFAULT_DISPLAY_FORMATS,
     });
     expect(settings.queryTempLimitBytes).toBe(DEFAULT_QUERY_TEMP_LIMIT_BYTES);
     expect(activeCopyOptions(settings)).toEqual(COPY_PRESETS.excel);
@@ -54,7 +56,7 @@ describe("app settings model", () => {
 
   it.each([
     ["unknown root key", { ...defaultAppSettings(), future: true }],
-    ["wrong schema", { ...defaultAppSettings(), schemaVersion: 3 }],
+    ["wrong schema", { ...defaultAppSettings(), schemaVersion: 99 }],
     ["unknown preset", { ...defaultAppSettings(), copyPreset: "database" }],
     ["unknown CSV mode", { ...defaultAppSettings(), csvDefaultParsingMode: "guess" }],
     ["fractional temp limit", { ...defaultAppSettings(), queryTempLimitBytes: 1.5 }],

@@ -9,6 +9,7 @@ pub enum DataErrorCode {
     InvalidParquet,
     InvalidCsv,
     InvalidOesHdf5,
+    UnsupportedOesHdf5Compression,
     OesHdf5LimitExceeded,
     OesHdf5RuntimeUnavailable,
     InvalidEncoding,
@@ -109,6 +110,16 @@ impl DataError {
             DataErrorCode::OesHdf5LimitExceeded,
             format!(
                 "OES HDF5 safety limit exceeded in {}: {reason}",
+                path.display()
+            ),
+        )
+    }
+
+    pub fn unsupported_oes_hdf5_compression(path: &Path, reason: impl std::fmt::Display) -> Self {
+        Self::new(
+            DataErrorCode::UnsupportedOesHdf5Compression,
+            format!(
+                "Unsupported OES HDF5 compression in {}: {reason}",
                 path.display()
             ),
         )

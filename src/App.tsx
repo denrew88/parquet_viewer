@@ -68,6 +68,7 @@ import {
   parseAppSettings,
   type AppSettings,
   type CopyLimits,
+  type DisplayFormats,
 } from "./settings/model";
 import { VirtualDataGrid } from "./VirtualDataGrid";
 import { EMPTY_QUERY_PLAN, resultKey, type QueryPlan } from "./query/model";
@@ -328,6 +329,7 @@ interface DataViewProps {
   cancelDataBoundaryNavigation: BackendAdapter["cancelDataBoundaryNavigation"];
   copyLimits: CopyLimits;
   copyOptions: CopyOptions;
+  displayFormats: DisplayFormats;
   copyPresetError: string | null;
   copyPresetSaving: boolean;
   isLoading: boolean;
@@ -348,6 +350,7 @@ interface DataViewProps {
   documentId: string;
   findDataBoundary: BackendAdapter["findDataBoundary"];
   readPage(request: Parameters<BackendAdapter["readPage"]>[0]): Promise<DataPage>;
+  readCellValue: BackendAdapter["readCellValue"];
   summary: FileSummary;
 }
 
@@ -356,6 +359,7 @@ function DataView({
   cancelDataBoundaryNavigation,
   copyLimits,
   copyOptions,
+  displayFormats,
   copyPresetError,
   copyPresetSaving,
   isCancelling,
@@ -376,6 +380,7 @@ function DataView({
   documentId,
   findDataBoundary,
   readPage,
+  readCellValue,
   summary,
 }: DataViewProps) {
   const invalidValues = page.rows.flat().filter((value) => value.state === "invalid");
@@ -426,6 +431,7 @@ function DataView({
         cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
         copyLimits={copyLimits}
         copyOptions={copyOptions}
+        displayFormats={displayFormats}
         copyPresetError={copyPresetError}
         copyPresetSaving={copyPresetSaving}
         distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
@@ -450,6 +456,15 @@ function DataView({
         queryPlan={queryState?.draftPlan}
         queryStatus={queryState ? formatQueryToolbarStatus(queryState) : undefined}
         readPage={readPage}
+        readCellValue={(row, columnId) =>
+          readCellValue({
+            documentId,
+            sessionId: summary.sessionId,
+            ...(queryState?.queryId ? { queryId: queryState.queryId } : {}),
+            row,
+            columnId,
+          })
+        }
         resultKey={queryState ? resultKey(queryState.sessionId, queryState.queryId) : undefined}
         summary={summary}
       />
@@ -3133,6 +3148,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                     cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
                     copyLimits={appSettings.copyLimits}
                     copyOptions={activeCopyOptions(appSettings)}
+                    displayFormats={appSettings.displayFormats}
                     copyPresetError={copyPresetSaveError}
                     copyPresetSaving={copyPresetSaving}
                     distinctValuesForColumn={(columnId) => distinctValuesState(document, columnId)}
@@ -3196,6 +3212,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                             documentId: document.documentId!,
                           });
                     }}
+                    readCellValue={backend.readCellValue}
                     summary={document.summary}
                   />
                 </div>

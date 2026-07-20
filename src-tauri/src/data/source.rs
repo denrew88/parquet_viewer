@@ -20,6 +20,11 @@ pub struct QuerySourceSpec {
     pub provider: Arc<dyn QueryInputProvider>,
 }
 
+pub struct QueryExactValues {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<crate::domain::DataValue>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CsvQuerySpec {
     pub header_used: bool,
@@ -40,6 +45,14 @@ pub trait QueryInputProvider: Debug + Send + Sync {
 
     fn format_query_display(&self, _column: &str, _kind: ValueKind, value: &str) -> String {
         value.to_owned()
+    }
+
+    fn exact_query_values(
+        &self,
+        _row_ids: &[u64],
+        _columns: &[String],
+    ) -> Result<Option<QueryExactValues>, DataError> {
+        Ok(None)
     }
 }
 
@@ -100,6 +113,22 @@ pub trait TabularSource: Debug + Send + Sync {
         limit: usize,
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError>;
+
+    fn read_cell_value(
+        &self,
+        row: u64,
+        column: &str,
+    ) -> Result<crate::domain::DataValue, DataError> {
+        let columns = [column.to_owned()];
+        let page = self.read_page_projected(row, 1, Some(&columns))?;
+        page.rows
+            .into_iter()
+            .next()
+            .and_then(|mut values| values.pop())
+            .ok_or_else(|| {
+                DataError::invalid_request("The requested cell is outside the data table.")
+            })
+    }
 
     fn find_boundary(
         &self,
@@ -169,6 +198,14 @@ impl DataSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         self.inner.read_page_projected(offset, limit, columns)
+    }
+
+    pub fn read_cell_value(
+        &self,
+        row: u64,
+        column: &str,
+    ) -> Result<crate::domain::DataValue, DataError> {
+        self.inner.read_cell_value(row, column)
     }
 
     pub fn query_source_spec(&self) -> Result<QuerySourceSpec, DataError> {

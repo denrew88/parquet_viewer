@@ -192,9 +192,9 @@ fn convert_value_with_display(
             let display = if format_display {
                 format_numeric_display(&normalized, kind, options)
             } else {
-                normalized
+                normalized.clone()
             };
-            DataValue::converted(kind, display, raw)
+            DataValue::converted(kind, display, raw).with_source(normalized)
         },
     )
 }

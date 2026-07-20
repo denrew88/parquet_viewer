@@ -24,13 +24,17 @@
 - 64열 source projection 상한을 copy 상한으로 잘못 사용하던 회귀를 수정했다. 65열 이상 선택은
   64열 이하 projection으로 분할하고, 설정 V2의 app-global hard limit(기본 1,000,000셀/64 MiB)을
   적용한다. browser 480x65와 실제 OES 128x65의 전체 Windows clipboard 복사가 PASS했다.
+- Phase 11은 실제 `oefh5` version 3 구조, 5,850,000행 Parquet scroll/query 회귀, 마지막 행 geometry,
+  source-native Ctrl 경계 탐색, column auto-fit과 타입별 전역 display/raw/copy 분리를 확정했다.
+  제품 구현과 현재 fixture의 자동·native 검증은 완료했으며 high-cardinality query 성능 근거,
+  실제 Excel, 150% DPI와 clean-machine installer 검증은 gate로 남아 있다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 10까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 11까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -58,6 +62,7 @@
 | Phase 8  | 구현 및 자동/native 검증 완료, 일부 UI·설치 gate BLOCKED | 컨텍스트 메뉴, 다중 실행, 다중 문서 탭                       |
 | Phase 9  | 구현 완료, 필수 UI·soak gate BLOCKED                     | 포맷 registry, copy 설정, CSV profile, filter·search·sort    |
 | Phase 10 | 구현 완료, 필수 security·performance·installer gate BLOCKED | OES HDF5 source, static Blosc decode와 bounded matrix paging |
+| Phase 11 | 구현 완료, 필수 performance·외부 gate BLOCKED (2026-07-20) | OEF H5 v3, 대용량 grid/query, 경계 탐색과 값 표현 안정화     |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
@@ -67,6 +72,9 @@ Phase 9 결과는 `artifacts/phase-9/50-integration.md`와 `90-review.md`를 따
 Phase 10의 확정 범위와 구현 gate는 `artifacts/phase-10/00-scope.md`부터
 `40-implementation-plan.md`까지를 따른다. Phase 9의 외부 환경 BLOCKED 항목은 Phase 10을
 시작해도 해소된 것으로 간주하지 않으며 공통 회귀와 최종 배포 판정에서 계속 추적한다.
+Phase 11의 확정 범위와 구현 gate는 `artifacts/phase-11/00-scope.md`부터
+`40-implementation-plan.md`까지를 따른다. Phase 10의 구현 기록은 보존하지만 실제 OEF H5 입력
+계약은 Phase 11이 대체한다. 이전 Phase의 BLOCKED 항목은 Phase 11에서도 계속 추적한다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -418,6 +426,9 @@ profile과 전체 파일 대상 filter·search·stable sort를 bounded memory/di
 
 ## Phase 10. OES HDF5 읽기 지원
 
+> 이 절은 2026-07-17 당시 구현 계약과 결과를 보존한다. 실제 OEF H5 v3 입력 구조는 Phase 11과
+> `docs/PROJECT_SPEC.md` 12절이 대체한다.
+
 **목표:** 루트의 `time`, `wavelength` attribute와 2차원 int32 `intensity` dataset을 사용하는
 OES HDF5를 정적 HDF5/Blosc runtime으로 안전하게 열고, 기존 tabular grid에서 bounded page와
 projection으로 탐색한다.
@@ -464,3 +475,57 @@ projection으로 탐색한다.
 - OES가 전용 grid 분기 없이 generic UI, selection과 clipboard에 표시된다.
 - CSV/Parquet와 Phase 9 query의 정확성·성능·native packaging 회귀가 없다.
 - HIGH/MEDIUM 결함, 필수 BLOCKED가 없고 integration/review/UI/native 증거가 완성된다.
+
+## Phase 11. OEF H5 v3와 대용량 탐색·값 표현 안정화
+
+**목표:** 실제 `oefh5` version 3의 dataset/transpose 구조를 지원하고, WebView scroll 한계와 마지막
+행 geometry를 수정한다. 대용량 Parquet filter/sort와 Ctrl 경계 탐색을 source-native bounded
+algorithm으로 가속하며 raw typed value, 타입별 전역 display와 copy 표현을 분리한다.
+
+**상태:** 구현 완료, 필수 performance·외부 gate BLOCKED (2026-07-20)
+
+구현은 `artifacts/phase-11/40-implementation-plan.md`의 11A~11F 순서를 따른다. 제품 동작은
+`00-scope.md`, 검증은 `10-test-plan.md`, UI는 `20-ux-design.md`, source/value/grid/query 설계는
+`30-technical-design.md`를 따른다.
+
+### 해야 할 일
+
+- `format=oefh5`, `format_version=3`, `shape=[n_time,n_wavelength]` attribute 검증
+- `/time`, `/wavelength` 1차원 dataset과 `/oes[wavelength,time]` int32/int64 transpose paging
+- Blosc filter 32001/Zstd static decode, decoded 64 MiB 이하의 임의 chunk shape와 unknown compression typed error
+- source typed payload, display/copy formatter와 Settings V3 atomic migration
+- timestamp `YYYY-MM-DD HH24:MI:SS.F...`, timezone annotation 제거와 raw metadata 보존
+- 실제 문자열 개행, 최대 2줄의 고정 row 높이와 전체 값 보기
+- 열 header separator 더블클릭/menu의 loaded·cached display 기준 너비 auto-fit과 80..800 px clamp
+- logical/physical offset을 분리한 segmented/anchored row virtualization
+- 실제 마지막 row의 content/border와 horizontal scrollbar geometry 수정
+- OEF/Parquet/CSV/query source-native boundary scanner, cache, cancellation과 target-only IPC
+- Parquet predicate/projection pushdown, 최소 result index와 late page materialization
+- temp warning의 estimated bytes, 기본 5 GiB safety reserve와 10 GiB hard cap 구분
+- 세 viewport, 실제 WebView2 100%/150% DPI, Windows clipboard와 release/NSIS 회귀 검증
+
+### 테스트
+
+- OEF H5 v3 attribute/dataset/type/shape/filter/link matrix와 `/oes[w,t]` transpose checksum
+- time/wavelength integer/float/string, oes int32/int64 경계와 string time `""` empty 판정
+- decoded 64 MiB 이하의 서로 다른 chunk shape와 초과 chunk limit 오류, first/middle/chunk-boundary/last/EOF projection
+- 5,850,000행의 986,803 전후와 실제 마지막 행, 기존 10M first/middle/last scroll
+- 마지막 row full geometry, fixed two-line string과 세 viewport screenshot
+- header/menu auto-fit의 font/padding/icon 측정, no-backend-scan과 document별 width 보존
+- Ctrl/Ctrl+Shift/Ctrl+Alt/Ctrl+Alt+Shift target, focus, stale cancellation과 page-call count
+- OEF no-empty O(1), Parquet vector scan과 반복 boundary cache release 성능
+- 5.85M/10M Parquet filter/sort count/checksum, plan pushdown, memory/temp/cleanup
+- timestamp unit/timezone, 모든 scalar의 raw/display/copy와 Rust/TypeScript parity
+- Settings V2→V3 migration, copy snapshot, actual Windows clipboard와 Excel round-trip
+- frontend/Rust 전체 gate, release/NSIS clean runtime과 Phase 1~10 regression
+
+### 완료 조건
+
+- `artifacts/phase-11/10-test-plan.md`의 H5V3/VIRT/GEO/AFIT/NAV/QRY/VAL/UI/PKG 필수 항목이 PASS다.
+- 실제 OEF H5 v3를 전체 `/oes` materialization 없이 정확한 transpose mapping으로 읽는다.
+- 5.85M과 10M Parquet의 실제 마지막 행을 완전히 표시하고 선택·복사할 수 있다.
+- 대용량 filter/sort가 정확하고 전체 display/raw 문자열 복제나 26 GiB 오인 경고가 없다.
+- Ctrl 경계 탐색이 empty 의미를 보존하고 중간 page request 없이 성능 예산을 만족한다.
+- timestamp, multiline string과 모든 scalar가 raw/display/copy 정밀도 계약을 지킨다.
+- column auto-fit이 전체 파일 scan 없이 현재 표시 후보로 동작하고 수동 resize·문서 상태를 보존한다.
+- HIGH/MEDIUM 결함과 필수 BLOCKED가 없고 integration/review/UI/native 증거가 완성된다.

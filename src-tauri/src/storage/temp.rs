@@ -15,18 +15,38 @@ use serde::Serialize;
 
 use crate::domain::{DataError, DataErrorCode};
 
-const MIN_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+pub const QUERY_TEMP_HARD_CAP_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+pub const QUERY_TEMP_SAFETY_RESERVE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const ROOT_CREATE_ATTEMPTS: usize = 40;
 const ROOT_CREATE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(10);
 const JANITOR_LOCK_NAME: &str = ".janitor.lock";
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryTempUsage {
     pub process_bytes: u64,
     pub limit_bytes: u64,
     pub available_bytes: u64,
     pub active_queries: usize,
+    pub estimated_temp_bytes: Option<u64>,
+    pub safety_reserve_bytes: u64,
+    pub hard_cap_bytes: u64,
+    pub free_bytes: u64,
+}
+
+impl Default for QueryTempUsage {
+    fn default() -> Self {
+        Self {
+            process_bytes: 0,
+            limit_bytes: QUERY_TEMP_HARD_CAP_BYTES,
+            available_bytes: 0,
+            active_queries: 0,
+            estimated_temp_bytes: None,
+            safety_reserve_bytes: QUERY_TEMP_SAFETY_RESERVE_BYTES,
+            hard_cap_bytes: QUERY_TEMP_HARD_CAP_BYTES,
+            free_bytes: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -83,12 +103,13 @@ impl QueryTempManager {
             owner_lock: Mutex::new(Some(owner_lock)),
             active_paths: Arc::new(Mutex::new(HashSet::new())),
             active_queries: Arc::new(AtomicUsize::new(0)),
-            limit_bytes: AtomicU64::new(limit_bytes),
+            limit_bytes: AtomicU64::new(effective_limit(limit_bytes)),
         })
     }
 
     pub fn set_limit(&self, limit_bytes: u64) {
-        self.limit_bytes.store(limit_bytes, Ordering::Release);
+        self.limit_bytes
+            .store(effective_limit(limit_bytes), Ordering::Release);
     }
 
     pub fn allocate(&self, document_id: &str, query_id: &str) -> Result<QueryTempLease, DataError> {
@@ -96,16 +117,13 @@ impl QueryTempManager {
         validate_identity(query_id)?;
         let usage = self.usage()?;
         if usage.process_bytes >= usage.limit_bytes {
-            return Err(DataError::invalid_request(
+            return Err(DataError::query_temp_limit(
                 "The process query temporary storage limit has been reached.",
             ));
         }
-        let total = fs2::total_space(&self.process_directory)
-            .map_err(|error| temp_io(&self.process_directory, error))?;
-        let reserve = MIN_FREE_BYTES.max(total / 10);
-        if usage.available_bytes <= reserve {
-            return Err(DataError::invalid_request(format!(
-                "Query requires free disk space above the reserved {reserve} bytes."
+        if usage.free_bytes <= QUERY_TEMP_SAFETY_RESERVE_BYTES {
+            return Err(DataError::query_temp_limit(format!(
+                "Query requires free disk space above the fixed safety reserve of {QUERY_TEMP_SAFETY_RESERVE_BYTES} bytes."
             )));
         }
         let path = self
@@ -131,12 +149,17 @@ impl QueryTempManager {
     }
 
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
+        let free_bytes = fs2::available_space(&self.process_directory)
+            .map_err(|error| temp_io(&self.process_directory, error))?;
         Ok(QueryTempUsage {
             process_bytes: directory_bytes(&self.process_directory)?,
             limit_bytes: self.limit_bytes.load(Ordering::Acquire),
-            available_bytes: fs2::available_space(&self.process_directory)
-                .map_err(|error| temp_io(&self.process_directory, error))?,
+            available_bytes: free_bytes,
             active_queries: self.active_queries.load(Ordering::Acquire),
+            estimated_temp_bytes: None,
+            safety_reserve_bytes: QUERY_TEMP_SAFETY_RESERVE_BYTES,
+            hard_cap_bytes: QUERY_TEMP_HARD_CAP_BYTES,
+            free_bytes,
         })
     }
 
@@ -184,12 +207,9 @@ impl QueryTempManager {
                 usage.limit_bytes
             )));
         }
-        let total = fs2::total_space(&self.process_directory)
-            .map_err(|error| temp_io(&self.process_directory, error))?;
-        let reserve = MIN_FREE_BYTES.max(total / 10);
-        if usage.available_bytes <= reserve {
+        if usage.free_bytes <= QUERY_TEMP_SAFETY_RESERVE_BYTES {
             return Ok(Some(format!(
-                "Query stopped to preserve the required {reserve} bytes of free disk space."
+                "Query stopped to preserve the fixed safety reserve of {QUERY_TEMP_SAFETY_RESERVE_BYTES} bytes of free disk space."
             )));
         }
         Ok(None)
@@ -209,6 +229,10 @@ impl QueryTempManager {
     pub fn process_directory(&self) -> &Path {
         &self.process_directory
     }
+}
+
+fn effective_limit(configured_limit: u64) -> u64 {
+    configured_limit.min(QUERY_TEMP_HARD_CAP_BYTES)
 }
 
 impl QueryTempLease {
@@ -431,6 +455,37 @@ fn temp_io(path: &Path, error: impl std::fmt::Display) -> DataError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temp_budget_uses_fixed_reserve_and_ten_gib_hard_cap() {
+        assert_eq!(QUERY_TEMP_SAFETY_RESERVE_BYTES, 5 * 1024 * 1024 * 1024);
+        assert_eq!(QUERY_TEMP_HARD_CAP_BYTES, 10 * 1024 * 1024 * 1024);
+        assert_eq!(effective_limit(64 * 1024 * 1024), 64 * 1024 * 1024);
+        assert_eq!(
+            effective_limit(1024 * 1024 * 1024 * 1024),
+            QUERY_TEMP_HARD_CAP_BYTES
+        );
+    }
+
+    #[test]
+    fn temp_usage_wire_separates_estimate_reserve_cap_and_free_space() {
+        let usage = QueryTempUsage {
+            process_bytes: 100,
+            limit_bytes: 200,
+            available_bytes: 300,
+            active_queries: 1,
+            estimated_temp_bytes: None,
+            safety_reserve_bytes: QUERY_TEMP_SAFETY_RESERVE_BYTES,
+            hard_cap_bytes: QUERY_TEMP_HARD_CAP_BYTES,
+            free_bytes: 300,
+        };
+        let json = serde_json::to_value(usage).unwrap();
+        assert!(json["estimatedTempBytes"].is_null());
+        assert_eq!(json["safetyReserveBytes"], QUERY_TEMP_SAFETY_RESERVE_BYTES);
+        assert_eq!(json["hardCapBytes"], QUERY_TEMP_HARD_CAP_BYTES);
+        assert_eq!(json["freeBytes"], 300);
+        assert_eq!(json["availableBytes"], 300);
+    }
 
     #[test]
     fn tmp_lease_is_bounded_and_cleans_up_on_drop() {

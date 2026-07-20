@@ -15,8 +15,12 @@ const fixture = path.resolve(
 const output = path.resolve(
   process.argv[4] ?? path.join(root, "artifacts", "phase-6", "boundary-perf.json"),
 );
-const expectedRows = 250_000;
+const expectedRows = Number(process.argv[5] ?? 250_000);
+const columnIndex = Number(process.argv[6] ?? 0);
+const expectedColumnName = process.argv[7] ?? "column_000";
 const samples = 5;
+assert.ok(Number.isSafeInteger(expectedRows) && expectedRows > 0, "Expected rows must be positive.");
+assert.ok(Number.isSafeInteger(columnIndex) && columnIndex >= 0, "Column index must be non-negative.");
 
 function workingSetBytes(pid) {
   const output = execFileSync(
@@ -59,8 +63,8 @@ try {
   const grid = page.getByRole("grid", { name: "Data preview" });
   const cell = (row, column) =>
     page.locator(`[data-grid-row="${row}"][data-grid-column="${column}"]`);
-  await cell(0, 0).waitFor({ state: "visible", timeout: 30_000 });
-  await cell(0, 0).click();
+  await cell(0, columnIndex).waitFor({ state: "visible", timeout: 30_000 });
+  await cell(0, columnIndex).click();
   await page.evaluate(() => {
     globalThis.__DATA_VIEWER_IPC_TELEMETRY__ = { counts: {} };
   });
@@ -74,7 +78,7 @@ try {
       row,
       { timeout: 60_000 },
     );
-    await cell(row, 0).waitFor({ state: "visible", timeout: 30_000 });
+    await cell(row, columnIndex).waitFor({ state: "visible", timeout: 30_000 });
   };
   const moveToTop = async () => {
     await page.keyboard.press("Control+Alt+ArrowUp");
@@ -114,7 +118,8 @@ try {
   const result = {
     fixture,
     rows: expectedRows,
-    column: "column_000",
+    column: expectedColumnName,
+    columnIndex,
     warmupMs: warmup.elapsedMs,
     warmupCommandCounts: warmup.commandCounts,
     timingsMs,
@@ -136,7 +141,7 @@ try {
     "Every Ctrl+Down sample must invoke exactly one boundary resolver.",
   );
   assert.ok(readPageIpcPerMoveMax <= 1, "Ctrl+Down must read at most the resolved target page.");
-  assert.equal(await grid.getAttribute("data-active-column"), "0");
+  assert.equal(await grid.getAttribute("data-active-column"), String(columnIndex));
 } finally {
   await browser?.close().catch(() => undefined);
   if (!app.killed) app.kill();

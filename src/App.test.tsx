@@ -380,6 +380,10 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
     takePendingOpenRequests: vi.fn().mockResolvedValue([]),
     onOpenDataRequest: vi.fn().mockResolvedValue(() => undefined),
     readPage: vi.fn().mockResolvedValue(page),
+    readCellValue: vi.fn(async (request) => {
+      const column = summary.columns.findIndex((candidate) => candidate.name === request.columnId);
+      return page.rows[request.row]?.[column] ?? { kind: "null", display: null };
+    }),
     findDataBoundary: vi.fn(async (request) => ({
       ...request,
       targetRow: request.row,
@@ -405,6 +409,10 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
       limitBytes: defaultAppSettings().queryTempLimitBytes,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 0,
+      estimatedTempBytes: null,
+      safetyReserveBytes: 5 * 1024 ** 3,
+      hardCapBytes: 10 * 1024 ** 3,
+      freeBytes: 20 * 1024 ** 3,
     }),
     clearQueryTemp: vi.fn().mockResolvedValue({
       deletedBytes: 0,
@@ -415,6 +423,10 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
         limitBytes: defaultAppSettings().queryTempLimitBytes,
         availableBytes: 20 * 1024 ** 3,
         activeQueries: 0,
+        estimatedTempBytes: null,
+        safetyReserveBytes: 5 * 1024 ** 3,
+        hardCapBytes: 10 * 1024 ** 3,
+        freeBytes: 20 * 1024 ** 3,
       },
     }),
     getDataFileStatus: vi.fn().mockResolvedValue(summary),
@@ -862,7 +874,16 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open file" }));
 
-    for (const display of typedPage.rows[0].map((value) => value.display as string)) {
+    const expectedDisplays = [
+      "9223372036854775807",
+      "18446744073709551615",
+      "1234567890.123456789",
+      "2026-07-14 12:34:56.123456789",
+      "hex:0001020304 (5 bytes)",
+      "[1, null, 9223372036854775807]",
+      '{"id":1,"payload":{"active":true}}',
+    ];
+    for (const display of expectedDisplays) {
       expect(await screen.findByText(display)).toHaveAttribute("title", display);
     }
   });
@@ -1660,7 +1681,7 @@ describe("App", () => {
       await waitFor(() => expect(writeText).toHaveBeenCalledWith('"1"|"alpha"'));
 
       fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
-      fireEvent.click(screen.getByRole("menuitem", { name: "Copy cell value" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy configured value" }));
       await waitFor(() => expect(writeText).toHaveBeenCalledWith('"alpha"'));
 
       fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
@@ -2455,6 +2476,10 @@ describe("App", () => {
       limitBytes: 10 * 1024 ** 3,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 1,
+      estimatedTempBytes: null,
+      safetyReserveBytes: 5 * 1024 ** 3,
+      hardCapBytes: 10 * 1024 ** 3,
+      freeBytes: 20 * 1024 ** 3,
     });
     const clearQueryTemp = vi.fn().mockResolvedValue({
       deletedBytes: 128 * 1024 * 1024,
@@ -2465,6 +2490,10 @@ describe("App", () => {
         limitBytes: 10 * 1024 ** 3,
         availableBytes: 20 * 1024 ** 3,
         activeQueries: 1,
+        estimatedTempBytes: null,
+        safetyReserveBytes: 5 * 1024 ** 3,
+        hardCapBytes: 10 * 1024 ** 3,
+        freeBytes: 20 * 1024 ** 3,
       },
     });
     render(<App backend={backend({ getQueryTempUsage, clearQueryTemp })} />);

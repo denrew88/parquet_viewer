@@ -9,14 +9,16 @@ import type {
   FindBoundaryResponse,
   ReadPageRequest,
 } from "./backend";
+import { VirtualDataGrid, type VirtualDataGridProps } from "./VirtualDataGrid";
 import {
   GRID_COLUMN_OVERSCAN,
   GRID_MAX_COLUMN_WIDTH,
+  GRID_MAX_SEGMENT_ROWS,
   GRID_MIN_COLUMN_WIDTH,
   GRID_ROW_OVERSCAN,
-  VirtualDataGrid,
-  type VirtualDataGridProps,
-} from "./VirtualDataGrid";
+  autoFitColumnWidth,
+  segmentStartForRow,
+} from "./gridSizing";
 import {
   GRID_PAGE_COLUMN_LIMIT,
   compatiblePageFor,
@@ -27,6 +29,23 @@ import { EMPTY_QUERY_PLAN, type QueryPlan } from "./query/model";
 import type { DistinctValuesState } from "./query/ColumnFilterPopover";
 
 const columns = Array.from({ length: 120 }, (_, index) => `column_${index}`);
+
+describe("Phase 11 grid sizing primitives", () => {
+  it("maps huge logical rows into a bounded segment", () => {
+    expect(segmentStartForRow(0, 5_850_000)).toBe(0);
+    const middle = segmentStartForRow(986_803, 5_850_000);
+    expect(middle).toBeGreaterThan(0);
+    expect(986_803 - middle).toBeLessThan(GRID_MAX_SEGMENT_ROWS);
+    expect(segmentStartForRow(5_849_999, 5_850_000)).toBe(5_850_000 - GRID_MAX_SEGMENT_ROWS);
+  });
+
+  it("auto fits the longest logical line and clamps the result", () => {
+    const measure = (value: string) => value.length * 10;
+    expect(autoFitColumnWidth("name", ["short", "longest\nline"], measure, 20)).toBe(90);
+    expect(autoFitColumnWidth("x", ["y"], () => 1, 0)).toBe(GRID_MIN_COLUMN_WIDTH);
+    expect(autoFitColumnWidth("x", ["z".repeat(1000)], measure, 20)).toBe(GRID_MAX_COLUMN_WIDTH);
+  });
+});
 
 function makePage(offset = 0): DataPage {
   return {
@@ -624,24 +643,26 @@ describe("VirtualDataGrid", () => {
     const initial = makeNavigationPage(
       { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
       names,
-      450,
+      250_000,
       (row) => occupiedValue(String(row)),
       null,
     );
     const resolver = vi.fn(async (request: FindBoundaryRequest) =>
-      boundaryResponse(request, 449, "a", 450),
+      boundaryResponse(request, 249_999, "a", 250_000),
     );
     const readPage = vi.fn(async (request: ReadPageRequest) =>
-      makeNavigationPage(request, names, 450, (row) => occupiedValue(String(row)), 450),
+      makeNavigationPage(request, names, 250_000, (row) => occupiedValue(String(row)), 250_000),
     );
     const { grid } = renderGrid(readPage, undefined, navigationSummary, initial, {
       findDataBoundary: resolver,
     });
     fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
-    await waitFor(() => expect(grid).toHaveAttribute("data-active-row", "449"));
+    await waitFor(() => expect(grid).toHaveAttribute("data-active-row", "249999"));
+    await waitFor(() =>
+      expect(grid.querySelector('[data-grid-row="249999"][data-grid-column="0"]')).toBeVisible(),
+    );
     expect(resolver).toHaveBeenCalledTimes(1);
-    expect(readPage).toHaveBeenCalledTimes(1);
-    expect(readPage).toHaveBeenCalledWith(expect.objectContaining({ offset: 400 }));
+    expect(readPage.mock.calls.map(([request]) => request.offset)).toEqual([249_800]);
   });
 
   it("NAV-RPC-002 keeps selection and scroll unchanged when the target page fails", async () => {
@@ -1010,16 +1031,145 @@ describe("VirtualDataGrid", () => {
     expect(separator).toHaveAttribute("aria-valuenow", String(GRID_MAX_COLUMN_WIDTH));
   });
 
+  it("auto fits a column from the separator and the accessible column chooser action", () => {
+    renderGrid();
+    const separator = screen.getByRole("separator", { name: "Resize column_0" });
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator).toHaveAttribute("aria-valuenow", String(GRID_MAX_COLUMN_WIDTH));
+    fireEvent.doubleClick(separator);
+    expect(Number(separator.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(
+      GRID_MIN_COLUMN_WIDTH,
+    );
+    expect(Number(separator.getAttribute("aria-valuenow"))).toBeLessThan(GRID_MAX_COLUMN_WIDTH);
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(screen.getByRole("button", { name: "Auto fit column_0" }));
+    expect(Number(separator.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(
+      GRID_MIN_COLUMN_WIDTH,
+    );
+    expect(Number(separator.getAttribute("aria-valuenow"))).toBeLessThan(GRID_MAX_COLUMN_WIDTH);
+  });
+
   it("opens the full-value inspector and returns focus to the logical grid owner", async () => {
     const { grid } = renderGrid();
     fireEvent.doubleClick(within(grid).getByText("R0C0"));
     const inspector = screen.getByRole("dialog", { name: "Full cell value" });
-    expect(within(inspector).getByText("R0C0")).toBeInTheDocument();
+    expect(within(inspector).getAllByText("R0C0")).toHaveLength(2);
     fireEvent.keyDown(inspector, { key: "Escape" });
     await waitFor(() => expect(inspector).not.toBeInTheDocument());
     await waitFor(() => expect(grid).toHaveFocus());
     expect(grid).toHaveAttribute("data-active-row", "0");
     expect(grid).toHaveAttribute("data-active-column", "0");
+  });
+
+  it("exposes timestamp display, raw metadata, and explicit copy representations", async () => {
+    const writeClipboardText = vi.fn(async () => undefined);
+    const timestampPage = makePage();
+    timestampPage.rows[0][0] = {
+      kind: "timestamp",
+      display: "2025-12-18 10:23:34.111111111",
+      rawDisplay: "1766021014111111111 [unit=ns, timezone=Asia/Seoul]",
+      state: "valid",
+    };
+    const { grid } = renderGrid(undefined, writeClipboardText, summary, timestampPage);
+    fireEvent.doubleClick(within(grid).getByText("2025-12-18 10:23:34.111111111"));
+    const inspector = screen.getByRole("dialog", { name: "Full cell value" });
+    expect(within(inspector).getByText("Unit: ns")).toBeInTheDocument();
+    expect(within(inspector).getByText("Timezone: Asia/Seoul")).toBeInTheDocument();
+    fireEvent.click(within(inspector).getByRole("button", { name: "Copy raw value" }));
+    await waitFor(() =>
+      expect(writeClipboardText).toHaveBeenCalledWith(
+        "1766021014111111111 [unit=ns, timezone=Asia/Seoul]",
+      ),
+    );
+  });
+
+  it("loads an explicit full binary value only when the inspector opens", async () => {
+    const binaryPage = makePage();
+    binaryPage.rows[0][0] = {
+      kind: "binary",
+      display: "base64:AQIDBA== (4096 bytes)",
+      sourceDisplay: "base64:AQIDBA== (4096 bytes)",
+      state: "valid",
+    };
+    const readCellValue = vi.fn(async () => ({
+      kind: "binary" as const,
+      display: "base64:AQIDBAUGBwg= (8 bytes)",
+      sourceDisplay: "base64:AQIDBAUGBwg= (8 bytes)",
+      state: "valid" as const,
+    }));
+    const { grid } = renderGrid(undefined, undefined, summary, binaryPage, { readCellValue });
+    expect(readCellValue).not.toHaveBeenCalled();
+    const binaryCell = grid.querySelector<HTMLElement>('[data-grid-row="0"][data-grid-column="0"]');
+    expect(binaryCell).not.toBeNull();
+    fireEvent.doubleClick(binaryCell!);
+    await waitFor(() => expect(readCellValue).toHaveBeenCalledWith(0, "column_0"));
+    const inspector = screen.getByRole("dialog", { name: "Full cell value" });
+    await waitFor(() =>
+      expect(within(inspector).getAllByText(/AQIDBAUGBwg=/).length).toBeGreaterThan(0),
+    );
+  });
+
+  it("keeps a late full-value response from overwriting a newer inspector", async () => {
+    let resolveFirst!: (value: DataValue) => void;
+    const first = new Promise<DataValue>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const readCellValue = vi.fn((row: number) =>
+      row === 0
+        ? first
+        : Promise.resolve({
+            kind: "string" as const,
+            display: "full-second",
+            sourceDisplay: "full-second",
+            state: "valid" as const,
+          }),
+    );
+    const { grid } = renderGrid(undefined, undefined, summary, makePage(), { readCellValue });
+    fireEvent.doubleClick(
+      grid.querySelector<HTMLElement>('[data-grid-row="0"][data-grid-column="0"]')!,
+    );
+    fireEvent.doubleClick(
+      grid.querySelector<HTMLElement>('[data-grid-row="1"][data-grid-column="0"]')!,
+    );
+    const inspector = screen.getByRole("dialog", { name: "Full cell value" });
+    await waitFor(() =>
+      expect(within(inspector).getAllByText("full-second").length).toBeGreaterThan(0),
+    );
+    resolveFirst({
+      kind: "string",
+      display: "late-first",
+      sourceDisplay: "late-first",
+      state: "valid",
+    });
+    await waitFor(() =>
+      expect(within(inspector).queryByText("late-first")).not.toBeInTheDocument(),
+    );
+    expect(within(inspector).getByText(/Row 2,/)).toBeInTheDocument();
+  });
+
+  it("does not reopen a closed inspector when its full value arrives", async () => {
+    let resolveValue!: (value: DataValue) => void;
+    const readCellValue = vi.fn(
+      () =>
+        new Promise<DataValue>((resolve) => {
+          resolveValue = resolve;
+        }),
+    );
+    const { grid } = renderGrid(undefined, undefined, summary, makePage(), { readCellValue });
+    fireEvent.doubleClick(
+      grid.querySelector<HTMLElement>('[data-grid-row="0"][data-grid-column="0"]')!,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close value inspector" }));
+    resolveValue({
+      kind: "string",
+      display: "late-value",
+      sourceDisplay: "late-value",
+      state: "valid",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Full cell value" })).not.toBeInTheDocument(),
+    );
   });
 
   it("keeps logical range selection across keyboard movement", () => {
@@ -1277,6 +1427,9 @@ describe("VirtualDataGrid", () => {
       </div>,
     );
     const grid = screen.getByRole("grid", { name: "Data preview" });
+    const resizedColumn = screen.getByRole("separator", { name: "Resize column_0" });
+    fireEvent.keyDown(resizedColumn, { key: "End" });
+    expect(resizedColumn).toHaveAttribute("aria-valuenow", String(GRID_MAX_COLUMN_WIDTH));
     fireEvent.click(within(grid).getByText("R3C2"));
     expect(grid).toHaveAttribute("data-selection-top", "3");
     fireEvent.click(within(grid).getByRole("columnheader", { name: "column_0" }));
@@ -1290,6 +1443,10 @@ describe("VirtualDataGrid", () => {
     );
     expect(grid).toHaveAttribute("data-selection-top", "0");
     expect(grid).toHaveAttribute("data-selection-left", "0");
+    expect(screen.getByRole("separator", { name: "Resize column_0" })).toHaveAttribute(
+      "aria-valuenow",
+      String(GRID_MAX_COLUMN_WIDTH),
+    );
     release?.(makePage(200));
     await Promise.resolve();
     expect(writeClipboardText).not.toHaveBeenCalled();

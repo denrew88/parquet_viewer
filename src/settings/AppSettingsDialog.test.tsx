@@ -37,7 +37,7 @@ describe("AppSettingsDialog", () => {
     );
   });
 
-  it("accepts the 64 MiB to 1 TiB query temporary-storage range", async () => {
+  it("accepts the 64 MiB to 10 GiB query temporary-storage range", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
     const input = screen.getByRole("spinbutton", { name: "Query temporary storage limit" });
@@ -63,6 +63,52 @@ describe("AppSettingsDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Copy settings" }));
     expect(onOpenCopySettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies type-wide display formats while keeping the two-line string contract", async () => {
+    const user = userEvent.setup();
+    const { onApply } = renderDialog();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Integer grouping" }), "comma");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Timestamp fractional digits mode" }),
+      "fixed",
+    );
+    const digits = screen.getByRole("spinbutton", { name: "Timestamp fractional digits" });
+    await user.clear(digits);
+    await user.type(digits, "6");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        displayFormats: expect.objectContaining({
+          integer: { grouping: "comma" },
+          timestamp: { fractionalDigits: { mode: "fixed", digits: 6 } },
+          string: expect.objectContaining({ maximumVisibleLines: 2 }),
+        }),
+      }),
+    );
+  });
+
+  it("resets every display type to the global defaults before apply", async () => {
+    const user = userEvent.setup();
+    const defaults = defaultAppSettings();
+    const initialSettings = {
+      ...defaults,
+      displayFormats: {
+        ...defaults.displayFormats,
+        integer: { grouping: "comma" as const },
+        boolean: { representation: "numeric" as const },
+      },
+    };
+    const { onApply } = renderDialog({ initialSettings });
+    await user.click(screen.getByRole("button", { name: "Reset display formats" }));
+    expect(screen.getByRole("combobox", { name: "Integer grouping" })).toHaveValue("none");
+    expect(screen.getByRole("combobox", { name: "Boolean display format" })).toHaveValue(
+      "lowercase",
+    );
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ displayFormats: defaultAppSettings().displayFormats }),
+    );
   });
 
   it("applies inclusive copy limits in cells and MiB", async () => {

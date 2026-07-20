@@ -41,6 +41,8 @@ npm run test:e2e -- --project=desktop-minimum
 - E2E 파일은 `e2e/*.spec.ts`에 둔다.
 - 브라우저에서는 `src/backend.ts`의 `browserMockBackend`를 사용한다.
 - `?mock=csv`, `?mock=error` 같은 명시적 scenario로 시작 상태를 고정한다.
+- 대용량 논리 row 검증은 실제 row 배열을 만들지 않는 `?mock=largeRows` 계열 scenario로 행 수와
+  target page를 결정적으로 고정한다.
 - CSS class보다 `role`, accessible name, `aria-*`를 우선 locator로 사용한다.
 - click 성공만 확인하지 않고 선택 좌표, 상태 값, option 목록, scroll 또는 clipboard 결과를
   assertion으로 확인한다.
@@ -49,6 +51,22 @@ npm run test:e2e -- --project=desktop-minimum
 
 기본 project는 `1440x900`, `1024x768`, `800x600` 세 viewport다. 공통 테스트는 세 project에서
 같이 실행해 responsive 회귀를 잡는다.
+
+Phase 11의 segmented grid 테스트는 최소한 5,850,000행의 986,803 전후와 실제 마지막 행,
+10,000,000행의 first/middle/last를 검증한다. status의 논리 row, target page request 수, active cell,
+focus visibility와 physical `scrollHeight` 상한을 함께 assertion한다. 실제 row 수만 큰 mock을 사용하고
+브라우저 메모리에 전체 row fixture를 만들지 않는다. multiline 문자열은 LF/CRLF와 literal `\n`을
+구분하고 같은 고정 row 높이, 최대 2줄 clamp와 전체 값 보기를 geometry assertion으로 확인한다.
+
+타입별 display 설정 테스트는 timestamp `YYYY-MM-DD HH24:MI:SS.F...`, timezone annotation 제거,
+소수초 정밀도, raw cell detail과 기본/displayed/raw copy 결과를 별도로 확인한다. Browser clipboard
+mock 결과는 실제 Windows clipboard PASS로 간주하지 않는다.
+
+Column auto-fit은 header resize separator에 실제 `dblclick`을 보내고 column menu의 keyboard action과
+같은 결과인지 비교한다. header와 loaded/cached display 값만으로 계산됐는지 backend command count 0을
+assertion하고, LF/CRLF의 가장 긴 줄, literal `\n`, font/padding/action allowance와 80..800 px clamp를
+검증한다. 새 page나 display setting 변경만으로 width가 바뀌지 않고 명시적 재실행 때만 갱신되는지도
+확인한다. row height auto-fit 시나리오는 작성하지 않는다.
 
 ## 증거와 실패 분석
 
@@ -75,6 +93,7 @@ Playwright 테스트는 React UI, 브라우저 모의 백엔드, DOM geometry와
 - 파일 연결과 Explorer 더블클릭
 - 실제 시스템 clipboard와 Excel 붙여넣기
 - WebView2, Windows DPI, installer 환경
+- WebView2의 최대 scroll 범위와 native horizontal scrollbar에 접한 실제 마지막 행 geometry
 - 여러 독립 Tauri process의 창과 resource 생명주기
 
 이 항목은 실제 Tauri 실행 또는 설치본 smoke 결과를 별도로 기록한다.

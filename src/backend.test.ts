@@ -617,6 +617,10 @@ describe("backend adapters", () => {
         limitBytes: 1_000,
         availableBytes: 20_000,
         activeQueries: 0,
+        estimatedTempBytes: null,
+        safetyReserveBytes: 5_000,
+        hardCapBytes: 10_000,
+        freeBytes: 20_000,
       })
       .mockResolvedValueOnce({
         deletedBytes: 10,
@@ -627,6 +631,10 @@ describe("backend adapters", () => {
           limitBytes: 1_000,
           availableBytes: 20_010,
           activeQueries: 0,
+          estimatedTempBytes: null,
+          safetyReserveBytes: 5_000,
+          hardCapBytes: 10_000,
+          freeBytes: 20_010,
         },
       });
 

@@ -144,6 +144,19 @@ describe("copy serializer", () => {
     ).toBe("2026/07/15 00:00:00.000 |2026/07/15 12:34:56.987 Z");
   });
 
+  it("copies a boolean after its global display representation changed", () => {
+    const displayedNumeric: DataValue = {
+      kind: "boolean",
+      display: "1",
+      rawDisplay: "true",
+      state: "valid",
+    };
+    expect(serializeCopyRows([[displayedNumeric]], COPY_PRESETS.excel)).toBe("true");
+    expect(
+      serializeCopyRows([[displayedNumeric]], options({ booleanRepresentation: "numeric" })),
+    ).toBe("1");
+  });
+
   it("includes headers once across accumulator chunks and honors line endings", () => {
     const accumulator = new CopyAccumulator(
       options({ includeHeaders: true, delimiter: ";", lineEnding: "lf" }),

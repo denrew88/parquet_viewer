@@ -9,9 +9,11 @@ import {
   MIN_QUERY_TEMP_LIMIT_BYTES,
   MIN_COPY_MAX_BYTES,
   MIN_COPY_MAX_CELLS,
+  defaultAppSettings,
   parseAppSettings,
   type AppSettings,
   type CsvDefaultParsingMode,
+  type DisplayFormats,
 } from "./model";
 
 const GIB = 1024 * 1024 * 1024;
@@ -103,6 +105,9 @@ export function AppSettingsDialog({
   );
   const [copyMaxCells, setCopyMaxCells] = useState(String(initialSettings.copyLimits.maxCells));
   const [copyMaxMiB, setCopyMaxMiB] = useState(String(initialSettings.copyLimits.maxBytes / MIB));
+  const [displayFormats, setDisplayFormats] = useState<DisplayFormats>(() =>
+    structuredClone(initialSettings.displayFormats),
+  );
   const queryLimitBytes = Number(queryLimitGiB) * GIB;
   const copyMaxCellsValue = Number(copyMaxCells);
   const copyMaxBytesValue = Number(copyMaxMiB) * MIB;
@@ -113,7 +118,7 @@ export function AppSettingsDialog({
       queryLimitBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
       queryLimitBytes > MAX_QUERY_TEMP_LIMIT_BYTES
     ) {
-      return "Enter a limit from 0.0625 GiB (64 MiB) to 1,024 GiB (1 TiB).";
+      return "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB.";
     }
     return null;
   }, [queryLimitBytes, queryLimitGiB]);
@@ -215,6 +220,15 @@ export function AppSettingsDialog({
                 <h3 id="csv-default-heading">CSV default parsing</h3>
                 <p>Applies only to CSV documents opened after this setting is saved.</p>
               </div>
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  setDisplayFormats(structuredClone(defaultAppSettings().displayFormats))
+                }
+                type="button"
+              >
+                Reset display formats
+              </button>
             </div>
             <div aria-label="Default CSV parsing mode" className="settings-segmented" role="group">
               {csvModes.map((mode) => (
@@ -301,6 +315,314 @@ export function AppSettingsDialog({
             </p>
           </section>
 
+          <section aria-labelledby="display-format-heading" className="settings-section">
+            <div className="settings-section__heading">
+              <FileType2 aria-hidden="true" />
+              <div>
+                <h3 id="display-format-heading">Value display formats</h3>
+                <p>
+                  Global formatting for cells and display-mode copy. Source values remain unchanged.
+                </p>
+              </div>
+            </div>
+            <div className="display-format-grid">
+              <label>
+                Integer grouping
+                <select
+                  aria-label="Integer grouping"
+                  value={displayFormats.integer.grouping}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      integer: {
+                        grouping: event.target.value as DisplayFormats["integer"]["grouping"],
+                      },
+                    }))
+                  }
+                >
+                  <option value="none">None (1234567)</option>
+                  <option value="comma">Comma (1,234,567)</option>
+                  <option value="dot">Dot (1.234.567)</option>
+                </select>
+              </label>
+              <label>
+                Floating notation
+                <select
+                  aria-label="Floating notation"
+                  value={displayFormats.floatingPoint.notation}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      floatingPoint: {
+                        ...current.floatingPoint,
+                        notation: event.target.value as DisplayFormats["floatingPoint"]["notation"],
+                      },
+                    }))
+                  }
+                >
+                  <option value="general">General</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="scientific">Scientific</option>
+                </select>
+              </label>
+              <label>
+                Float precision
+                <input
+                  aria-label="Float precision"
+                  max="17"
+                  min="1"
+                  type="number"
+                  value={displayFormats.floatingPoint.precision}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      floatingPoint: {
+                        ...current.floatingPoint,
+                        precision: Math.min(17, Math.max(1, Number(event.target.value) || 1)),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Decimal scale
+                <select
+                  aria-label="Decimal scale mode"
+                  value={displayFormats.decimal.scale.mode}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      decimal: {
+                        ...current.decimal,
+                        scale:
+                          event.target.value === "preserve"
+                            ? { mode: "preserve" }
+                            : { mode: "fixed", digits: 2 },
+                      },
+                    }))
+                  }
+                >
+                  <option value="preserve">Preserve</option>
+                  <option value="fixed">Fixed</option>
+                </select>
+              </label>
+              {displayFormats.decimal.scale.mode === "fixed" && (
+                <label>
+                  Decimal digits
+                  <input
+                    aria-label="Decimal fixed digits"
+                    max="38"
+                    min="0"
+                    type="number"
+                    value={displayFormats.decimal.scale.digits}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        decimal: {
+                          ...current.decimal,
+                          scale: {
+                            mode: "fixed",
+                            digits: Math.min(38, Math.max(0, Number(event.target.value) || 0)),
+                          },
+                        },
+                      }))
+                    }
+                  />
+                </label>
+              )}
+              <label>
+                Decimal grouping
+                <select
+                  aria-label="Decimal grouping"
+                  value={displayFormats.decimal.grouping}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      decimal: {
+                        ...current.decimal,
+                        grouping: event.target.value as DisplayFormats["decimal"]["grouping"],
+                      },
+                    }))
+                  }
+                >
+                  <option value="none">None</option>
+                  <option value="comma">Comma</option>
+                  <option value="dot">Dot</option>
+                </select>
+              </label>
+              <label>
+                Date
+                <select
+                  aria-label="Date display format"
+                  value={displayFormats.date.format}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      date: { format: event.target.value as DisplayFormats["date"]["format"] },
+                    }))
+                  }
+                >
+                  {(["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY", "MM-DD-YYYY"] as const).map(
+                    (format) => (
+                      <option key={format} value={format}>
+                        {format}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                Timestamp fraction
+                <select
+                  aria-label="Timestamp fractional digits mode"
+                  value={displayFormats.timestamp.fractionalDigits.mode}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      timestamp: {
+                        fractionalDigits:
+                          event.target.value === "preserve"
+                            ? { mode: "preserve" }
+                            : { mode: "fixed", digits: 9 },
+                      },
+                    }))
+                  }
+                >
+                  <option value="preserve">Preserve</option>
+                  <option value="fixed">Fixed</option>
+                </select>
+              </label>
+              {displayFormats.timestamp.fractionalDigits.mode === "fixed" && (
+                <label>
+                  Timestamp digits
+                  <input
+                    aria-label="Timestamp fractional digits"
+                    max="9"
+                    min="0"
+                    type="number"
+                    value={displayFormats.timestamp.fractionalDigits.digits}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        timestamp: {
+                          fractionalDigits: {
+                            mode: "fixed",
+                            digits: Math.min(9, Math.max(0, Number(event.target.value) || 0)),
+                          },
+                        },
+                      }))
+                    }
+                  />
+                </label>
+              )}
+              <label>
+                Boolean
+                <select
+                  aria-label="Boolean display format"
+                  value={displayFormats.boolean.representation}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      boolean: {
+                        representation: event.target
+                          .value as DisplayFormats["boolean"]["representation"],
+                      },
+                    }))
+                  }
+                >
+                  <option value="lowercase">true / false</option>
+                  <option value="uppercase">TRUE / FALSE</option>
+                  <option value="numeric">1 / 0</option>
+                </select>
+              </label>
+              <label>
+                Binary
+                <select
+                  aria-label="Binary display encoding"
+                  value={displayFormats.binary.encoding}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      binary: {
+                        ...current.binary,
+                        encoding: event.target.value as DisplayFormats["binary"]["encoding"],
+                      },
+                    }))
+                  }
+                >
+                  <option value="hex">Hex</option>
+                  <option value="base64">Base64</option>
+                </select>
+              </label>
+              <label>
+                Binary preview bytes
+                <input
+                  aria-label="Binary preview bytes"
+                  max="256"
+                  min="1"
+                  type="number"
+                  value={displayFormats.binary.previewBytes}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      binary: {
+                        ...current.binary,
+                        previewBytes: Math.min(256, Math.max(1, Number(event.target.value) || 1)),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Nested values
+                <select
+                  aria-label="Nested value display format"
+                  value={displayFormats.nested.format}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      nested: { format: event.target.value as DisplayFormats["nested"]["format"] },
+                    }))
+                  }
+                >
+                  <option value="compact">Compact</option>
+                  <option value="pretty">Pretty</option>
+                </select>
+              </label>
+            </div>
+            <div className="display-format-checks">
+              <label>
+                <input
+                  checked={displayFormats.string.renderLineBreaks}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      string: { ...current.string, renderLineBreaks: event.target.checked },
+                    }))
+                  }
+                  type="checkbox"
+                />{" "}
+                Render string line breaks (maximum 2 visible lines)
+              </label>
+              <label>
+                <input
+                  checked={displayFormats.string.wrapLongLines}
+                  onChange={(event) =>
+                    setDisplayFormats((current) => ({
+                      ...current,
+                      string: { ...current.string, wrapLongLines: event.target.checked },
+                    }))
+                  }
+                  type="checkbox"
+                />{" "}
+                Wrap long strings
+              </label>
+            </div>
+            <p className="settings-field-description">
+              Timestamp example: 2025-12-18 01:23:34.111111111 (timezone hidden)
+            </p>
+          </section>
+
           <section aria-labelledby="storage-heading" className="settings-section">
             <div className="settings-section__heading">
               <Database aria-hidden="true" />
@@ -316,7 +638,7 @@ export function AppSettingsDialog({
                   aria-label="Query temporary storage limit"
                   aria-describedby="query-temp-limit-help"
                   aria-invalid={queryLimitError !== null}
-                  max="1024"
+                  max="10"
                   min="0.0625"
                   onChange={(event) => setQueryLimitGiB(event.target.value)}
                   step="0.0625"
@@ -331,7 +653,7 @@ export function AppSettingsDialog({
               id="query-temp-limit-help"
               role={queryLimitError ? "alert" : undefined}
             >
-              {queryLimitError ?? "Allowed range: 64 MiB to 1 TiB."}
+              {queryLimitError ?? "Allowed range: 64 MiB to 10 GiB."}
             </p>
             <div className="query-temp-usage" aria-live="polite">
               {tempUsageLoading ? (
@@ -347,6 +669,10 @@ export function AppSettingsDialog({
                     {tempUsage.activeQueries.toLocaleString()} active
                   </span>
                   <span>{formatStorage(tempUsage.availableBytes)} available on disk</span>
+                  <span>
+                    {formatStorage(tempUsage.safetyReserveBytes)} safety reserve ·{" "}
+                    {formatStorage(tempUsage.hardCapBytes)} hard cap
+                  </span>
                 </>
               ) : null}
               {tempClearMessage ? <span role="status">{tempClearMessage}</span> : null}
@@ -388,6 +714,7 @@ export function AppSettingsDialog({
                     maxCells: copyMaxCellsValue,
                     maxBytes: copyMaxBytesValue,
                   },
+                  displayFormats,
                 }),
               )
             }

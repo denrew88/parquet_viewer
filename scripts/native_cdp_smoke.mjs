@@ -276,12 +276,20 @@ try {
   );
   await page.evaluate(() => navigator.clipboard.writeText("__native-smoke-sentinel__"));
   await page.getByRole("button", { name: "Copy selection" }).click();
-  let clipboardText = "__native-smoke-sentinel__";
-  const clipboardDeadline = Date.now() + 30_000;
-  while (clipboardText === "__native-smoke-sentinel__" && Date.now() < clipboardDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    clipboardText = await page.evaluate(async () => navigator.clipboard.readText());
-  }
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('[role="status"].copy-status')].some((element) => {
+        const text = element.textContent ?? "";
+        return (
+          text !== "" && !text.startsWith("Copying") && !text.startsWith("Writing clipboard")
+        );
+      }),
+    undefined,
+    { timeout: 30_000 },
+  );
+  const copyStatuses = await page.locator('[role="status"].copy-status').allTextContents();
+  assert.ok(copyStatuses.includes("Copied 1 rows."), `Native copy failed: ${copyStatuses.join(" | ")}`);
+  const clipboardText = await page.evaluate(async () => navigator.clipboard.readText());
   assert.notEqual(clipboardText, "__native-smoke-sentinel__", "Copy did not write the clipboard.");
   const clipboardLines = clipboardText.trimEnd().split(/\r?\n/);
   assert.equal(clipboardLines.length, 2, `Unexpected clipboard row count: ${clipboardText}`);

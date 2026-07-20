@@ -13,7 +13,7 @@ use crate::{
     domain::{
         AppSettingsV1, BoundarySearchRequest, CancelDataBoundaryNavigationRequest,
         CsvColumnValidation, CsvParsingProfile, CsvProfilePreview, CsvValidationState,
-        CsvValidationStatus, DataError, DataErrorCode, DataPage, DistinctValuesRequest,
+        CsvValidationStatus, DataError, DataErrorCode, DataPage, DataValue, DistinctValuesRequest,
         DistinctValuesResponse, ExecuteQueryRequest, FileSummary, FindBoundaryRequest,
         FindBoundaryResponse, FindQueryMatchRequest, FindQueryMatchResponse, FormatDescriptor,
         HeaderMode, QueryStatus, ReadQueryPageRequest, ReadQueryPageResponse,
@@ -272,6 +272,25 @@ pub struct ReadPageRequest {
     offset: i64,
     limit: usize,
     columns: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadCellValueRequest {
+    document_id: String,
+    session_id: String,
+    query_id: Option<String>,
+    row: i64,
+    column_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadCellValueResponse {
+    document_id: String,
+    session_id: String,
+    query_id: Option<String>,
+    value: DataValue,
 }
 
 #[derive(Debug, Serialize)]
@@ -1511,6 +1530,42 @@ pub fn read_page(
     state: State<'_, AppState>,
 ) -> Result<ReadPageResponse, DataError> {
     state.read(request)
+}
+
+#[tauri::command]
+pub fn read_cell_value(
+    request: ReadCellValueRequest,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ReadCellValueResponse, DataError> {
+    let row = u64::try_from(request.row)
+        .map_err(|_| DataError::invalid_request("Cell row must be non-negative."))?;
+    let value = if let Some(query_id) = request.query_id.as_deref() {
+        state
+            .documents
+            .with_source(&request.document_id, &request.session_id, |_| ())
+            .map_err(document_error)?;
+        state.query_service(&app)?.read_cell_value(
+            &request.document_id,
+            &request.session_id,
+            query_id,
+            row,
+            &request.column_id,
+        )?
+    } else {
+        state
+            .documents
+            .with_source(&request.document_id, &request.session_id, |source| {
+                source.read_cell_value(row, &request.column_id)
+            })
+            .map_err(document_error)??
+    };
+    Ok(ReadCellValueResponse {
+        document_id: request.document_id,
+        session_id: request.session_id,
+        query_id: request.query_id,
+        value,
+    })
 }
 
 #[tauri::command]

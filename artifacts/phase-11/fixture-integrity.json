@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-07-20",
+  "result": "PASS",
+  "files": [
+    {
+      "path": "fixtures/phase-11/oef-v3-int32.oes.h5",
+      "bytes": 15955,
+      "sha256": "d0f347257430219493b35eb1616379b03148ef70fb0152d3bb256a894457d505"
+    },
+    {
+      "path": "fixtures/phase-11/oef-v3-string-int64.oes.h5",
+      "bytes": 10808,
+      "sha256": "f6086fc30e11b63eb67941c7d10798fd00beccf45c046eece971f1aa41e104ac"
+    },
+    {
+      "path": ".tmp/phase11-large/query-low-5850000-15c.parquet",
+      "bytes": 7800536,
+      "sha256": "b9d7cc1b0d0f7277e7474401790109a3ad23e3183cb3fd2829708d5c4212229b"
+    }
+  ]
+}

@@ -21,22 +21,19 @@ use crate::{
     data::{
         query_invalid_name as invalid_name, query_quote_identifier as quote_identifier,
         query_quote_literal as quote_literal, query_raw_name as raw_name, resolve_boundary,
-        QueryPrepareContext, QuerySourceSpec,
+        QueryInputProvider, QueryPrepareContext, QuerySourceSpec,
     },
     domain::{
-        BoundarySearchRequest, BoundarySearchResult, ColumnSchema, DataError, DataErrorCode,
-        DataPage, DataValue, DistinctValue, DistinctValuesRequest, DistinctValuesResponse,
-        ExecuteQueryRequest, FindDirection, FindQueryMatch, FindQueryMatchRequest,
-        FindQueryMatchResponse, QueryProgress, QueryStatus, QueryTaskState, ReadQueryPageRequest,
-        ReadQueryPageResponse, ValueKind,
+        BoundarySearchRequest, BoundarySearchResult, ColumnSchema, DataBoundaryDirection,
+        DataBoundaryMode, DataError, DataErrorCode, DataPage, DataValue, DistinctValue,
+        DistinctValuesRequest, DistinctValuesResponse, ExecuteQueryRequest, FindDirection,
+        FindQueryMatch, FindQueryMatchRequest, FindQueryMatchResponse, QueryProgress, QueryStatus,
+        QueryTaskState, ReadQueryPageRequest, ReadQueryPageResponse, ValueKind,
     },
     storage::{QueryTempCleanupResult, QueryTempLease, QueryTempManager, QueryTempUsage},
 };
 
-use super::sql::{
-    find_matches_sql, materialize_sql, output_invalid_name, output_raw_name, scalar_lower_sql,
-    SCALAR_LOWER_FUNCTION,
-};
+use super::sql::{find_matches_sql, materialize_sql, scalar_lower_sql, SCALAR_LOWER_FUNCTION};
 
 const MAX_QUERY_TASKS: usize = 128;
 const MAX_QUERY_RESULTS: usize = 64;
@@ -162,6 +159,8 @@ struct QueryTask {
 struct ResultColumn {
     name: String,
     kind: ValueKind,
+    source_index: usize,
+    logical_type: String,
 }
 
 #[derive(Debug)]
@@ -358,6 +357,18 @@ impl QueryService {
             query_id: request.query_id,
             page,
         })
+    }
+
+    pub fn read_cell_value(
+        &self,
+        document_id: &str,
+        session_id: &str,
+        query_id: &str,
+        row: u64,
+        column: &str,
+    ) -> Result<DataValue, DataError> {
+        self.result(document_id, session_id, query_id)?
+            .read_cell_value(row, column)
     }
 
     pub fn distinct(
@@ -581,6 +592,8 @@ impl QueryService {
             .map(|index| ResultColumn {
                 name: source.columns[*index].name.clone(),
                 kind: value_kind(&source.columns[*index]),
+                source_index: *index,
+                logical_type: source.columns[*index].logical_type.clone(),
             })
             .collect();
         Ok(QueryResult {
@@ -749,41 +762,86 @@ impl QueryResult {
         let connection = self.connection.lock().map_err(|_| registry_error())?;
         let select = selected
             .iter()
-            .map(|index| (*index, &self.columns[*index]))
-            .flat_map(|(index, column)| {
+            .map(|index| &self.columns[*index])
+            .flat_map(|column| {
                 [
-                    quote_identifier(&column.name),
-                    output_raw_name(index),
-                    output_invalid_name(index),
+                    format!("s.{}", quote_identifier(&column.name)),
+                    format!("CAST(s.{} AS VARCHAR)", raw_name(column.source_index)),
+                    format!("s.{}", invalid_name(column.source_index)),
                 ]
             })
             .collect::<Vec<_>>()
             .join(", ");
         let mut statement = connection
             .prepare(&format!(
-                "SELECT {select} FROM query_result WHERE __dv_result_position >= ? ORDER BY __dv_result_position LIMIT ?"
+                "SELECT q.__dv_row_id, {select} FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE q.__dv_result_position >= ? ORDER BY q.__dv_result_position LIMIT ?"
             ))
             .map_err(duckdb_error)?;
-        let mut query = statement
-            .query(params![offset, limit as u64])
+        let query = statement
+            .query_arrow(params![offset, limit as u64])
             .map_err(duckdb_error)?;
         let mut rows = Vec::new();
-        while let Some(row) = query.next().map_err(duckdb_error)? {
-            let mut values = Vec::with_capacity(selected.len());
-            for (output_index, source_index) in selected.iter().enumerate() {
-                let column = &self.columns[*source_index];
-                let display: Option<String> = row
-                    .get::<_, Option<String>>(output_index * 3)
-                    .map_err(duckdb_error)?
-                    .map(|value| {
-                        self.provider
-                            .format_query_display(&column.name, column.kind, &value)
-                    });
-                let raw: Option<String> = row.get(output_index * 3 + 1).map_err(duckdb_error)?;
-                let invalid: bool = row.get(output_index * 3 + 2).map_err(duckdb_error)?;
-                values.push(result_value(column.kind, display, raw, invalid));
+        let mut row_ids = Vec::new();
+        for batch in query {
+            for row_index in 0..batch.num_rows() {
+                let row_id =
+                    crate::data::value_format::value_at(batch.column(0).as_ref(), row_index)?
+                        .source_display
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .ok_or_else(|| DataError::query_failed("Query row identity is invalid."))?;
+                row_ids.push(row_id);
+                let mut values = Vec::with_capacity(selected.len());
+                for (output_index, source_index) in selected.iter().enumerate() {
+                    let column = &self.columns[*source_index];
+                    let typed = crate::data::value_format::value_at(
+                        batch.column(1 + output_index * 3).as_ref(),
+                        row_index,
+                    )?;
+                    let raw = crate::data::value_format::value_at(
+                        batch.column(1 + output_index * 3 + 1).as_ref(),
+                        row_index,
+                    )?
+                    .display;
+                    let invalid = crate::data::value_format::value_at(
+                        batch.column(1 + output_index * 3 + 2).as_ref(),
+                        row_index,
+                    )?
+                    .display
+                    .as_deref()
+                        == Some("true");
+                    values.push(finalize_query_value(
+                        column,
+                        typed,
+                        raw,
+                        invalid,
+                        self.provider.as_ref(),
+                    ));
+                }
+                rows.push(values);
             }
-            rows.push(values);
+        }
+        if let Some(exact) = self.provider.exact_query_values(&row_ids, projection)? {
+            if exact.rows.len() != rows.len()
+                || exact
+                    .rows
+                    .iter()
+                    .any(|row| row.len() != exact.columns.len())
+            {
+                return Err(DataError::query_failed(
+                    "Exact source values did not match the query page shape.",
+                ));
+            }
+            for (exact_column, column_name) in exact.columns.iter().enumerate() {
+                let page_column = projection
+                    .iter()
+                    .position(|candidate| candidate == column_name)
+                    .ok_or_else(|| {
+                        DataError::query_failed("Exact source column is not projected.")
+                    })?;
+                for (row_index, exact_row) in exact.rows.iter().enumerate() {
+                    rows[row_index][page_column] = exact_row[exact_column].clone();
+                }
+            }
         }
         Ok(DataPage {
             offset,
@@ -793,6 +851,54 @@ impl QueryResult {
             columns: projection.to_vec(),
             rows,
         })
+    }
+
+    fn read_cell_value(&self, row: u64, column_name: &str) -> Result<DataValue, DataError> {
+        if row >= self.row_count {
+            return Err(DataError::invalid_request(
+                "The requested query cell is outside the result table.",
+            ));
+        }
+        let column = self
+            .columns
+            .iter()
+            .find(|column| column.name == column_name)
+            .ok_or_else(|| {
+                DataError::invalid_request(format!("Unknown query result column: {column_name}"))
+            })?;
+        let identifier = quote_identifier(&column.name);
+        let connection = self.connection.lock().map_err(|_| registry_error())?;
+        let mut statement = connection
+            .prepare(&format!(
+                "SELECT q.__dv_row_id, s.{identifier}, s.{}, s.{} FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE q.__dv_result_position = ?",
+                raw_name(column.source_index),
+                invalid_name(column.source_index),
+            ))
+            .map_err(duckdb_error)?;
+        let mut query = statement.query_arrow(params![row]).map_err(duckdb_error)?;
+        let batch = query.next().ok_or_else(|| {
+            DataError::invalid_request("The requested query cell is unavailable.")
+        })?;
+        let source_row = crate::data::value_format::value_at(batch.column(0).as_ref(), 0)?
+            .source_display
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or_else(|| DataError::query_failed("Query row identity is invalid."))?;
+        let mut value = crate::data::value_format::full_value_at(batch.column(1).as_ref(), 0)?;
+        let raw = crate::data::value_format::value_at(batch.column(2).as_ref(), 0)?.display;
+        let invalid = crate::data::value_format::value_at(batch.column(3).as_ref(), 0)?
+            .display
+            .as_deref()
+            == Some("true");
+        value = finalize_query_value(column, value, raw, invalid, self.provider.as_ref());
+        if let Some(exact) = self
+            .provider
+            .exact_query_values(&[source_row], &[column_name.to_owned()])?
+        {
+            if let Some(exact_value) = exact.rows.first().and_then(|values| values.first()) {
+                value = exact_value.clone();
+            }
+        }
+        Ok(value)
     }
 
     fn find_boundary(
@@ -810,6 +916,90 @@ impl QueryResult {
                 physical_type: String::from("queryResult"),
             })
             .collect::<Vec<_>>();
+        if request.mode == DataBoundaryMode::DataBoundary
+            && matches!(
+                request.direction,
+                DataBoundaryDirection::Up | DataBoundaryDirection::Down
+            )
+        {
+            crate::data::validate_boundary_request(&columns, Some(self.row_count), request)?;
+            if cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            let column = self
+                .columns
+                .iter()
+                .find(|column| column.name == request.column_id)
+                .expect("validated query boundary column");
+            let value = format!("s.{}", quote_identifier(&column.name));
+            let invalid = format!("s.{}", invalid_name(column.source_index));
+            let occupied = if column.kind == ValueKind::String {
+                format!("({invalid} OR ({value} IS NOT NULL AND CAST({value} AS VARCHAR) <> ''))")
+            } else {
+                format!("({invalid} OR {value} IS NOT NULL)")
+            };
+            let connection = self.connection.lock().map_err(|_| registry_error())?;
+            let current: bool = connection
+                .query_row(
+                    &format!("SELECT {occupied} FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE q.__dv_result_position = ?"),
+                    params![request.row],
+                    |row| row.get(0),
+                )
+                .map_err(duckdb_error)?;
+            let (neighbor_position, comparison, order, edge) = match request.direction {
+                DataBoundaryDirection::Down => (
+                    request.row.saturating_add(1),
+                    ">",
+                    "ASC",
+                    self.row_count.saturating_sub(1),
+                ),
+                DataBoundaryDirection::Up => (request.row.saturating_sub(1), "<", "DESC", 0),
+                _ => unreachable!(),
+            };
+            if neighbor_position == request.row || neighbor_position >= self.row_count {
+                return Ok(BoundarySearchResult {
+                    target_row: request.row,
+                    target_column_id: request.column_id.clone(),
+                    resolved_row_count: Some(self.row_count),
+                });
+            }
+            let neighbor: bool = connection
+                .query_row(
+                    &format!("SELECT {occupied} FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE q.__dv_result_position = ?"),
+                    params![neighbor_position],
+                    |row| row.get(0),
+                )
+                .map_err(duckdb_error)?;
+            let seek_occupied = !(current && neighbor);
+            let predicate = if seek_occupied {
+                occupied.clone()
+            } else {
+                format!("NOT {occupied}")
+            };
+            let found = connection
+                .query_row(
+                    &format!("SELECT q.__dv_result_position FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE q.__dv_result_position {comparison} ? AND {predicate} ORDER BY q.__dv_result_position {order} LIMIT 1"),
+                    params![request.row],
+                    |row| row.get::<_, u64>(0),
+                )
+                .optional()
+                .map_err(duckdb_error)?;
+            if cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            let target_row = match (found, seek_occupied, request.direction) {
+                (Some(position), true, _) => position,
+                (Some(position), false, DataBoundaryDirection::Down) => position - 1,
+                (Some(position), false, DataBoundaryDirection::Up) => position + 1,
+                (None, _, _) => edge,
+                _ => unreachable!(),
+            };
+            return Ok(BoundarySearchResult {
+                target_row,
+                target_column_id: request.column_id.clone(),
+                resolved_row_count: Some(self.row_count),
+            });
+        }
         resolve_boundary(
             &columns,
             Some(self.row_count),
@@ -837,9 +1027,9 @@ impl QueryResult {
         distinct_query(
             &connection,
             request,
-            &quote_identifier(&request.column_id),
-            &output_raw_name(index),
-            &output_invalid_name(index),
+            &format!("s.{}", quote_identifier(&request.column_id)),
+            &format!("s.{}", raw_name(self.columns[index].source_index)),
+            &format!("s.{}", invalid_name(self.columns[index].source_index)),
         )
     }
 
@@ -850,9 +1040,9 @@ impl QueryResult {
         let total_matches = self.find_match_count.unwrap_or(0);
         if total_matches == 0 {
             return Ok(FindQueryMatchResponse {
-                document_id: request.document_id,
-                session_id: request.session_id,
-                query_id: request.query_id,
+                document_id: request.document_id.clone(),
+                session_id: request.session_id.clone(),
+                query_id: request.query_id.clone(),
                 matched: None,
             });
         }
@@ -923,9 +1113,9 @@ fn distinct_query(
     parameters.push((request.limit + 1).to_string());
     parameters.push(request.offset.to_string());
     let table = if request.query_id.is_some() {
-        "query_result"
+        "query_result q JOIN dv_source s USING (__dv_row_id)"
     } else {
-        "dv_source"
+        "dv_source s"
     };
     let sql = format!(
         "SELECT CAST({value} AS VARCHAR), CAST({raw} AS VARCHAR), {invalid}, count(*) FROM {table} {predicate} GROUP BY ALL ORDER BY count(*) DESC, CAST({value} AS VARCHAR) NULLS LAST LIMIT CAST(? AS BIGINT) OFFSET CAST(? AS BIGINT)"
@@ -1035,6 +1225,14 @@ fn value_kind(column: &crate::domain::ColumnSchema) -> ValueKind {
     let logical = column.logical_type.to_ascii_lowercase();
     if logical.contains("timestamp") {
         ValueKind::Timestamp
+    } else if logical.contains("binary") {
+        ValueKind::Binary
+    } else if logical.contains("map") {
+        ValueKind::Map
+    } else if logical.contains("list") || logical.contains("array") {
+        ValueKind::List
+    } else if logical.contains("struct") {
+        ValueKind::Struct
     } else if logical == "date" || logical.contains("date32") || logical.contains("date64") {
         ValueKind::Date
     } else if logical.contains("decimal") {
@@ -1052,27 +1250,69 @@ fn value_kind(column: &crate::domain::ColumnSchema) -> ValueKind {
     }
 }
 
-fn result_value(
-    kind: ValueKind,
-    display: Option<String>,
+fn finalize_query_value(
+    column: &ResultColumn,
+    mut value: DataValue,
     raw: Option<String>,
     invalid: bool,
+    provider: &dyn QueryInputProvider,
 ) -> DataValue {
     if invalid {
         return DataValue::invalid(
-            kind,
+            column.kind,
             raw.unwrap_or_default(),
             "CsvConversionFailed",
             "The raw CSV value could not be converted by the active profile.",
         );
     }
-    match (display, raw) {
-        (None, Some(raw)) => DataValue::converted_null(raw),
-        (None, None) => DataValue::null(),
-        (Some(display), Some(raw)) if display.is_empty() => DataValue::empty(raw),
-        (Some(display), Some(raw)) => DataValue::converted(kind, display, raw),
-        (Some(display), None) => DataValue::displayed(kind, display),
+    if value.state == crate::domain::DataValueState::Null {
+        return raw.map_or_else(DataValue::null, DataValue::converted_null);
     }
+    if value.state == crate::domain::DataValueState::Empty {
+        return DataValue::empty(raw.unwrap_or_default());
+    }
+    value.kind = column.kind;
+    if column.kind == ValueKind::Timestamp {
+        if let Some((unit, timezone)) = timestamp_metadata(&column.logical_type) {
+            if let Some(raw) = value
+                .source_display
+                .as_deref()
+                .and_then(|raw| raw.parse::<i64>().ok())
+            {
+                value.display = Some(crate::data::value_format::format_timestamp_source(
+                    raw, unit, timezone,
+                ));
+            }
+            value = value.with_temporal_metadata(unit, timezone);
+        }
+    }
+    if let Some(display) = value.display.as_deref() {
+        value.display = Some(provider.format_query_display(&column.name, column.kind, display));
+    }
+    if value.raw_display.is_none() {
+        value.raw_display = raw;
+    }
+    value
+}
+
+fn timestamp_metadata(logical_type: &str) -> Option<(&'static str, Option<&str>)> {
+    let lower = logical_type.to_ascii_lowercase();
+    if !lower.contains("timestamp") {
+        return None;
+    }
+    let unit = if lower.contains("nanosecond") {
+        "ns"
+    } else if lower.contains("microsecond") {
+        "us"
+    } else if lower.contains("millisecond") {
+        "ms"
+    } else {
+        "s"
+    };
+    let timezone = logical_type
+        .split_once("Some(\"")
+        .and_then(|(_, rest)| rest.split_once("\")").map(|(value, _)| value));
+    Some((unit, timezone))
 }
 
 fn validate_id(label: &str, value: &str) -> Result<(), DataError> {
@@ -1220,22 +1460,97 @@ mod tests {
 
     #[test]
     fn query_result_restores_trimmed_whitespace_as_empty() {
-        let trimmed = result_value(
-            ValueKind::String,
-            Some(String::new()),
+        let column = ResultColumn {
+            name: String::from("text"),
+            kind: ValueKind::String,
+            source_index: 0,
+            logical_type: String::from("Utf8"),
+        };
+        let provider = SyntheticQueryProvider {
+            called: Arc::new(AtomicBool::new(false)),
+        };
+        let trimmed = finalize_query_value(
+            &column,
+            DataValue::displayed(ValueKind::String, ""),
             Some(String::from("   ")),
             false,
+            &provider,
         );
         assert_eq!(trimmed.state, DataValueState::Empty);
         assert_eq!(trimmed.raw_display.as_deref(), Some("   "));
 
-        let preserved = result_value(
-            ValueKind::String,
-            Some(String::from("   ")),
+        let preserved = finalize_query_value(
+            &column,
+            DataValue::displayed(ValueKind::String, "   "),
             Some(String::from("   ")),
             false,
+            &provider,
         );
         assert_eq!(preserved.state, DataValueState::Valid);
+    }
+
+    #[test]
+    fn query_arrow_page_preserves_parquet_typed_values_and_timestamp_metadata() {
+        let (_fixture_directory, path) = crate::data::phase2_type_fixture();
+        let source = crate::data::DataSource::open(&path).expect("open typed Parquet fixture");
+        let direct = source
+            .read_page_projected(0, 3, None)
+            .expect("direct typed page");
+        let spec = source.query_source_spec().expect("typed query source");
+        let plan = QueryPlan {
+            filters: Vec::new(),
+            search: None,
+            sort: Vec::new(),
+            projection: spec
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect(),
+        };
+        let request = request("task-typed", "query-typed", plan);
+        let (_directory, service) = service();
+        service
+            .execute(request.clone(), spec)
+            .expect("execute typed query");
+        let status = wait_complete(&service, &request);
+        assert_eq!(status.state, QueryTaskState::Complete, "{:?}", status.error);
+        let page = service
+            .read_page(ReadQueryPageRequest {
+                document_id: request.document_id.clone(),
+                session_id: request.session_id.clone(),
+                query_id: request.query_id.clone(),
+                offset: 0,
+                limit: 3,
+            })
+            .expect("typed query page")
+            .page;
+        for (query_row, direct_row) in page.rows.iter().zip(&direct.rows) {
+            for (query_value, direct_value) in query_row.iter().zip(direct_row) {
+                assert_eq!(query_value.kind, direct_value.kind);
+                assert_eq!(query_value.state, direct_value.state);
+                assert_eq!(query_value.display, direct_value.display);
+                assert_eq!(query_value.source_display, direct_value.source_display);
+                assert_eq!(query_value.unit, direct_value.unit);
+                assert_eq!(query_value.timezone, direct_value.timezone);
+            }
+        }
+        assert_eq!(page.rows[0][4].unit.as_deref(), Some("ns"));
+        assert_eq!(page.rows[0][4].timezone.as_deref(), Some("Asia/Seoul"));
+        assert_eq!(page.rows[0][5].kind, ValueKind::Binary);
+        assert_eq!(page.rows[0][6].kind, ValueKind::List);
+        assert_eq!(page.rows[0][7].kind, ValueKind::Struct);
+        assert_eq!(page.rows[0][8].kind, ValueKind::Map);
+        let full_binary = service
+            .read_cell_value(
+                &request.document_id,
+                &request.session_id,
+                &request.query_id,
+                0,
+                "binary",
+            )
+            .expect("full query binary value");
+        assert_eq!(full_binary.kind, ValueKind::Binary);
+        assert_eq!(full_binary.source_display, direct.rows[0][5].source_display);
     }
 
     fn request(task: &str, query: &str, plan: QueryPlan) -> ExecuteQueryRequest {
@@ -1405,6 +1720,104 @@ mod tests {
     }
 
     #[test]
+    fn query_data_boundary_uses_materialized_positions_without_paging_the_result() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let path = source_directory.path().join("boundary.csv");
+        std::fs::write(&path, "value\nA\nB\nNULL\nC\nD\nNULL\nE\n").unwrap();
+        let source = DataSource::open(path).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let (_temp_directory, service) = service();
+        let execute = request(
+            "boundary-task",
+            "boundary-query",
+            QueryPlan {
+                filters: Vec::new(),
+                search: None,
+                sort: Vec::new(),
+                projection: vec![String::from("value")],
+            },
+        );
+        service.execute(execute.clone(), spec).unwrap();
+        assert_eq!(
+            wait_complete(&service, &execute).state,
+            QueryTaskState::Complete
+        );
+
+        let find = |row, direction| {
+            service
+                .find_boundary(
+                    &execute.document_id,
+                    &execute.session_id,
+                    &execute.query_id,
+                    &BoundarySearchRequest {
+                        row,
+                        column_id: String::from("value"),
+                        visible_column_ids: vec![String::from("value")],
+                        direction,
+                        mode: DataBoundaryMode::DataBoundary,
+                    },
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+                .target_row
+        };
+
+        assert_eq!(find(0, DataBoundaryDirection::Down), 1);
+        assert_eq!(find(1, DataBoundaryDirection::Down), 3);
+        assert_eq!(find(3, DataBoundaryDirection::Down), 4);
+        assert_eq!(find(4, DataBoundaryDirection::Down), 6);
+        assert_eq!(find(6, DataBoundaryDirection::Up), 4);
+        assert_eq!(find(4, DataBoundaryDirection::Up), 3);
+    }
+
+    #[test]
+    fn query_binary_boundary_treats_zero_length_values_as_occupied() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let path = source_directory.path().join("binary-boundary.parquet");
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(&format!(
+                "COPY (SELECT value FROM (VALUES (''::BLOB), ('A'::BLOB), (''::BLOB)) AS values(value)) TO {} (FORMAT PARQUET)",
+                quote_literal(&path.to_string_lossy())
+            ))
+            .unwrap();
+        let source = DataSource::open(path).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let (_temp_directory, service) = service();
+        let execute = request(
+            "binary-boundary-task",
+            "binary-boundary-query",
+            QueryPlan {
+                filters: Vec::new(),
+                search: None,
+                sort: Vec::new(),
+                projection: vec![String::from("value")],
+            },
+        );
+        service.execute(execute.clone(), spec).unwrap();
+        assert_eq!(
+            wait_complete(&service, &execute).state,
+            QueryTaskState::Complete
+        );
+        let result = service
+            .find_boundary(
+                &execute.document_id,
+                &execute.session_id,
+                &execute.query_id,
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("value"),
+                    visible_column_ids: vec![String::from("value")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(result.target_row, 2);
+    }
+
+    #[test]
     #[ignore = "uses the 149 MiB Phase 7 CSV regression fixture"]
     fn qry_large_phase7_csv_sorts_first_column() {
         let source = DataSource::open(phase7_fixture("large-csv.csv")).unwrap();
@@ -1463,6 +1876,151 @@ mod tests {
         assert_eq!(page.rows[0][0].display.as_deref(), Some("0"));
         assert_eq!(page.rows[1][0].display.as_deref(), Some("10000019"));
         assert_eq!(page.rows[2][0].display.as_deref(), Some("20000038"));
+    }
+
+    #[test]
+    #[ignore = "requires the generated Phase 11 5.85M x 15 Parquet fixture"]
+    fn phase11_5850000_row_parquet_sort_filter_and_random_pages_are_complete() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../.tmp/phase11-large/query-low-5850000-15c.parquet");
+        assert!(path.is_file(), "generate the Phase 11 large fixture first");
+        let source = DataSource::open(path).unwrap();
+        let boundary_started = std::time::Instant::now();
+        let boundary = source
+            .find_boundary(
+                &BoundarySearchRequest {
+                    row: 0,
+                    column_id: String::from("row_id"),
+                    visible_column_ids: vec![String::from("row_id")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        let boundary_elapsed = boundary_started.elapsed();
+        assert_eq!(boundary.target_row, 5_849_999);
+        assert!(
+            boundary_elapsed < std::time::Duration::from_secs(10),
+            "5.85M Parquet boundary took {boundary_elapsed:?}"
+        );
+        println!("phase11 boundary elapsed: {boundary_elapsed:?}");
+        let string_boundary_started = std::time::Instant::now();
+        let string_boundary = source
+            .find_boundary(
+                &BoundarySearchRequest {
+                    row: 1,
+                    column_id: String::from("label"),
+                    visible_column_ids: vec![String::from("label")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        let string_boundary_elapsed = string_boundary_started.elapsed();
+        assert_eq!(string_boundary.target_row, 88);
+        assert!(string_boundary_elapsed < std::time::Duration::from_secs(2));
+        println!("phase11 string boundary elapsed: {string_boundary_elapsed:?}");
+        let spec = source.query_source_spec().unwrap();
+        assert_eq!(spec.total_rows, Some(5_850_000));
+        assert_eq!(spec.columns.len(), 15);
+        let (_directory, service) = service_with_limit(2 * 1024 * 1024 * 1024);
+
+        let execute = request(
+            "phase11-full-sort-task",
+            "phase11-full-sort-query",
+            QueryPlan {
+                filters: Vec::new(),
+                search: None,
+                sort: vec![QuerySort {
+                    column_id: String::from("row_id"),
+                    direction: QuerySortDirection::Descending,
+                    nulls_last: true,
+                }],
+                projection: vec![String::from("row_id"), String::from("label")],
+            },
+        );
+        let sort_started = std::time::Instant::now();
+        service.execute(execute.clone(), spec.clone()).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        let status = loop {
+            let status = service
+                .status(
+                    &execute.document_id,
+                    &execute.session_id,
+                    &execute.query_id,
+                    &execute.task_id,
+                )
+                .unwrap();
+            if matches!(
+                status.state,
+                QueryTaskState::Complete | QueryTaskState::Cancelled | QueryTaskState::Failed
+            ) {
+                break status;
+            }
+            assert!(std::time::Instant::now() < deadline, "5.85M sort timed out");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        assert_eq!(status.state, QueryTaskState::Complete, "{:?}", status.error);
+        assert_eq!(status.progress.result_rows, 5_850_000);
+        let sort_elapsed = sort_started.elapsed();
+        println!("phase11 full sort elapsed: {sort_elapsed:?}");
+
+        for (offset, expected) in [(0, "5849999"), (986_803, "4863196"), (5_849_999, "0")] {
+            let page = service
+                .read_page(ReadQueryPageRequest {
+                    document_id: execute.document_id.clone(),
+                    session_id: execute.session_id.clone(),
+                    query_id: execute.query_id.clone(),
+                    offset,
+                    limit: 1,
+                })
+                .unwrap()
+                .page;
+            assert_eq!(page.rows.len(), 1, "offset {offset}");
+            assert_eq!(page.rows[0][0].display.as_deref(), Some(expected));
+        }
+        let usage = service.usage().unwrap();
+        println!("phase11 query temp bytes: {}", usage.process_bytes);
+        assert!(usage.process_bytes < 1024 * 1024 * 1024);
+        assert_eq!(usage.estimated_temp_bytes, None);
+
+        let filtered = request(
+            "phase11-empty-filter-task",
+            "phase11-empty-filter-query",
+            QueryPlan {
+                filters: vec![QueryFilter {
+                    id: String::from("empty-label"),
+                    column_id: String::from("label"),
+                    scalar_type: QueryScalarType::Text,
+                    operator: FilterOperator::Equals,
+                    values: vec![String::new()],
+                }],
+                search: None,
+                sort: vec![QuerySort {
+                    column_id: String::from("row_id"),
+                    direction: QuerySortDirection::Descending,
+                    nulls_last: true,
+                }],
+                projection: vec![String::from("row_id"), String::from("label")],
+            },
+        );
+        service.execute(filtered.clone(), spec).unwrap();
+        let status = wait_complete(&service, &filtered);
+        assert_eq!(status.state, QueryTaskState::Complete, "{:?}", status.error);
+        assert_eq!(status.progress.result_rows, 5_850_000_u64.div_ceil(89));
+        let page = service
+            .read_page(ReadQueryPageRequest {
+                document_id: filtered.document_id,
+                session_id: filtered.session_id,
+                query_id: filtered.query_id,
+                offset: 0,
+                limit: 1,
+            })
+            .unwrap()
+            .page;
+        assert_eq!(page.rows[0][1].state, DataValueState::Empty);
     }
 
     #[test]

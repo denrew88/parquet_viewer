@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase9-large-v1",
+  "generatedAtUtc": "2026-07-20T14:23:31.313705+00:00",
+  "generator": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\scripts\\generate_phase9_large_fixtures.py",
+  "generatorSha256": "8841e2630da85bf5b91edee6785a45d1a64d1e7f62306b75f238c115d459fdb9",
+  "seed": 20260715,
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "numpy": "1.26.4",
+    "pyarrow": "22.0.0"
+  },
+  "configuration": {
+    "rows": 5850000,
+    "rowGroupSize": 100000,
+    "profiles": [
+      "full15"
+    ],
+    "cardinalities": [
+      "low"
+    ],
+    "compression": "zstd",
+    "compressionLevel": 3
+  },
+  "preflight": {
+    "outputDirectory": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase11-large",
+    "capacityBytes": 491993952256,
+    "freeBytesBefore": 144632516608,
+    "expectedUpperBytes": 2147483648,
+    "reserveBytes": 5368709120,
+    "requiredFreeBytes": 7516192768,
+    "result": "PASS"
+  },
+  "freeBytesAfter": 144624713728,
+  "cleanedBeforeGeneration": [],
+  "determinism": {
+    "result": "SKIPPED_BY_EXPLICIT_FLAG"
+  },
+  "fixtures": [
+    {
+      "id": "query-low-5850000-rows-15-columns",
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase11-large\\query-low-5850000-15c.parquet",
+      "profile": "full15",
+      "cardinality": "low",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroupSize": 100000,
+      "rowGroups": 59,
+      "rowGroupRows": {
+        "first": 100000,
+        "last": 50000,
+        "minimum": 50000,
+        "maximum": 100000
+      },
+      "bytes": 7800536,
+      "sha256": "b9d7cc1b0d0f7277e7474401790109a3ad23e3183cb3fd2829708d5c4212229b",
+      "schemaFingerprintSha256": "4f86e54f01ac0108d7ce6154c8fee71388a2dbb7dcacca80e8ad192a060af981",
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "int64_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "float64_00",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_01",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "int32_00",
+          "type": "int32",
+          "nullable": false
+        }
+      ],
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 7716313,
+        "uncompressedBytes": 483046832,
+        "compressedToUncompressedRatio": 0.01597425
+      },
+      "encodings": {
+        "row_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "category": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "group_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "active": [
+          "RLE"
+        ],
+        "optional_value": [
+          "PLAIN",
+          "RLE"
+        ],
+        "event_time": [
+          "PLAIN",
+          "RLE"
+        ],
+        "amount": [
+          "PLAIN",
+          "RLE"
+        ],
+        "label": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "score": [
+          "PLAIN",
+          "RLE"
+        ],
+        "code": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "int64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_00": [
+          "PLAIN",
+          "RLE"
+        ]
+      },
+      "cardinalitySample": {
+        "rowGroups": [
+          0,
+          29,
+          58
+        ],
+        "rows": 12288,
+        "distinct": {
+          "row_id": 12288,
+          "category": 16,
+          "group_id": 128,
+          "label": 257,
+          "score": 512,
+          "code": 64
+        },
+        "categoryUniqueRate": 0.00130208,
+        "checksumSha256": "823cd0aff9a863b2a061ea7e79b33a52e2fce8d2c5eb987946d2ecfcdad4b6c3"
+      },
+      "validation": "PASS"
+    }
+  ],
+  "validation": "PASS"
+}

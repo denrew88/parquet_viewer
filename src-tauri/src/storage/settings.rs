@@ -11,10 +11,11 @@ use serde::Deserialize;
 
 use crate::domain::{
     AppSettingsV1, CopyLimits, CopyOptions, CopyPreset, CsvDefaultParsingMode, DataError,
-    DataErrorCode, APP_SETTINGS_SCHEMA_VERSION,
+    DataErrorCode, DisplayFormats, APP_SETTINGS_SCHEMA_VERSION, MAX_QUERY_TEMP_LIMIT_BYTES,
 };
 
 const LEGACY_SETTINGS_SCHEMA_VERSION: u8 = 1;
+const PREVIOUS_SETTINGS_SCHEMA_VERSION: u8 = 2;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,8 +37,39 @@ impl LegacyAppSettingsV1 {
             copy_preset: self.copy_preset,
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
-            query_temp_limit_bytes: self.query_temp_limit_bytes,
+            query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
             copy_limits: CopyLimits::default(),
+            display_formats: DisplayFormats::default(),
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAppSettingsV2 {
+    schema_version: u8,
+    copy_preset: CopyPreset,
+    copy_custom_options: CopyOptions,
+    csv_default_parsing_mode: CsvDefaultParsingMode,
+    query_temp_limit_bytes: u64,
+    copy_limits: CopyLimits,
+}
+
+impl LegacyAppSettingsV2 {
+    fn migrate(self) -> Result<AppSettingsV1, String> {
+        if self.schema_version != PREVIOUS_SETTINGS_SCHEMA_VERSION {
+            return Err(String::from("settings.schemaVersion is unsupported."));
+        }
+        let settings = AppSettingsV1 {
+            schema_version: APP_SETTINGS_SCHEMA_VERSION,
+            copy_preset: self.copy_preset,
+            copy_custom_options: self.copy_custom_options,
+            csv_default_parsing_mode: self.csv_default_parsing_mode,
+            query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            copy_limits: self.copy_limits,
+            display_formats: DisplayFormats::default(),
         };
         settings.validate()?;
         Ok(settings)
@@ -76,6 +108,13 @@ impl SettingsStore {
             });
         if let Ok(settings) = current_result {
             return Ok(settings);
+        }
+
+        let previous_result = serde_json::from_slice::<LegacyAppSettingsV2>(&bytes)
+            .map_err(|error| format!("Invalid V2 settings.json: {error}"))
+            .and_then(LegacyAppSettingsV2::migrate);
+        if let Ok(settings) = previous_result {
+            return self.save(&settings);
         }
 
         let legacy_result = serde_json::from_slice::<LegacyAppSettingsV1>(&bytes)
@@ -290,6 +329,7 @@ mod tests {
         let mut legacy = serde_json::to_value(&defaults).unwrap();
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["copyPreset"] = serde_json::json!("custom");
         legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
         legacy["copyCustomOptions"]["includeHeaders"] = serde_json::json!(true);
@@ -319,6 +359,7 @@ mod tests {
         assert_eq!(migrated.query_temp_limit_bytes, 512 * 1024 * 1024);
         assert_eq!(migrated.copy_limits.max_cells, DEFAULT_COPY_MAX_CELLS);
         assert_eq!(migrated.copy_limits.max_bytes, DEFAULT_COPY_MAX_BYTES);
+        assert_eq!(migrated.display_formats, DisplayFormats::default());
         assert_eq!(store.load().unwrap(), migrated);
 
         let persisted: serde_json::Value =
@@ -327,6 +368,7 @@ mod tests {
         assert_eq!(persisted["schemaVersion"], APP_SETTINGS_SCHEMA_VERSION);
         assert_eq!(persisted["copyLimits"]["maxCells"], DEFAULT_COPY_MAX_CELLS);
         assert_eq!(persisted["copyLimits"]["maxBytes"], DEFAULT_COPY_MAX_BYTES);
+        assert_eq!(persisted["displayFormats"]["binary"]["previewBytes"], 32);
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
@@ -337,6 +379,7 @@ mod tests {
         let mut legacy = serde_json::to_value(&defaults).unwrap();
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["copyPreset"] = serde_json::json!("custom");
         legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
         fs::write(
@@ -371,6 +414,7 @@ mod tests {
         let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
+        legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["queryTempLimitBytes"] = serde_json::json!(1);
         fs::write(
             directory.path().join("settings.json"),
@@ -390,5 +434,101 @@ mod tests {
             .iter()
             .any(|name| name.starts_with("settings.corrupt-")));
         assert!(names.iter().any(|name| name == "settings.json"));
+    }
+
+    #[test]
+    fn valid_v2_settings_migrate_atomically_and_preserve_all_existing_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let defaults = AppSettingsV1::default();
+        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(2);
+        legacy.as_object_mut().unwrap().remove("displayFormats");
+        legacy["copyPreset"] = serde_json::json!("custom");
+        legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
+        legacy["copyLimits"]["maxCells"] = serde_json::json!(42_000);
+        legacy["copyLimits"]["maxBytes"] = serde_json::json!(8 * 1024 * 1024);
+        legacy["csvDefaultParsingMode"] = serde_json::json!("askEveryTime");
+        legacy["queryTempLimitBytes"] = serde_json::json!(512 * 1024 * 1024_u64);
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let store = SettingsStore::new(directory.path());
+        let migrated = store.load().unwrap();
+        assert_eq!(migrated.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.copy_preset, CopyPreset::Custom);
+        assert_eq!(migrated.copy_custom_options.delimiter, ";");
+        assert_eq!(migrated.copy_limits.max_cells, 42_000);
+        assert_eq!(migrated.copy_limits.max_bytes, 8 * 1024 * 1024);
+        assert_eq!(
+            migrated.csv_default_parsing_mode,
+            CsvDefaultParsingMode::AskEveryTime
+        );
+        assert_eq!(migrated.query_temp_limit_bytes, 512 * 1024 * 1024);
+        assert_eq!(migrated.display_formats, DisplayFormats::default());
+        assert_eq!(store.load().unwrap(), migrated);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn interrupted_v2_replacement_restores_backup_then_repeats_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(2);
+        legacy.as_object_mut().unwrap().remove("displayFormats");
+        legacy["copyPreset"] = serde_json::json!("custom");
+        legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
+        legacy["copyLimits"]["maxCells"] = serde_json::json!(42_000);
+        fs::write(
+            directory.path().join("settings.previous-crashed-v2.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("settings.tmp-crashed-v3.json"),
+            b"incomplete replacement",
+        )
+        .unwrap();
+
+        let store = SettingsStore::new(directory.path());
+        let migrated = store.load().unwrap();
+        assert_eq!(migrated.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.copy_preset, CopyPreset::Custom);
+        assert_eq!(migrated.copy_custom_options.delimiter, ";");
+        assert_eq!(migrated.copy_limits.max_cells, 42_000);
+        assert_eq!(migrated.display_formats, DisplayFormats::default());
+        assert_eq!(store.load().unwrap(), migrated);
+        assert_eq!(
+            fs::read_dir(directory.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect::<Vec<_>>(),
+            vec![std::ffi::OsString::from("settings.json")]
+        );
+    }
+
+    #[test]
+    fn v2_migration_caps_only_the_obsolete_temp_limit_and_preserves_other_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(2);
+        legacy.as_object_mut().unwrap().remove("displayFormats");
+        legacy["copyPreset"] = serde_json::json!("custom");
+        legacy["copyCustomOptions"]["delimiter"] = serde_json::json!(";");
+        legacy["copyLimits"]["maxCells"] = serde_json::json!(42_000);
+        legacy["queryTempLimitBytes"] = serde_json::json!(20 * 1024 * 1024 * 1024_u64);
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let migrated = SettingsStore::new(directory.path()).load().unwrap();
+        assert_eq!(migrated.query_temp_limit_bytes, MAX_QUERY_TEMP_LIMIT_BYTES);
+        assert_eq!(migrated.copy_preset, CopyPreset::Custom);
+        assert_eq!(migrated.copy_custom_options.delimiter, ";");
+        assert_eq!(migrated.copy_limits.max_cells, 42_000);
     }
 }

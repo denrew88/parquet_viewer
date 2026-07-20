@@ -84,25 +84,57 @@ import {
   type QueryToolbarStatus,
 } from "./query/QueryToolbar";
 import { COPY_CHUNK_ROWS, COPY_SOFT_BYTE_LIMIT, COPY_SOFT_CELL_LIMIT } from "./tsv";
-import { DEFAULT_COPY_LIMITS, type CopyLimits } from "./settings/model";
-
-export const GRID_ROW_HEIGHT = 34;
-export const GRID_HEADER_HEIGHT = 36;
-export const GRID_ROW_NUMBER_WIDTH = 56;
-export const GRID_DEFAULT_COLUMN_WIDTH = 180;
-export const GRID_MIN_COLUMN_WIDTH = 80;
-export const GRID_MAX_COLUMN_WIDTH = 800;
-export const GRID_ROW_OVERSCAN = 8;
-export const GRID_COLUMN_OVERSCAN = 3;
-export const GRID_PREFETCH_DISTANCE = 40;
+import { formatDataValue } from "./settings/displayFormat";
+import {
+  DEFAULT_COPY_LIMITS,
+  DEFAULT_DISPLAY_FORMATS,
+  type CopyLimits,
+  type DisplayFormats,
+} from "./settings/model";
+import {
+  GRID_COLUMN_OVERSCAN,
+  GRID_DEFAULT_COLUMN_WIDTH,
+  GRID_HEADER_HEIGHT,
+  GRID_MAX_COLUMN_WIDTH,
+  GRID_MAX_SEGMENT_ROWS,
+  GRID_MIN_COLUMN_WIDTH,
+  GRID_PREFETCH_DISTANCE,
+  GRID_ROW_HEIGHT,
+  GRID_ROW_NUMBER_WIDTH,
+  GRID_ROW_OVERSCAN,
+  autoFitColumnWidth,
+  segmentStartForRow,
+} from "./gridSizing";
+const GRID_SEGMENT_EDGE_ROWS = 2_000;
+const GRID_BOTTOM_PADDING = 2;
 const MAX_PAGE_WINDOW = 3;
 const MAX_CONCURRENT_REQUESTS = 2;
 const COPY_PROJECTION_COLUMN_LIMIT = 64;
 const COPY_TARGET_CHUNK_CELLS = 64_000;
 
+function rawValueMetadata(value: DataValue): { unit?: string; timezone?: string } {
+  if (value.unit || value.timezone) {
+    return {
+      ...(value.unit ? { unit: value.unit } : {}),
+      ...(value.timezone ? { timezone: value.timezone } : {}),
+    };
+  }
+  const match = /\[unit=([^,\]]+)(?:, timezone=([^\]]+))?\]$/.exec(value.rawDisplay ?? "");
+  return match ? { unit: match[1], ...(match[2] ? { timezone: match[2] } : {}) } : {};
+}
+
+function copyValuePreview(value: DataValue, options: CopyOptions): string {
+  try {
+    return serializeCopyField(value, options);
+  } catch {
+    return value.display ?? "";
+  }
+}
+
 export interface VirtualDataGridProps {
   active?: boolean;
   copyOptions?: CopyOptions;
+  displayFormats?: DisplayFormats;
   copyLimits?: CopyLimits;
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
@@ -128,6 +160,7 @@ export interface VirtualDataGridProps {
   queryScalarTypes?: Readonly<Record<string, QueryScalarType>>;
   queryStatus?: QueryToolbarStatus;
   readPage(request: ReadPageRequest): Promise<DataPage>;
+  readCellValue?(row: number, columnId: string): Promise<DataValue>;
   cancelDataBoundaryNavigation?(request: CancelDataBoundaryNavigationRequest): Promise<void>;
   queryId?: string;
   resultKey?: string;
@@ -207,6 +240,7 @@ export function VirtualDataGrid({
   active = true,
   copyLimits = DEFAULT_COPY_LIMITS,
   copyOptions = COPY_PRESETS.excel,
+  displayFormats = DEFAULT_DISPLAY_FORMATS,
   copyPresetError = null,
   copyPresetSaving = false,
   cancelDataBoundaryNavigation = async () => undefined,
@@ -238,6 +272,7 @@ export function VirtualDataGrid({
   queryScalarTypes,
   queryStatus,
   readPage,
+  readCellValue,
   resultKey,
   summary,
   writeClipboardText = defaultWriteClipboardText,
@@ -255,6 +290,7 @@ export function VirtualDataGrid({
   latestResultKey.current = activeResultKey;
   const generation = useRef(0);
   const copyGeneration = useRef(0);
+  const inspectorGeneration = useRef(0);
   const mounted = useRef(true);
   const dragging = useRef(false);
   const navigationGeneration = useRef(0);
@@ -263,6 +299,9 @@ export function VirtualDataGrid({
   const activeBoundaryRequest = useRef<FindBoundaryRequest | null>(null);
   const horizontalGeneration = useRef(0);
   const inFlight = useRef(new Map<string, Promise<DataPage>>());
+  const pendingLogicalScroll = useRef<number | null>(null);
+  const segmentRecentering = useRef(false);
+  const skipAdjacentPrefetchOnce = useRef(false);
   const [pages, setPages] = useState<Map<string, DataPage>>(
     () => new Map([[projectedPageKey(page.offset, page.columns), page]]),
   );
@@ -270,6 +309,13 @@ export function VirtualDataGrid({
   const [activeProjection, setActiveProjection] = useState<string[]>(() => [...page.columns]);
   const [loadingPageKeys, setLoadingPageKeys] = useState<Set<string>>(new Set());
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [resolvedRowCountHint, setResolvedRowCountHint] = useState<number | null>(null);
+  const [segmentStart, setSegmentStart] = useState(() =>
+    segmentStartForRow(
+      page.offset,
+      summary.rowCount ?? Math.max(1, page.offset + page.rows.length),
+    ),
+  );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [chooserOpen, setChooserOpen] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -359,6 +405,7 @@ export function VirtualDataGrid({
       mounted.current = false;
       generation.current += 1;
       copyGeneration.current += 1;
+      inspectorGeneration.current += 1;
       navigationGeneration.current += 1;
       boundaryQueueEpoch.current += 1;
       const pendingBoundary = boundaryRequest.current;
@@ -401,11 +448,14 @@ export function VirtualDataGrid({
     setActiveOffset(firstPage.offset);
     setActiveProjection([...firstPage.columns]);
     setLoadingPageKeys(new Set());
-    setColumnSizing({});
     setColumnVisibility({});
+    setResolvedRowCountHint(null);
+    skipAdjacentPrefetchOnce.current = false;
     copyGeneration.current += 1;
+    inspectorGeneration.current += 1;
     setCopyProgress(null);
     setCopyMessage(null);
+    setInspected(null);
     dispatchSelection({
       type: "reset",
       sessionId: activeResultKey,
@@ -562,11 +612,19 @@ export function VirtualDataGrid({
       return next;
     });
     setActiveOffset(page.offset);
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = page.offset * GRID_ROW_HEIGHT;
+    const total = queryActive
+      ? (page.totalRows ?? page.offset + page.rows.length)
+      : (summary.rowCount ?? page.offset + page.rows.length);
+    const nextSegment = segmentStartForRow(page.offset, Math.max(1, total));
+    pendingLogicalScroll.current = page.offset;
+    setSegmentStart(nextSegment);
+    window.requestAnimationFrame(() => {
+      if (!scrollRef.current || pendingLogicalScroll.current !== page.offset) return;
+      scrollRef.current.scrollTop = Math.max(0, page.offset - nextSegment) * GRID_ROW_HEIGHT;
+      pendingLogicalScroll.current = null;
       scrollRef.current.dispatchEvent(new Event("scroll"));
-    }
-  }, [page]);
+    });
+  }, [page, queryActive, summary.rowCount]);
 
   const columnHelper = createColumnHelper<DataValue[]>();
   const columnDefs = useMemo(
@@ -605,7 +663,14 @@ export function VirtualDataGrid({
     ...[...pages.values()].map((loaded) => loaded.offset + loaded.rows.length),
   );
   const finalLoadedPage = [...pages.values()].find((loaded) => !loaded.hasMore);
-  const rowCount = knownCount ?? (finalLoadedPage ? loadedEnd : loadedEnd + 1);
+  const loadedRowCount = finalLoadedPage ? loadedEnd : loadedEnd + 1;
+  const rowCount = knownCount ?? Math.max(resolvedRowCountHint ?? 0, loadedRowCount);
+  const maxSegmentStart = Math.max(0, rowCount - GRID_MAX_SEGMENT_ROWS);
+  const boundedSegmentStart = Math.min(segmentStart, maxSegmentStart);
+  const segmentRowCount = Math.max(
+    0,
+    Math.min(GRID_MAX_SEGMENT_ROWS, rowCount - boundedSegmentStart),
+  );
   const pageStep = Math.max(
     1,
     Math.floor(((scrollRef.current?.clientHeight ?? 420) - GRID_HEADER_HEIGHT) / GRID_ROW_HEIGHT),
@@ -616,7 +681,7 @@ export function VirtualDataGrid({
   );
 
   const rowVirtualizer = useVirtualizer({
-    count: rowCount,
+    count: segmentRowCount,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => GRID_ROW_HEIGHT,
     overscan: GRID_ROW_OVERSCAN,
@@ -643,12 +708,40 @@ export function VirtualDataGrid({
       ),
   });
 
+  useEffect(() => {
+    if (segmentStart !== boundedSegmentStart) setSegmentStart(boundedSegmentStart);
+  }, [boundedSegmentStart, segmentStart]);
+
+  useLayoutEffect(() => {
+    const target = pendingLogicalScroll.current;
+    const grid = scrollRef.current;
+    if (
+      target === null ||
+      !grid ||
+      target < boundedSegmentStart ||
+      target >= boundedSegmentStart + segmentRowCount
+    )
+      return;
+    grid.scrollTop = Math.max(0, target - boundedSegmentStart) * GRID_ROW_HEIGHT;
+    pendingLogicalScroll.current = null;
+    grid.dispatchEvent(new Event("scroll"));
+  }, [boundedSegmentStart, segmentRowCount]);
+
   const scrollToCoordinate = useCallback(
-    (coordinate: GridCoordinate) => {
+    (coordinate: GridCoordinate, resolvedRowCount?: number) => {
       const grid = scrollRef.current;
       const movingDown = coordinate.row > selection.active.row;
       const movingRight = coordinate.column > selection.active.column;
-      rowVirtualizer.scrollToIndex(coordinate.row, { align: "auto" });
+      const effectiveRowCount = Math.max(rowCount, resolvedRowCount ?? 0, coordinate.row + 1);
+      if (
+        coordinate.row < boundedSegmentStart ||
+        coordinate.row >= boundedSegmentStart + segmentRowCount
+      ) {
+        pendingLogicalScroll.current = coordinate.row;
+        setSegmentStart(segmentStartForRow(coordinate.row, effectiveRowCount));
+      } else {
+        rowVirtualizer.scrollToIndex(coordinate.row - boundedSegmentStart, { align: "auto" });
+      }
       const visibleIndex = visibleColumnIndexes.indexOf(coordinate.column);
       if (visibleIndex >= 0) columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
       if (grid && movingDown) {
@@ -666,7 +759,10 @@ export function VirtualDataGrid({
     },
     [
       columnVirtualizer,
+      boundedSegmentStart,
       rowVirtualizer,
+      rowCount,
+      segmentRowCount,
       selection.active.column,
       selection.active.row,
       visibleColumnIndexes,
@@ -809,7 +905,9 @@ export function VirtualDataGrid({
     [activeProjection, onReadError, page, pages, readPage, summary.sessionId, trimPageWindow],
   );
 
-  const virtualRows = rowVirtualizer.getVirtualItems();
+  const virtualRows = rowVirtualizer
+    .getVirtualItems()
+    .map((virtualRow) => ({ ...virtualRow, index: virtualRow.index + boundedSegmentStart }));
   const columnVirtualItems = columnVirtualizer.getVirtualItems();
   const firstVisibleRow = virtualRows[0]?.index ?? 0;
   const lastVisibleRow = virtualRows[virtualRows.length - 1]?.index ?? 0;
@@ -817,6 +915,57 @@ export function VirtualDataGrid({
     (virtualColumn) => visibleColumnIndexes[virtualColumn.index],
   );
   const mountedLogicalOrdinalsKey = mountedLogicalOrdinals.join(",");
+
+  useEffect(() => {
+    const grid = scrollRef.current;
+    if (!grid || rowCount <= GRID_MAX_SEGMENT_ROWS) return;
+    const onScroll = () => {
+      if (segmentRecentering.current) return;
+      const maxScrollTop = Math.max(0, grid.scrollHeight - grid.clientHeight);
+      const localTopRow = Math.floor(grid.scrollTop / GRID_ROW_HEIGHT);
+      const logicalTopRow = Math.min(rowCount - 1, boundedSegmentStart + localTopRow);
+      let nextStart: number | null = null;
+      let targetRow = logicalTopRow;
+      let alignToEnd = false;
+
+      if (grid.scrollTop >= maxScrollTop - 1 && boundedSegmentStart < maxSegmentStart) {
+        nextStart = maxSegmentStart;
+        targetRow = rowCount - 1;
+        alignToEnd = true;
+      } else if (grid.scrollTop <= 1 && boundedSegmentStart > 0) {
+        nextStart = 0;
+        targetRow = 0;
+      } else if (
+        localTopRow >= segmentRowCount - GRID_SEGMENT_EDGE_ROWS &&
+        boundedSegmentStart < maxSegmentStart
+      ) {
+        nextStart = Math.min(
+          maxSegmentStart,
+          Math.max(0, logicalTopRow - Math.floor(GRID_MAX_SEGMENT_ROWS / 2)),
+        );
+      } else if (localTopRow <= GRID_SEGMENT_EDGE_ROWS && boundedSegmentStart > 0) {
+        nextStart = Math.max(
+          0,
+          Math.min(maxSegmentStart, logicalTopRow - Math.floor(GRID_MAX_SEGMENT_ROWS / 2)),
+        );
+      }
+
+      if (nextStart === null || nextStart === boundedSegmentStart) return;
+      segmentRecentering.current = true;
+      setSegmentStart(nextStart);
+      window.requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = alignToEnd
+            ? scrollRef.current.scrollHeight
+            : Math.max(0, targetRow - nextStart!) * GRID_ROW_HEIGHT;
+          scrollRef.current.dispatchEvent(new Event("scroll"));
+        }
+        segmentRecentering.current = false;
+      });
+    };
+    grid.addEventListener("scroll", onScroll, { passive: true });
+    return () => grid.removeEventListener("scroll", onScroll);
+  }, [boundedSegmentStart, maxSegmentStart, rowCount, segmentRowCount]);
 
   useEffect(() => {
     setActiveProjection((current) => {
@@ -836,8 +985,13 @@ export function VirtualDataGrid({
 
   useEffect(() => {
     if (rowCount === 0) return;
-    const scrollRow = Math.floor(
-      (scrollRef.current?.scrollTop ?? firstVisibleRow * GRID_ROW_HEIGHT) / GRID_ROW_HEIGHT,
+    const scrollRow = Math.min(
+      rowCount - 1,
+      boundedSegmentStart +
+        Math.floor(
+          (scrollRef.current?.scrollTop ??
+            (firstVisibleRow - boundedSegmentStart) * GRID_ROW_HEIGHT) / GRID_ROW_HEIGHT,
+        ),
     );
     const visibleOffset = pageOffsetFor(scrollRow, page.limit);
     const visibleKey = projectedPageKey(visibleOffset, activeProjection);
@@ -848,6 +1002,10 @@ export function VirtualDataGrid({
 
     const current = pages.get(visibleKey) ?? compatible;
     if (!current) return;
+    if (skipAdjacentPrefetchOnce.current) {
+      skipAdjacentPrefetchOnce.current = false;
+      return;
+    }
     const distanceToEnd = current.offset + current.rows.length - 1 - lastVisibleRow;
     if (current.hasMore && distanceToEnd <= GRID_PREFETCH_DISTANCE) {
       void requestPage(current.offset + page.limit, false);
@@ -856,7 +1014,16 @@ export function VirtualDataGrid({
     if (current.offset > 0 && distanceToStart <= GRID_PREFETCH_DISTANCE) {
       void requestPage(Math.max(0, current.offset - page.limit), false);
     }
-  }, [activeProjection, firstVisibleRow, lastVisibleRow, page, pages, requestPage, rowCount]);
+  }, [
+    activeProjection,
+    boundedSegmentStart,
+    firstVisibleRow,
+    lastVisibleRow,
+    page,
+    pages,
+    requestPage,
+    rowCount,
+  ]);
 
   const activePage =
     pages.get(projectedPageKey(activeOffset, activeProjection)) ??
@@ -882,12 +1049,46 @@ export function VirtualDataGrid({
     const loaded = compatiblePageFor(pages.values(), page, offset, [columnName]);
     if (!loaded) return null;
     const projectedIndex = loaded.columns.indexOf(columnName);
-    return loaded.rows[rowIndex - offset]?.[projectedIndex] ?? null;
+    const value = loaded.rows[rowIndex - offset]?.[projectedIndex] ?? null;
+    return value ? formatDataValue(value, displayFormats) : null;
   }
 
   function inspect(coordinate: GridCoordinate) {
     const value = valueAt(coordinate.row, coordinate.column);
-    if (value) setInspected({ coordinate, value });
+    if (!value) return;
+    const requestGeneration = ++inspectorGeneration.current;
+    setInspected({ coordinate, value });
+    const columnId = logicalColumnNames[coordinate.column];
+    const resultIdentity = activeResultKey;
+    if (readCellValue && columnId) {
+      void readCellValue(coordinate.row, columnId)
+        .then((fullValue) => {
+          if (
+            mounted.current &&
+            inspectorGeneration.current === requestGeneration &&
+            latestResultKey.current === resultIdentity
+          ) {
+            setInspected({ coordinate, value: formatDataValue(fullValue, displayFormats) });
+          }
+        })
+        .catch((error) => {
+          if (
+            mounted.current &&
+            inspectorGeneration.current === requestGeneration &&
+            latestResultKey.current === resultIdentity
+          ) {
+            setCopyMessage(
+              error instanceof Error ? error.message : "The full value is unavailable.",
+            );
+          }
+        });
+    }
+  }
+
+  function closeInspector(): void {
+    inspectorGeneration.current += 1;
+    setInspected(null);
+    window.requestAnimationFrame(() => gridRef.current?.focus());
   }
 
   async function copySelection(includeColumnHeaders?: boolean, options = copyOptions) {
@@ -992,7 +1193,9 @@ export function VirtualDataGrid({
               response.rows.forEach((row, rowIndex) => combinedRows![rowIndex].push(...row));
             }
           }
-          rows = combinedRows ?? [];
+          rows = (combinedRows ?? []).map((row) =>
+            row.map((value) => formatDataValue(value, displayFormats)),
+          );
         }
         if (knownCount !== null && rows.length !== limit) {
           throw new Error("The copy page response did not match the requested range.");
@@ -1086,11 +1289,24 @@ export function VirtualDataGrid({
     });
   }
 
-  async function copyContextCell(coordinate: GridCoordinate) {
-    const value = valueAt(coordinate.row, coordinate.column);
+  async function copyContextCell(
+    coordinate: GridCoordinate,
+    representation: "configured" | "display" | "raw" = "configured",
+  ) {
+    let value = valueAt(coordinate.row, coordinate.column);
     if (!value) return;
     try {
-      await writeClipboardText(serializeCopyField(value, copyOptions));
+      const columnId = logicalColumnNames[coordinate.column];
+      if (representation !== "display" && readCellValue && columnId) {
+        value = formatDataValue(await readCellValue(coordinate.row, columnId), displayFormats);
+      }
+      const text =
+        representation === "display"
+          ? (value.display ?? "")
+          : representation === "raw"
+            ? (value.sourceDisplay ?? value.rawDisplay ?? value.display ?? "")
+            : serializeCopyField(value, copyOptions);
+      await writeClipboardText(text);
       setCopyMessage("Copied cell value.");
     } catch (error) {
       setCopyMessage(error instanceof Error ? error.message : "The cell could not be copied.");
@@ -1221,6 +1437,7 @@ export function VirtualDataGrid({
           next.set(targetPageKey, targetPage);
           return trimPageWindow(next, targetPageKey);
         });
+        skipAdjacentPrefetchOnce.current = true;
       }
       if (!assertCurrent()) return;
       activeBoundaryRequest.current = null;
@@ -1228,6 +1445,9 @@ export function VirtualDataGrid({
         ...selectionBounds,
         rowCount: Math.max(selectionBounds.rowCount, resolvedRowCount ?? 0, target.row + 1),
       };
+      if (knownCount === null) {
+        setResolvedRowCountHint((current) => Math.max(current ?? 0, targetBounds.rowCount));
+      }
       const committedSelection = dispatchSelection({
         type: "click",
         coordinate: target,
@@ -1235,7 +1455,7 @@ export function VirtualDataGrid({
         bounds: targetBounds,
       });
       expectedSelectionGeneration = committedSelection.generation;
-      scrollToCoordinate(target);
+      scrollToCoordinate(target, targetBounds.rowCount);
       window.requestAnimationFrame(() => {
         const grid = gridRef.current;
         if (
@@ -1356,7 +1576,45 @@ export function VirtualDataGrid({
     window.addEventListener("pointerup", stop, { once: true });
   }
 
+  function autoFitColumn(columnId: string) {
+    const displays: (string | null)[] = [];
+    for (const loaded of pages.values()) {
+      const projectedIndex = loaded.columns.indexOf(columnId);
+      if (projectedIndex < 0) continue;
+      for (const row of loaded.rows) {
+        const value = row[projectedIndex];
+        displays.push(value ? formatDataValue(value, displayFormats).display : null);
+      }
+    }
+    const logicalIndex = logicalColumnNames.indexOf(columnId);
+    const headerElement = gridRef.current?.querySelector<HTMLElement>(
+      `.virtual-grid__column-header[data-column-index="${logicalIndex}"]`,
+    );
+    const cellElement = gridRef.current?.querySelector<HTMLElement>(
+      `.virtual-grid__cell[data-grid-column="${logicalIndex}"]`,
+    );
+    const canvas = document.createElement("canvas");
+    const context = navigator.userAgent.includes("jsdom") ? null : canvas.getContext("2d");
+    const headerFont = headerElement
+      ? window.getComputedStyle(headerElement).font
+      : "650 12px sans-serif";
+    const cellFont = cellElement ? window.getComputedStyle(cellElement).font : "12px sans-serif";
+    const measure = (value: string, header: boolean) => {
+      if (!context) return [...value].length * 7;
+      context.font = header ? headerFont : cellFont;
+      return context.measureText(value).width;
+    };
+    const allowance = queryEnabled ? 76 : 28;
+    const width = autoFitColumnWidth(columnId, displays, measure, allowance);
+    setColumnSizing((sizes) => ({ ...sizes, [columnId]: width }));
+  }
+
   function resizeColumnWithKeyboard(event: KeyboardEvent<HTMLDivElement>, columnId: string) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      autoFitColumn(columnId);
+      return;
+    }
     if (
       event.key !== "ArrowLeft" &&
       event.key !== "ArrowRight" &&
@@ -1591,20 +1849,30 @@ export function VirtualDataGrid({
             </div>
             <div className="column-chooser__list">
               {filteredColumns.map((column) => (
-                <button
-                  aria-pressed={column.getIsVisible()}
-                  key={column.id}
-                  onClick={column.getToggleVisibilityHandler()}
-                  title={column.id}
-                  type="button"
-                >
-                  {column.getIsVisible() ? (
-                    <Eye aria-hidden="true" />
-                  ) : (
-                    <EyeOff aria-hidden="true" />
-                  )}
-                  <span>{column.id}</span>
-                </button>
+                <div className="column-chooser__item" key={column.id}>
+                  <button
+                    aria-pressed={column.getIsVisible()}
+                    onClick={column.getToggleVisibilityHandler()}
+                    title={column.id}
+                    type="button"
+                  >
+                    {column.getIsVisible() ? (
+                      <Eye aria-hidden="true" />
+                    ) : (
+                      <EyeOff aria-hidden="true" />
+                    )}
+                    <span>{column.id}</span>
+                  </button>
+                  <button
+                    aria-label={`Auto fit ${column.id}`}
+                    disabled={!column.getIsVisible()}
+                    onClick={() => autoFitColumn(column.id)}
+                    title={`Auto fit ${column.id}`}
+                    type="button"
+                  >
+                    Auto fit
+                  </button>
+                </div>
               ))}
               {filteredColumns.length === 0 && (
                 <span className="column-chooser__empty">No columns</span>
@@ -1677,7 +1945,7 @@ export function VirtualDataGrid({
           <div
             className="virtual-grid__canvas"
             style={{
-              height: GRID_HEADER_HEIGHT + rowVirtualizer.getTotalSize(),
+              height: GRID_HEADER_HEIGHT + rowVirtualizer.getTotalSize() + GRID_BOTTOM_PADDING,
               width: GRID_ROW_NUMBER_WIDTH + totalColumnWidth,
             }}
           >
@@ -1791,10 +2059,16 @@ export function VirtualDataGrid({
                       aria-valuemin={GRID_MIN_COLUMN_WIDTH}
                       aria-valuenow={column.getSize()}
                       className="column-resizer"
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        autoFitColumn(column.id);
+                      }}
                       onKeyDown={(event) => resizeColumnWithKeyboard(event, column.id)}
                       onPointerDown={(event) => resizeColumn(event, column.id, column.getSize())}
                       role="separator"
                       tabIndex={0}
+                      title={`Resize ${column.id}; double-click or press Enter to auto fit`}
                     />
                   </div>
                 );
@@ -1842,7 +2116,8 @@ export function VirtualDataGrid({
                     const logicalColumn = visibleColumnIndexes[virtualColumn.index];
                     const column = visibleColumns[virtualColumn.index];
                     const projectedColumn = loaded?.columns.indexOf(column.id) ?? -1;
-                    const value = projectedColumn >= 0 ? row?.[projectedColumn] : undefined;
+                    const rawValue = projectedColumn >= 0 ? row?.[projectedColumn] : undefined;
+                    const value = rawValue ? formatDataValue(rawValue, displayFormats) : undefined;
                     const coordinate = { row: virtualRow.index, column: logicalColumn };
                     const selected = isSelected(selection, coordinate);
                     const active =
@@ -1865,6 +2140,10 @@ export function VirtualDataGrid({
                           value
                             ? cellClass(value)
                             : "virtual-grid__cell virtual-grid__cell--loading"
+                        }${
+                          value?.kind === "string" && !displayFormats.string.wrapLongLines
+                            ? " virtual-grid__cell--nowrap"
+                            : ""
                         }${selected ? " is-selected" : ""}${active ? " is-active" : ""}`}
                         data-grid-column={logicalColumn}
                         data-grid-row={virtualRow.index}
@@ -1907,8 +2186,13 @@ export function VirtualDataGrid({
                           value.state === "invalid" ? (
                             <>
                               <TriangleAlert aria-hidden="true" className="invalid-cell-icon" />
-                              <span>{dataCellText(value)}</span>
+                              <span className="virtual-grid__cell-value">
+                                {dataCellText(value)}
+                              </span>
                             </>
+                          ) : dataCellText(value).includes("\n") ||
+                            dataCellText(value).includes("\r") ? (
+                            <span className="virtual-grid__cell-value">{dataCellText(value)}</span>
                           ) : (
                             dataCellText(value)
                           )
@@ -1972,8 +2256,7 @@ export function VirtualDataGrid({
           className="value-inspector"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              setInspected(null);
-              window.requestAnimationFrame(() => gridRef.current?.focus());
+              closeInspector();
             }
           }}
           role="dialog"
@@ -1990,16 +2273,59 @@ export function VirtualDataGrid({
               aria-label="Close value inspector"
               autoFocus
               className="icon-button"
-              onClick={() => {
-                setInspected(null);
-                window.requestAnimationFrame(() => gridRef.current?.focus());
-              }}
+              onClick={closeInspector}
               type="button"
             >
               <X aria-hidden="true" />
             </button>
           </header>
-          <pre>{inspected.value.display === null ? "null" : inspected.value.display}</pre>
+          <div className="value-inspector__values">
+            {(() => {
+              const metadata = rawValueMetadata(inspected.value);
+              return (
+                <section>
+                  <strong>Type</strong>
+                  <pre>{inspected.value.kind}</pre>
+                  {metadata.unit && <span>Unit: {metadata.unit}</span>}
+                  {metadata.timezone && <span>Timezone: {metadata.timezone}</span>}
+                </section>
+              );
+            })()}
+            <section>
+              <strong>Display</strong>
+              <pre>{inspected.value.display === null ? "null" : inspected.value.display}</pre>
+              <button
+                onClick={() => void copyContextCell(inspected.coordinate, "display")}
+                type="button"
+              >
+                Copy displayed value
+              </button>
+            </section>
+            <section>
+              <strong>Copy value</strong>
+              <pre>{copyValuePreview(inspected.value, copyOptions)}</pre>
+            </section>
+            {inspected.value.rawDisplay !== null && inspected.value.rawDisplay !== undefined && (
+              <section>
+                <strong>Raw</strong>
+                <pre>{inspected.value.rawDisplay}</pre>
+                <button
+                  onClick={() => void copyContextCell(inspected.coordinate, "raw")}
+                  type="button"
+                >
+                  Copy raw value
+                </button>
+              </section>
+            )}
+            {inspected.value.sourceDisplay !== null &&
+              inspected.value.sourceDisplay !== undefined &&
+              inspected.value.sourceDisplay !== inspected.value.rawDisplay && (
+                <section>
+                  <strong>Source</strong>
+                  <pre>{inspected.value.sourceDisplay}</pre>
+                </section>
+              )}
+          </div>
         </div>
       )}
       {contextMenu &&
@@ -2069,7 +2395,31 @@ export function VirtualDataGrid({
               role="menuitem"
               type="button"
             >
-              <span>Copy cell value</span>
+              <span>Copy configured value</span>
+            </button>
+            <button
+              disabled={!valueAt(contextMenu.coordinate.row, contextMenu.coordinate.column)}
+              onClick={() => {
+                const target = contextMenu.coordinate;
+                closeContextMenu();
+                void copyContextCell(target, "display");
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <span>Copy displayed value</span>
+            </button>
+            <button
+              disabled={!valueAt(contextMenu.coordinate.row, contextMenu.coordinate.column)}
+              onClick={() => {
+                const target = contextMenu.coordinate;
+                closeContextMenu();
+                void copyContextCell(target, "raw");
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <span>Copy raw value</span>
             </button>
             <button
               disabled={!valueAt(contextMenu.coordinate.row, contextMenu.coordinate.column)}

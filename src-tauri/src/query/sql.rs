@@ -1,7 +1,7 @@
 use crate::{
     data::{
         query_invalid_name as invalid_name, query_quote_identifier as quote_identifier,
-        query_quote_literal as quote_literal, query_raw_name as raw_name, QuerySourceSpec,
+        query_quote_literal as quote_literal, QuerySourceSpec,
     },
     domain::{
         scalar_type_for_column, FilterOperator, QueryPlan, QueryScalarType, QuerySearchMode,
@@ -90,21 +90,6 @@ pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> Materializ
             })
             .collect()
     };
-    let mut select = Vec::new();
-    for (output_index, source_index) in projected.iter().copied().enumerate() {
-        let column = &source.columns[source_index];
-        select.push(format!(
-            "CAST({} AS VARCHAR) AS {}, CAST({} AS VARCHAR) AS {}, {} AS {}",
-            quote_identifier(&column.name),
-            quote_identifier(&column.name),
-            raw_name(source_index),
-            output_raw_name(output_index),
-            invalid_name(source_index),
-            output_invalid_name(output_index)
-        ));
-    }
-    select.push(String::from("__dv_row_id"));
-
     let mut parameters = Vec::new();
     let mut predicates = Vec::new();
     for filter in &plan.filters {
@@ -192,11 +177,7 @@ pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> Materializ
     let order_sql = order.join(", ");
     MaterializeSql {
         sql: format!(
-            "CREATE TABLE query_result AS SELECT {}, row_number() OVER (ORDER BY {}) - 1 AS __dv_result_position FROM dv_source{} ORDER BY {}",
-            select.join(", "),
-            order_sql,
-            where_clause,
-            order_sql
+            "CREATE TABLE query_result AS SELECT __dv_row_id, row_number() OVER (ORDER BY {order_sql}) - 1 AS __dv_result_position FROM dv_source{where_clause} ORDER BY {order_sql}"
         ),
         parameters,
         columns: projected,
@@ -266,14 +247,6 @@ fn filter_predicate(
             format!("{column} {comparison} {mark}")
         }
     }
-}
-
-pub fn output_raw_name(index: usize) -> String {
-    quote_identifier(&format!("__dv_result_raw_{index}"))
-}
-
-pub fn output_invalid_name(index: usize) -> String {
-    quote_identifier(&format!("__dv_result_invalid_{index}"))
 }
 
 pub fn scalar_sql_type(scalar: QueryScalarType) -> &'static str {

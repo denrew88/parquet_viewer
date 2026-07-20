@@ -1,27 +1,38 @@
 use crate::domain::{
-    ColumnSchema, DataError, DataFormat, DataPage, DataValue, FileSummary, FormatDescriptor,
-    FormatDetailsContent, FormatDetailsSection, RowCountState, RowCountStatus, RowGroupSummary,
-    SourceCapability,
+    BoundarySearchRequest, BoundarySearchResult, ColumnSchema, DataBoundaryDirection,
+    DataBoundaryMode, DataError, DataFormat, DataPage, DataValue, DataValueState, FileSummary,
+    FormatDescriptor, FormatDetailsContent, FormatDetailsSection, RowCountState, RowCountStatus,
+    RowGroupSummary, SourceCapability,
 };
-use arrow_array::RecordBatch;
+use arrow_array::{Array, LargeStringArray, RecordBatch, StringArray};
+use arrow_schema::DataType;
 use parquet::arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use super::{
     query_invalid_name, query_quote_identifier, query_quote_literal, query_raw_name, FormatHandler,
-    QueryInputProvider, QueryPrepareContext, QuerySourceSpec, TabularSource,
+    QueryExactValues, QueryInputProvider, QueryPrepareContext, QuerySourceSpec, TabularSource,
 };
 
 const PARQUET_MAGIC: &[u8; 4] = b"PAR1";
 pub const MAX_PAGE_SIZE: usize = 200;
 pub const MAX_PROJECTION_COLUMNS: usize = 64;
 const MAX_GENERIC_ROW_GROUPS: usize = 100;
+const BOUNDARY_PAGE_SIZE: usize = 65_536;
+
+enum OccupancyScan {
+    Unsupported,
+    Complete(Option<u64>),
+}
 
 pub const PARQUET_FORMAT_DESCRIPTOR: FormatDescriptor = FormatDescriptor {
     id: DataFormat::Parquet,
@@ -227,6 +238,129 @@ impl ParquetSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         validate_page_request(limit)?;
+        self.read_projected(offset, limit, columns, MAX_PAGE_SIZE)
+    }
+
+    fn read_cell_value_full(&self, row: u64, column: &str) -> Result<DataValue, DataError> {
+        let projection = self.validate_projection(Some(&[column.to_owned()]))?;
+        let (row_groups, first_row) = self.row_groups_for_page(row, 1);
+        if row_groups.is_empty() {
+            return Err(DataError::invalid_request(
+                "The requested cell is outside the data table.",
+            ));
+        }
+        let file = File::open(&self.path).map_err(|error| DataError::io(&self.path, error))?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+        let mask = ProjectionMask::roots(builder.parquet_schema(), projection.sorted_indices);
+        let reader = builder
+            .with_batch_size(MAX_PAGE_SIZE)
+            .with_row_groups(row_groups)
+            .with_projection(mask)
+            .build()
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+        let mut skip = row.saturating_sub(first_row);
+        for batch in reader {
+            let batch = batch.map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+            if skip >= batch.num_rows() as u64 {
+                skip -= batch.num_rows() as u64;
+                continue;
+            }
+            return super::value_format::full_value_at(batch.column(0).as_ref(), skip as usize);
+        }
+        Err(DataError::invalid_request(
+            "The requested cell is outside the data table.",
+        ))
+    }
+
+    fn read_rows_exact(
+        &self,
+        row_ids: &[u64],
+        columns: &[String],
+    ) -> Result<Vec<Vec<DataValue>>, DataError> {
+        if row_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let projection = self.validate_projection(Some(columns))?;
+        let mut grouped: BTreeMap<usize, Vec<(u64, usize)>> = BTreeMap::new();
+        for (output_index, row) in row_ids.iter().copied().enumerate() {
+            let group = self
+                .row_group_offsets
+                .iter()
+                .position(|(start, end)| *start <= row && row < *end)
+                .ok_or_else(|| {
+                    DataError::invalid_request("A query source row is outside the Parquet file.")
+                })?;
+            grouped.entry(group).or_default().push((row, output_index));
+        }
+        let row_groups = grouped.keys().copied().collect::<Vec<_>>();
+        let mut group_bases = HashMap::with_capacity(row_groups.len());
+        let mut base = 0_u64;
+        for group in &row_groups {
+            group_bases.insert(*group, base);
+            let (start, end) = self.row_group_offsets[*group];
+            base = base.saturating_add(end - start);
+        }
+        let mut targets: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
+        for (group, rows) in grouped {
+            let group_start = self.row_group_offsets[group].0;
+            let group_base = group_bases[&group];
+            for (row, output_index) in rows {
+                targets
+                    .entry(group_base + row - group_start)
+                    .or_default()
+                    .push(output_index);
+            }
+        }
+
+        let file = File::open(&self.path).map_err(|error| DataError::io(&self.path, error))?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+        let mask = ProjectionMask::roots(builder.parquet_schema(), projection.sorted_indices);
+        let reader = builder
+            .with_batch_size(4_096)
+            .with_row_groups(row_groups)
+            .with_projection(mask)
+            .build()
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+        let mut output = vec![None; row_ids.len()];
+        let mut stream_offset = 0_u64;
+        for batch in reader {
+            let batch = batch.map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+            let batch_end = stream_offset + batch.num_rows() as u64;
+            for (target, output_indices) in targets.range(stream_offset..batch_end) {
+                let row_index = usize::try_from(*target - stream_offset)
+                    .map_err(|_| DataError::invalid_request("Query row offset overflow."))?;
+                let values = projection
+                    .batch_positions
+                    .iter()
+                    .map(|position| {
+                        super::value_format::value_at(batch.column(*position).as_ref(), row_index)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                for output_index in output_indices {
+                    output[*output_index] = Some(values.clone());
+                }
+            }
+            stream_offset = batch_end;
+        }
+        output
+            .into_iter()
+            .map(|row| {
+                row.ok_or_else(|| {
+                    DataError::invalid_request("A query source row could not be decoded.")
+                })
+            })
+            .collect()
+    }
+
+    fn read_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: Option<&[String]>,
+        batch_size: usize,
+    ) -> Result<DataPage, DataError> {
         let projection = self.validate_projection(columns)?;
         let (row_groups, first_row) = self.row_groups_for_page(offset, limit);
 
@@ -249,7 +383,7 @@ impl ParquetSource {
             .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
         let mask = ProjectionMask::roots(builder.parquet_schema(), projection.sorted_indices);
         let reader = builder
-            .with_batch_size(MAX_PAGE_SIZE)
+            .with_batch_size(batch_size)
             .with_row_groups(row_groups)
             .with_projection(mask)
             .build()
@@ -371,6 +505,148 @@ impl ParquetSource {
         (row_groups, first_row)
     }
 
+    fn find_vertical_boundary_vector(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<Option<BoundarySearchResult>, DataError> {
+        if request.mode != DataBoundaryMode::DataBoundary
+            || !matches!(
+                request.direction,
+                DataBoundaryDirection::Up | DataBoundaryDirection::Down
+            )
+        {
+            return Ok(None);
+        }
+        let row_count = self.summary.row_count.expect("validated Parquet row count");
+        let neighbor_row = match request.direction {
+            DataBoundaryDirection::Down if request.row + 1 < row_count => request.row + 1,
+            DataBoundaryDirection::Up if request.row > 0 => request.row - 1,
+            _ => {
+                return Ok(Some(BoundarySearchResult {
+                    target_row: request.row,
+                    target_column_id: request.column_id.clone(),
+                    resolved_row_count: Some(row_count),
+                }));
+            }
+        };
+        let offset = request.row.min(neighbor_row);
+        let projection = [request.column_id.clone()];
+        let adjacent = self.read_projected(offset, 2, Some(&projection), 2)?;
+        let current_index = usize::from(request.direction == DataBoundaryDirection::Up);
+        let neighbor_index = 1 - current_index;
+        let current_occupied = adjacent.rows[current_index]
+            .first()
+            .is_some_and(|value| boundary_value_occupied(value.state));
+        let neighbor_occupied = adjacent.rows[neighbor_index]
+            .first()
+            .is_some_and(|value| boundary_value_occupied(value.state));
+        let seek_occupied = !(current_occupied && neighbor_occupied);
+        let column_index = self
+            .summary
+            .columns
+            .iter()
+            .position(|column| column.name == request.column_id)
+            .expect("validated Parquet boundary column");
+        let scan = self.scan_occupancy(
+            column_index,
+            request.row,
+            request.direction,
+            seek_occupied,
+            cancel,
+        )?;
+        let OccupancyScan::Complete(found) = scan else {
+            return Ok(None);
+        };
+        let edge = if request.direction == DataBoundaryDirection::Up {
+            0
+        } else {
+            row_count - 1
+        };
+        let target_row = match (found, seek_occupied, request.direction) {
+            (Some(row), true, _) => row,
+            (Some(row), false, DataBoundaryDirection::Down) => row - 1,
+            (Some(row), false, DataBoundaryDirection::Up) => row + 1,
+            (None, _, _) => edge,
+            _ => unreachable!(),
+        };
+        Ok(Some(BoundarySearchResult {
+            target_row,
+            target_column_id: request.column_id.clone(),
+            resolved_row_count: Some(row_count),
+        }))
+    }
+
+    fn scan_occupancy(
+        &self,
+        column_index: usize,
+        current_row: u64,
+        direction: DataBoundaryDirection,
+        seek_occupied: bool,
+        cancel: &AtomicBool,
+    ) -> Result<OccupancyScan, DataError> {
+        let row_groups = self
+            .row_group_offsets
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (start, end))| match direction {
+                DataBoundaryDirection::Down => (*end > current_row + 1).then_some(index),
+                DataBoundaryDirection::Up => (*start < current_row).then_some(index),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if row_groups.is_empty() {
+            return Ok(OccupancyScan::Complete(None));
+        }
+        let first_row = self.row_group_offsets[row_groups[0]].0;
+        let file = File::open(&self.path).map_err(|error| DataError::io(&self.path, error))?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+        let mask = ProjectionMask::roots(builder.parquet_schema(), [column_index]);
+        let reader = builder
+            .with_batch_size(BOUNDARY_PAGE_SIZE)
+            .with_row_groups(row_groups.clone())
+            .with_projection(mask)
+            .build()
+            .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+
+        #[cfg(test)]
+        self.record_reader_build(&row_groups, 1);
+        let mut batch_start = first_row;
+        let mut latest = None;
+        for batch in reader {
+            if cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            let batch = batch.map_err(|error| DataError::invalid_parquet(&self.path, error))?;
+            #[cfg(test)]
+            self.record_decoded_batch(batch.num_rows(), batch.num_columns());
+            let array = batch.column(0).as_ref();
+            for index in 0..batch.num_rows() {
+                let row = batch_start + index as u64;
+                let in_direction = match direction {
+                    DataBoundaryDirection::Down => row > current_row,
+                    DataBoundaryDirection::Up => row < current_row,
+                    _ => false,
+                };
+                if !in_direction {
+                    continue;
+                }
+                let Some(occupied) = arrow_value_occupied(array, index) else {
+                    return Ok(OccupancyScan::Unsupported);
+                };
+                if occupied == seek_occupied {
+                    if direction == DataBoundaryDirection::Down {
+                        return Ok(OccupancyScan::Complete(Some(row)));
+                    }
+                    latest = Some(row);
+                }
+            }
+            batch_start += batch.num_rows() as u64;
+        }
+        Ok(OccupancyScan::Complete(latest))
+    }
+
     #[cfg(test)]
     pub(crate) fn take_decode_audit(&self) -> DecodeAudit {
         let mut audit = self.decode_audit.lock().expect("decode audit lock");
@@ -395,7 +671,9 @@ impl ParquetSource {
 }
 
 #[derive(Debug)]
-struct ParquetQueryProvider;
+struct ParquetQueryProvider {
+    path: PathBuf,
+}
 
 impl QueryInputProvider for ParquetQueryProvider {
     fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
@@ -412,7 +690,11 @@ impl QueryInputProvider for ParquetQueryProvider {
                 let identifier = query_quote_identifier(&column.name);
                 [
                     identifier.clone(),
-                    format!("CAST({identifier} AS VARCHAR) AS {}", query_raw_name(index)),
+                    format!(
+                        "{} AS {}",
+                        parquet_query_raw_expression(&identifier, &column.logical_type),
+                        query_raw_name(index)
+                    ),
                     format!("false AS {}", query_invalid_name(index)),
                 ]
             })
@@ -426,6 +708,43 @@ impl QueryInputProvider for ParquetQueryProvider {
             .map_err(|error| DataError::query_failed(error.to_string()))?;
         (context.progress)(0)
     }
+
+    fn exact_query_values(
+        &self,
+        row_ids: &[u64],
+        columns: &[String],
+    ) -> Result<Option<QueryExactValues>, DataError> {
+        let source = ParquetSource::open(&self.path)?;
+        let exact_columns = columns
+            .iter()
+            .filter(|name| {
+                source
+                    .summary
+                    .columns
+                    .iter()
+                    .find(|column| &column.name == *name)
+                    .is_some_and(|column| {
+                        column
+                            .logical_type
+                            .to_ascii_lowercase()
+                            .contains("timestamp")
+                    })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if exact_columns.is_empty() {
+            return Ok(None);
+        }
+        let rows = source.read_rows_exact(row_ids, &exact_columns)?;
+        Ok(Some(QueryExactValues {
+            columns: exact_columns,
+            rows,
+        }))
+    }
+}
+
+fn parquet_query_raw_expression(identifier: &str, _logical_type: &str) -> String {
+    format!("CAST({identifier} AS VARCHAR)")
 }
 
 impl TabularSource for ParquetSource {
@@ -440,7 +759,9 @@ impl TabularSource for ParquetSource {
             path,
             columns: self.summary.columns.clone(),
             total_rows: self.summary.row_count,
-            provider: Arc::new(ParquetQueryProvider),
+            provider: Arc::new(ParquetQueryProvider {
+                path: self.path.clone(),
+            }),
         })
     }
 
@@ -455,6 +776,88 @@ impl TabularSource for ParquetSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         ParquetSource::read_page_projected(self, offset, limit, columns)
+    }
+
+    fn read_cell_value(&self, row: u64, column: &str) -> Result<DataValue, DataError> {
+        self.read_cell_value_full(row, column)
+    }
+
+    fn find_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<BoundarySearchResult, DataError> {
+        super::validate_boundary_request(&self.summary.columns, self.summary.row_count, request)?;
+        if cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        if request.mode == DataBoundaryMode::DataBoundary
+            && matches!(
+                request.direction,
+                DataBoundaryDirection::Up | DataBoundaryDirection::Down
+            )
+        {
+            let column = self
+                .summary
+                .columns
+                .iter()
+                .find(|column| column.name == request.column_id)
+                .expect("validated Parquet boundary column");
+            let logical_type = column.logical_type.to_ascii_lowercase();
+            let can_contain_empty_string =
+                logical_type.contains("utf8") || logical_type.contains("string");
+            if !column.nullable && !can_contain_empty_string {
+                let row_count = self.summary.row_count.expect("validated Parquet row count");
+                return Ok(BoundarySearchResult {
+                    target_row: if request.direction == DataBoundaryDirection::Up {
+                        0
+                    } else {
+                        row_count - 1
+                    },
+                    target_column_id: request.column_id.clone(),
+                    resolved_row_count: Some(row_count),
+                });
+            }
+        }
+        if let Some(result) = self.find_vertical_boundary_vector(request, cancel)? {
+            return Ok(result);
+        }
+        super::boundary::find_boundary_batched(
+            &self.summary.columns,
+            self.summary.row_count,
+            request,
+            cancel,
+            BOUNDARY_PAGE_SIZE,
+            |offset, limit, columns| {
+                self.read_projected(offset, limit, Some(columns), BOUNDARY_PAGE_SIZE)
+            },
+        )
+    }
+}
+
+fn boundary_value_occupied(state: DataValueState) -> bool {
+    matches!(state, DataValueState::Valid | DataValueState::Invalid)
+}
+
+fn arrow_value_occupied(array: &dyn Array, index: usize) -> Option<bool> {
+    if array.is_null(index) {
+        return Some(false);
+    }
+    match array.data_type() {
+        DataType::Utf8 => array
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .map(|values| !values.value(index).is_empty()),
+        DataType::LargeUtf8 => array
+            .as_any()
+            .downcast_ref::<LargeStringArray>()
+            .map(|values| !values.value(index).is_empty()),
+        DataType::Dictionary(_, value)
+            if matches!(value.as_ref(), DataType::Utf8 | DataType::LargeUtf8) =>
+        {
+            None
+        }
+        _ => Some(true),
     }
 }
 
@@ -678,6 +1081,55 @@ mod tests {
         assert_eq!(rows[0][0].kind, ValueKind::Int);
         assert_eq!(rows[0][2].kind, ValueKind::Float);
         assert_eq!(rows[0][3].kind, ValueKind::Boolean);
+    }
+
+    #[test]
+    fn non_nullable_non_string_boundary_uses_schema_invariants_without_decoding() {
+        let (_directory, path) = fixture();
+        let source = ParquetSource::open(path).unwrap();
+        let result = source
+            .find_boundary(
+                &BoundarySearchRequest {
+                    row: 1,
+                    column_id: String::from("id"),
+                    visible_column_ids: vec![String::from("id")],
+                    direction: DataBoundaryDirection::Down,
+                    mode: DataBoundaryMode::DataBoundary,
+                },
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(result.target_row, 3);
+        assert_eq!(source.take_decode_audit().reader_builds, 0);
+    }
+
+    #[test]
+    fn nullable_and_string_boundaries_scan_arrow_vectors_without_display_state_drift() {
+        let (_directory, path) = fixture();
+        let source = ParquetSource::open(path).unwrap();
+        let find = |row, column: &str, direction| {
+            source
+                .find_boundary(
+                    &BoundarySearchRequest {
+                        row,
+                        column_id: column.to_owned(),
+                        visible_column_ids: vec![column.to_owned()],
+                        direction,
+                        mode: DataBoundaryMode::DataBoundary,
+                    },
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+                .target_row
+        };
+
+        assert_eq!(find(0, "name", DataBoundaryDirection::Down), 3);
+        assert_eq!(find(3, "name", DataBoundaryDirection::Up), 0);
+        assert_eq!(find(0, "score", DataBoundaryDirection::Down), 1);
+        assert_eq!(find(3, "score", DataBoundaryDirection::Up), 1);
+        let audit = source.take_decode_audit();
+        assert_eq!(audit.projected_root_columns, 1);
+        assert!(audit.decoded_rows <= 24);
     }
 
     #[test]
