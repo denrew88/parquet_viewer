@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "phase": 12,
+  "status": "PASS",
+  "testedAt": "2026-07-21",
+  "backend": {
+    "status": "PASS",
+    "rustTests": [
+      "stages_tsv_and_commits_clipboard_exactly_once",
+      "byte_limit_and_clipboard_failure_never_partially_write",
+      "cancellation_and_selection_limit_preserve_the_previous_clipboard",
+      "retains_current_and_only_five_previous_attempts",
+      "copy_reads_64_000_query_rows_with_one_unlocked_sparse_provider_call",
+      "copy_reads_all_4_097_wide_columns_with_one_contiguous_hyperslab"
+    ],
+    "maximumBatchCells": 64000,
+    "clipboardCommitCount": 1,
+    "partialClipboardWrites": 0
+  },
+  "nativeWindowsClipboard": {
+    "status": "PASS",
+    "evidence": "artifacts/phase-12/native-results.json",
+    "parquet": {
+      "rows": 5850000,
+      "columns": 1,
+      "characters": 51538888,
+      "firstLine": "0",
+      "lastLine": "5849983"
+    },
+    "h5": {
+      "rows": 4,
+      "columns": 257,
+      "characters": 5532
+    }
+  },
+  "excel16Smoke": {
+    "status": "PASS",
+    "version": "16.0",
+    "allowedPaste": {
+      "rows": 2,
+      "columns": 2,
+      "verifiedCells": ["A1=alpha", "B2=2"]
+    },
+    "overflow": {
+      "requestedRows": 1048577,
+      "worksheetMaximumRows": 1048576,
+      "observedUsedRows": 1048576,
+      "productWarning": "Excel limit: 1,048,577 rows exceed 1,048,576; copy is not truncated.",
+      "productWarningVerifiedBy": [
+        "src/VirtualDataGrid.test.tsx",
+        "e2e/phase12.spec.ts"
+      ],
+      "selectionSentToBackendWithoutTruncation": true
+    },
+    "workbookSaved": false
+  }
+}

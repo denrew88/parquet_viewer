@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase12-query-fixtures-v1",
+  "generatedAtUtc": "2026-07-21T13:02:05.695317+00:00",
+  "generator": "scripts/generate_phase12_fixtures.py",
+  "generatorSha256": "bac356d7a5a5f847d9098376763925daa80c65d08e78b325e0c92f95c94a5e0e",
+  "reusedGenerator": "scripts/generate_phase9_large_fixtures.py",
+  "reusedGeneratorSha256": "8841e2630da85bf5b91edee6785a45d1a64d1e7f62306b75f238c115d459fdb9",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "numpy": "1.26.4",
+    "pyarrow": "22.0.0"
+  },
+  "configuration": {
+    "rows": 5850000,
+    "rowGroupSize": 100000,
+    "cardinalities": [
+      "low",
+      "high"
+    ],
+    "profile": "full15",
+    "pageSize": 200,
+    "referenceSeed": 12012
+  },
+  "preflight": {
+    "outputDirectory": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-query",
+    "capacityBytes": 491993952256,
+    "freeBytesBefore": 138249768960,
+    "expectedUpperBytes": 2147483648,
+    "reserveBytes": 5368709120,
+    "requiredFreeBytes": 7516192768,
+    "result": "PASS"
+  },
+  "fixtures": [
+    {
+      "id": "query-low-5850000-rows-15-columns",
+      "path": ".tmp/phase12-query/query-low-5850000-15c.parquet",
+      "profile": "full15",
+      "cardinality": "low",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroupSize": 100000,
+      "rowGroups": 59,
+      "rowGroupRows": {
+        "first": 100000,
+        "last": 50000,
+        "minimum": 50000,
+        "maximum": 100000
+      },
+      "bytes": 7800536,
+      "sha256": "b9d7cc1b0d0f7277e7474401790109a3ad23e3183cb3fd2829708d5c4212229b",
+      "schemaFingerprintSha256": "4f86e54f01ac0108d7ce6154c8fee71388a2dbb7dcacca80e8ad192a060af981",
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "int64_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "float64_00",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_01",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "int32_00",
+          "type": "int32",
+          "nullable": false
+        }
+      ],
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 7716313,
+        "uncompressedBytes": 483046832,
+        "compressedToUncompressedRatio": 0.01597425
+      },
+      "encodings": {
+        "row_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "category": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "group_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "active": [
+          "RLE"
+        ],
+        "optional_value": [
+          "PLAIN",
+          "RLE"
+        ],
+        "event_time": [
+          "PLAIN",
+          "RLE"
+        ],
+        "amount": [
+          "PLAIN",
+          "RLE"
+        ],
+        "label": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "score": [
+          "PLAIN",
+          "RLE"
+        ],
+        "code": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "int64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_00": [
+          "PLAIN",
+          "RLE"
+        ]
+      },
+      "cardinalitySample": {
+        "rowGroups": [
+          0,
+          29,
+          58
+        ],
+        "rows": 12288,
+        "distinct": {
+          "row_id": 12288,
+          "category": 16,
+          "group_id": 128,
+          "label": 257,
+          "score": 512,
+          "code": 64
+        },
+        "categoryUniqueRate": 0.00130208,
+        "checksumSha256": "823cd0aff9a863b2a061ea7e79b33a52e2fce8d2c5eb987946d2ecfcdad4b6c3"
+      },
+      "validation": "PASS"
+    },
+    {
+      "id": "query-high-5850000-rows-15-columns",
+      "path": ".tmp/phase12-query/query-high-5850000-15c.parquet",
+      "profile": "full15",
+      "cardinality": "high",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroupSize": 100000,
+      "rowGroups": 59,
+      "rowGroupRows": {
+        "first": 100000,
+        "last": 50000,
+        "minimum": 50000,
+        "maximum": 100000
+      },
+      "bytes": 560292380,
+      "sha256": "17d0d2153e500cc32f52ccf48d017130f3eae37286ea69e48d98c550b2507d09",
+      "schemaFingerprintSha256": "4f86e54f01ac0108d7ce6154c8fee71388a2dbb7dcacca80e8ad192a060af981",
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ms, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "score",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "int64_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "int64_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "float64_00",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "float64_01",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "int32_00",
+          "type": "int32",
+          "nullable": false
+        }
+      ],
+      "compression": {
+        "codec": "zstd",
+        "level": 3,
+        "compressedBytes": 560200743,
+        "uncompressedBytes": 949496128,
+        "compressedToUncompressedRatio": 0.58999792
+      },
+      "encodings": {
+        "row_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "category": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "group_id": [
+          "PLAIN",
+          "RLE"
+        ],
+        "active": [
+          "RLE"
+        ],
+        "optional_value": [
+          "PLAIN",
+          "RLE"
+        ],
+        "event_time": [
+          "PLAIN",
+          "RLE"
+        ],
+        "amount": [
+          "PLAIN",
+          "RLE"
+        ],
+        "label": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "score": [
+          "PLAIN",
+          "RLE"
+        ],
+        "code": [
+          "PLAIN",
+          "RLE",
+          "RLE_DICTIONARY"
+        ],
+        "int64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_00": [
+          "PLAIN",
+          "RLE"
+        ],
+        "float64_01": [
+          "PLAIN",
+          "RLE"
+        ],
+        "int32_00": [
+          "PLAIN",
+          "RLE"
+        ]
+      },
+      "cardinalitySample": {
+        "rowGroups": [
+          0,
+          29,
+          58
+        ],
+        "rows": 12288,
+        "distinct": {
+          "row_id": 12288,
+          "category": 12288,
+          "group_id": 12288,
+          "label": 12150,
+          "score": 12288,
+          "code": 12288
+        },
+        "categoryUniqueRate": 1.0,
+        "checksumSha256": "afd64f7c4d4382092817ec6df8861001ecc54c422411a022df17114eedd5797a"
+      },
+      "validation": "PASS"
+    },
+    {
+      "id": "query-null-empty-small-parquet",
+      "kind": "small-parquet-null-empty",
+      "path": ".tmp/phase12-query/query-null-empty-small.parquet",
+      "rows": 8,
+      "columns": 4,
+      "rowGroups": 2,
+      "bytes": 2136,
+      "sha256": "975bc20dc739a879f59598bbc2be91a9832d85341bdb099915ef43004c68045b",
+      "schemaFingerprintSha256": "b45f263a8b9b72a8b78923108a206c8380424de263397f2df3c5fcd8140f3a75",
+      "expected": {
+        "nullableInt": [
+          null,
+          0,
+          1,
+          null,
+          -1,
+          2,
+          3,
+          4
+        ],
+        "text": [
+          null,
+          "",
+          " ",
+          "alpha",
+          "beta",
+          "",
+          "\t",
+          "omega"
+        ],
+        "whitespace": [
+          "",
+          " ",
+          "  ",
+          "x",
+          "\t",
+          "x ",
+          "\r",
+          "y"
+        ]
+      },
+      "validation": "PASS"
+    },
+    {
+      "id": "query-invalid-small-csv",
+      "kind": "small-csv-invalid",
+      "path": ".tmp/phase12-query/query-invalid-small.csv",
+      "rows": 5,
+      "columns": 5,
+      "bytes": 235,
+      "sha256": "02cd4bd497bbf68e3c140ff3d044e97d9f6b5570499be2a6abb9c487c8849f09",
+      "expectedRawRows": [
+        [
+          "source_row_id",
+          "int_value",
+          "bool_value",
+          "timestamp_value",
+          "text_value"
+        ],
+        [
+          "0",
+          "1",
+          "true",
+          "2025-01-01T00:00:00Z",
+          "alpha"
+        ],
+        [
+          "1",
+          "",
+          "",
+          "",
+          ""
+        ],
+        [
+          "2",
+          "not-an-int",
+          "yes",
+          "not-a-time",
+          " "
+        ],
+        [
+          "3",
+          "9223372036854775808",
+          "false",
+          "2025-02-31T00:00:00Z",
+          "NULL"
+        ],
+        [
+          "4",
+          "-3",
+          "TRUE",
+          "2025-01-01T00:00:00.123456789Z",
+          "omega"
+        ]
+      ],
+      "validation": "PASS"
+    }
+  ],
+  "reference": {
+    "path": "artifacts/phase-12/reference-pages.json",
+    "sha256": "6e6f93a205f4d6d9afb937a6db2cc18d9383b2769b77157b93634231996e29aa"
+  },
+  "validation": "PASS"
+}

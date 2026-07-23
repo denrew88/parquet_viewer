@@ -27,11 +27,120 @@ function formatDate(value: string, format: DisplayFormats["date"]["format"]): st
   return value;
 }
 
-function formatTimestamp(value: string, setting: FixedDigits): string {
-  const normalized = value.replace("T", " ").replace(/Z(?: \[.*\])?$/, "");
-  const match = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.(\d+))?/.exec(normalized);
-  if (!match) return value;
-  return fixedFraction(`${match[1]}${match[2] ? `.${match[2]}` : ""}`, setting);
+function timestampOffset(value: DataValue, parsedZone: string): string {
+  if (parsedZone === "Z" || /^[+-]\d{2}:\d{2}$/.test(parsedZone)) return parsedZone;
+  const timezone = value.timezone;
+  if (!timezone) return "";
+  if (timezone === "UTC" || timezone === "Etc/UTC") return "Z";
+  if (/^(?:UTC)?[+-]\d{2}:\d{2}$/.test(timezone)) return timezone.replace(/^UTC/, "");
+  if (!value.sourceDisplay || !value.unit || !/^[+-]?\d+$/.test(value.sourceDisplay)) return "";
+  try {
+    const count = BigInt(value.sourceDisplay);
+    const divisor = value.unit === "ns" ? 1_000_000n : value.unit === "us" ? 1_000n : 1n;
+    const multiplier = value.unit === "s" ? 1_000n : 1n;
+    const milliseconds = Number((count * multiplier) / divisor);
+    if (!Number.isSafeInteger(milliseconds)) return "";
+    const zoneName = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(new Date(milliseconds))
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (!zoneName) return "";
+    if (zoneName === "GMT") return "Z";
+    return zoneName.replace(/^GMT/, "");
+  } catch {
+    return "";
+  }
+}
+
+function timestampDate(
+  year: string,
+  month: string,
+  day: string,
+  format: DisplayFormats["timestamp"]["dateFormat"],
+): string {
+  if (format === "YYYY/MM/DD") return `${year}/${month}/${day}`;
+  if (format === "DD-MM-YYYY") return `${day}-${month}-${year}`;
+  if (format === "MM-DD-YYYY") return `${month}-${day}-${year}`;
+  return `${year}-${month}-${day}`;
+}
+
+function formatTimestamp(value: DataValue, setting: DisplayFormats["timestamp"]): string {
+  const source = value.display ?? "";
+  const normalized = source.replace("T", " ").replace(/ \[.*\]$/, "");
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})?$/.exec(
+      normalized,
+    );
+  if (!match) return source;
+  const [, year, month, day, hour, minute, second, fraction = "", parsedZone = ""] = match;
+  const date = timestampDate(year, month, day, setting.dateFormat);
+  if (setting.timeFormat === "hidden") return date;
+  const separator = setting.dateTimeSeparator === "t" ? "T" : " ";
+  const clock =
+    setting.timeFormat === "hourMinute" ? `${hour}:${minute}` : `${hour}:${minute}:${second}`;
+  const fractionText =
+    setting.timeFormat === "hourMinuteSecond"
+      ? fixedFraction(`${clock}${fraction ? `.${fraction}` : ""}`, setting.fractionalDigits)
+      : clock;
+  const suffix =
+    setting.timezoneSuffix === "hidden"
+      ? ""
+      : setting.timezoneSuffix === "name" && value.timezone
+        ? /^(?:UTC)?[+-]\d{2}:\d{2}$/.test(value.timezone) || value.timezone === "UTC"
+          ? timestampOffset(value, parsedZone)
+          : ` [${value.timezone}]`
+        : timestampOffset(value, parsedZone);
+  return `${date}${separator}${fractionText}${suffix}`;
+}
+
+function formatDuration(value: DataValue, setting: DisplayFormats["duration"]): string {
+  const source = value.sourceDisplay;
+  const unit = value.unit;
+  if (!source || !/^[+-]?\d+$/.test(source) || !unit || !["s", "ms", "us", "ns"].includes(unit)) {
+    return value.display ?? "";
+  }
+  try {
+    const count = BigInt(source);
+    const negative = count < 0n;
+    const absolute = negative ? -count : count;
+    const multiplier =
+      unit === "s" ? 1_000_000_000n : unit === "ms" ? 1_000_000n : unit === "us" ? 1_000n : 1n;
+    const nanoseconds = absolute * multiplier;
+    const seconds = nanoseconds / 1_000_000_000n;
+    const fraction = (nanoseconds % 1_000_000_000n).toString().padStart(9, "0");
+    const preservedDigits = unit === "s" ? 0 : unit === "ms" ? 3 : unit === "us" ? 6 : 9;
+    const digits =
+      setting.fractionalDigits.mode === "preserve"
+        ? preservedDigits
+        : setting.fractionalDigits.digits;
+    const fractionText = digits === 0 ? "" : `.${fraction.slice(0, digits)}`;
+    const sign = negative ? "-" : "";
+    let display: string;
+    if (setting.style === "totalSeconds") {
+      display = `${sign}${seconds}${fractionText} s`;
+    } else if (setting.style === "totalHours") {
+      const hours = seconds / 3_600n;
+      const minutes = (seconds % 3_600n) / 60n;
+      const remainder = seconds % 60n;
+      display = `${sign}${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${remainder.toString().padStart(2, "0")}${fractionText}`;
+    } else {
+      const days = seconds / 86_400n;
+      const hours = (seconds % 86_400n) / 3_600n;
+      const minutes = (seconds % 3_600n) / 60n;
+      const remainder = seconds % 60n;
+      const clock = `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${remainder.toString().padStart(2, "0")}${fractionText}`;
+      display = `${sign}${days > 0n ? `${days}d ` : ""}${clock}`;
+    }
+    return setting.unitSuffix === "source" ? `${display} [unit=${unit}]` : display;
+  } catch {
+    return value.display ?? "";
+  }
 }
 
 function formatBinary(value: string, formats: DisplayFormats["binary"]): string {
@@ -84,7 +193,10 @@ export function formatDataValue(value: DataValue, formats: DisplayFormats): Data
       display = formatDate(source, formats.date.format);
       break;
     case "timestamp":
-      display = formatTimestamp(value.display, formats.timestamp.fractionalDigits);
+      display = formatTimestamp(value, formats.timestamp);
+      break;
+    case "duration":
+      display = formatDuration(value, formats.duration);
       break;
     case "boolean":
       display =

@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_QUERY_PLAN,
   clearFilters,
+  isValidDurationLiteral,
   operatorsForType,
   removeFilter,
   requiredFilterValueCount,
   resultKey,
   setSearch,
   toggleSort,
+  moveSort,
+  setSort,
   upsertFilter,
   validateFilter,
   type QueryFilter,
@@ -68,6 +71,23 @@ describe("query model", () => {
     ).toContain("true or false");
   });
 
+  it("matches Duration clock, exact-unit, and i64 boundaries", () => {
+    expect(isValidDurationLiteral("1d 02:03:04.005", "ms")).toBe(true);
+    expect(isValidDurationLiteral("00:00:00.000001", "ms")).toBe(false);
+    expect(isValidDurationLiteral("1ms", "s")).toBe(false);
+    expect(isValidDurationLiteral("2s", "ms")).toBe(true);
+    expect(isValidDurationLiteral("24:00:00", "ns")).toBe(false);
+    expect(isValidDurationLiteral("00:60:00", "ns")).toBe(false);
+    expect(isValidDurationLiteral("00:00:60", "ns")).toBe(false);
+    expect(isValidDurationLiteral("9223372036854775808ns", "ns")).toBe(false);
+    expect(
+      validateFilter(
+        textFilter({ scalarType: "duration", operator: "equals", values: ["99:99:99"] }),
+        "ns",
+      ),
+    ).toContain("valid duration");
+  });
+
   it("upserts and removes filters without mutating the previous plan", () => {
     const first = upsertFilter(EMPTY_QUERY_PLAN, textFilter());
     const replaced = upsertFilter(first, textFilter({ values: ["lee"] }));
@@ -118,6 +138,15 @@ describe("query model", () => {
     expect(toggleSort(descending, "group", true).sort.map((sort) => sort.columnId)).toEqual([
       "value",
     ]);
+  });
+
+  it("normalizes and reorders a multi-sort draft", () => {
+    const sort = [
+      { columnId: "group", direction: "ascending" as const, nullsLast: true as const },
+      { columnId: "value", direction: "descending" as const, nullsLast: true as const },
+    ];
+    expect(moveSort(sort, "value", -1).map((entry) => entry.columnId)).toEqual(["value", "group"]);
+    expect(setSort(EMPTY_QUERY_PLAN, [...sort, sort[0]]).sort).toEqual(sort);
   });
 
   it("includes query identity in the grid result key", () => {

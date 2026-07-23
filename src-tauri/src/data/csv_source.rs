@@ -7,12 +7,21 @@ use crate::domain::{
     DataValueState, FileSummary, FormatDescriptor, FormatDetailsContent, FormatDetailsSection,
     HeaderMode, MetadataEntry, RowCountState, RowCountStatus, SourceCapability, ValueKind,
 };
+use arrow_array::{
+    builder::{BooleanBuilder, StringBuilder, UInt64Builder},
+    Array, ArrayRef, RecordBatch,
+};
+use arrow_schema::{DataType, Field, Schema};
 use csv::{ByteRecord, Position, Reader, ReaderBuilder};
-use duckdb::{appender_params_from_iter, types::Value};
+use parquet::{
+    arrow::ArrowWriter,
+    basic::{Compression, ZstdLevel},
+    file::properties::WriterProperties,
+};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
     fs::{self, File},
-    io::{BufReader, Read},
+    io::{BufReader, Read, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -23,13 +32,13 @@ use std::{
 };
 
 use super::csv_profile::{
-    convert_value, convert_value_for_query, default_profile, format_numeric_display, infer_columns,
-    normalize_profile, resolved_type, validate_resolved_profile,
+    convert_value, convert_value_for_query, default_profile, infer_columns, normalize_profile,
+    resolved_type, validate_resolved_profile,
 };
 use super::{
-    query_invalid_name, query_quote_identifier, query_raw_name, CsvHeaderConfigurable,
-    CsvProfileConfigurable, CsvQuerySpec, CsvValidationProgress, FormatHandler, QueryInputProvider,
-    QueryPrepareContext, QuerySourceSpec, TabularSource,
+    cell_state_bitmap::CellStateBitmap, CsvHeaderConfigurable, CsvProfileConfigurable,
+    CsvQuerySpec, CsvValidationProgress, FormatHandler, QueryExactValues, QueryInputProvider,
+    QueryPreparationMetrics, QueryPrepareContext, QuerySourceSpec, TabularSource,
 };
 
 pub const MAX_PAGE_SIZE: usize = 200;
@@ -46,6 +55,12 @@ const MAX_HEADER_AUDIT_ITEMS: usize = 100;
 const MAX_HEADER_AUDIT_CHARS: usize = 256;
 const BOUNDARY_CANCEL_INTERVAL: u64 = 4_096;
 const MAX_BOUNDARY_CACHE_ENTRIES: usize = 128;
+const PREPARATION_COORDINATOR_FILE_THRESHOLD: u64 = 64 * 1024 * 1024;
+const PREPARED_BATCH_INITIAL_ROWS: usize = 16_384;
+const PREPARED_BATCH_MAX_ROWS: usize = 65_536;
+const PREPARED_BATCH_ESTIMATED_BYTES: usize = 24 * 1024 * 1024;
+const PREPARED_BATCH_HARD_BYTES: usize = 64 * 1024 * 1024;
+const PREPARED_BATCH_GROW_BYTES: usize = 12 * 1024 * 1024;
 
 pub const CSV_FORMAT_DESCRIPTOR: FormatDescriptor = FormatDescriptor {
     id: DataFormat::Csv,
@@ -143,6 +158,7 @@ pub struct CsvSource {
     generation: u64,
     state: Arc<Mutex<IndexState>>,
     cancel: Arc<AtomicBool>,
+    preparation_takeover: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     boundary_cache: Mutex<VecDeque<(BoundaryCacheKey, BoundarySearchResult)>>,
 }
@@ -256,14 +272,18 @@ impl CsvSource {
             max_columns: schema_columns,
         }));
         let cancel = Arc::new(AtomicBool::new(false));
-        let worker = spawn_index_worker(
-            path.to_path_buf(),
-            header_used,
-            expected_columns,
-            generation,
-            Arc::clone(&state),
-            Arc::clone(&cancel),
-        );
+        let preparation_takeover = Arc::new(AtomicBool::new(false));
+        let worker = (metadata.len() < PREPARATION_COORDINATOR_FILE_THRESHOLD).then(|| {
+            spawn_index_worker(
+                path.to_path_buf(),
+                header_used,
+                expected_columns,
+                generation,
+                Arc::clone(&state),
+                Arc::clone(&cancel),
+                Arc::clone(&preparation_takeover),
+            )
+        });
 
         Ok(Self {
             path: path.to_path_buf(),
@@ -282,7 +302,8 @@ impl CsvSource {
             generation,
             state,
             cancel,
-            worker: Some(worker),
+            preparation_takeover,
+            worker,
             boundary_cache: Mutex::new(VecDeque::new()),
         })
     }
@@ -344,7 +365,7 @@ impl CsvSource {
             let raw = &summary.columns[column.source_index];
             columns.push(ColumnSchema {
                 name: raw.name.clone(),
-                logical_type: format!("{target:?}"),
+                logical_type: csv_logical_type(target, column),
                 nullable: !column.null_tokens.is_empty()
                     || matches!(
                         column.failure_policy,
@@ -638,10 +659,20 @@ impl CsvSource {
         limit: usize,
         requested: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
-        if !(1..=MAX_PAGE_SIZE).contains(&limit) {
-            return Err(DataError::invalid_request(
-                "Page limit must be between 1 and 200 rows.",
-            ));
+        self.raw_read_projected_bounded(offset, limit, requested, MAX_PAGE_SIZE)
+    }
+
+    fn raw_read_projected_bounded(
+        &self,
+        offset: u64,
+        limit: usize,
+        requested: Option<&[String]>,
+        max_limit: usize,
+    ) -> Result<DataPage, DataError> {
+        if !(1..=max_limit).contains(&limit) {
+            return Err(DataError::invalid_request(format!(
+                "CSV projected read limit must be between 1 and {max_limit} rows."
+            )));
         }
         let summary = self.raw_summary();
         let selected = projection_indices(&summary.columns, requested)?;
@@ -718,6 +749,23 @@ impl CsvSource {
         limit: usize,
         requested: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
+        self.read_projected_bounded(
+            offset,
+            limit,
+            requested,
+            MAX_PAGE_SIZE,
+            MAX_PROJECTION_COLUMNS,
+        )
+    }
+
+    fn read_projected_bounded(
+        &self,
+        offset: u64,
+        limit: usize,
+        requested: Option<&[String]>,
+        max_limit: usize,
+        max_columns: usize,
+    ) -> Result<DataPage, DataError> {
         let raw_summary = self.raw_summary();
         let (profile, inferences) = self.effective_profile_and_inferences(&raw_summary.columns);
         let visible = profile
@@ -732,7 +780,7 @@ impl CsvSource {
             .iter()
             .map(|(column, _)| raw_summary.columns[column.source_index].clone())
             .collect::<Vec<_>>();
-        let selected = projection_indices(&visible_schema, requested)?;
+        let selected = projection_indices_bounded(&visible_schema, requested, max_columns)?;
         let selected_profiles = selected
             .iter()
             .map(|index| visible[*index])
@@ -742,10 +790,11 @@ impl CsvSource {
             .map(|(column, _)| column.source_name.clone())
             .collect::<Vec<_>>();
         let read_all_raw = requested.is_none();
-        let mut page = self.raw_read_page_projected(
+        let mut page = self.raw_read_projected_bounded(
             offset,
             limit,
             (!read_all_raw).then_some(raw_names.as_slice()),
+            max_limit,
         )?;
         for row in &mut page.rows {
             let mut converted_row = Vec::with_capacity(selected_profiles.len());
@@ -1039,45 +1088,428 @@ impl CsvProfileConfigurable for CsvSource {
 
 #[derive(Debug)]
 struct CsvQueryProvider {
+    path: PathBuf,
+    columns: Vec<ColumnSchema>,
     spec: CsvQuerySpec,
+    checkpoints: Mutex<Vec<Checkpoint>>,
+    states: Mutex<Option<CellStateBitmap>>,
+    metrics: Mutex<QueryPreparationMetrics>,
+    index_state: Arc<Mutex<IndexState>>,
+    index_cancel: Arc<AtomicBool>,
+    preparation_takeover: Arc<AtomicBool>,
+    expected_columns: usize,
+    index_generation: u64,
+    deferred_index_worker: bool,
+    fallback_index_started: AtomicBool,
 }
 
-impl QueryInputProvider for CsvQueryProvider {
-    fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
-        let mut schema = vec![String::from("__dv_row_id UBIGINT")];
-        for (index, column) in context.source.columns.iter().enumerate() {
-            schema.push(format!("{} VARCHAR", query_quote_identifier(&column.name)));
-            schema.push(format!("{} VARCHAR", query_raw_name(index)));
-            schema.push(format!("{} BOOLEAN", query_invalid_name(index)));
+struct CsvPreparedBatchBuilder {
+    schema: Arc<Schema>,
+    row_ids: UInt64Builder,
+    normalized: Vec<StringBuilder>,
+    raw: Vec<StringBuilder>,
+    invalid: Vec<BooleanBuilder>,
+    rows: usize,
+    estimated_bytes: usize,
+}
+
+struct PreparedBatch {
+    batch: RecordBatch,
+    estimated_bytes: usize,
+}
+
+#[derive(Debug)]
+struct AdaptivePreparedBatchSizer {
+    target_rows: usize,
+}
+
+impl Default for AdaptivePreparedBatchSizer {
+    fn default() -> Self {
+        Self {
+            target_rows: PREPARED_BATCH_INITIAL_ROWS,
         }
-        context
-            .connection
-            .execute_batch(&format!("CREATE TABLE dv_source ({})", schema.join(", ")))
+    }
+}
+
+impl AdaptivePreparedBatchSizer {
+    fn observe(
+        &mut self,
+        rows: usize,
+        actual_bytes: usize,
+        estimated_bytes: usize,
+    ) -> std::cmp::Ordering {
+        let previous = self.target_rows;
+        if actual_bytes >= PREPARED_BATCH_ESTIMATED_BYTES
+            || estimated_bytes >= PREPARED_BATCH_ESTIMATED_BYTES
+            || actual_bytes >= PREPARED_BATCH_HARD_BYTES.saturating_mul(3) / 4
+        {
+            self.target_rows = (self.target_rows / 2).max(PREPARED_BATCH_INITIAL_ROWS);
+        } else if rows >= self.target_rows
+            && actual_bytes <= PREPARED_BATCH_GROW_BYTES
+            && estimated_bytes <= PREPARED_BATCH_GROW_BYTES
+        {
+            self.target_rows = self
+                .target_rows
+                .saturating_mul(2)
+                .min(PREPARED_BATCH_MAX_ROWS);
+        }
+        self.target_rows.cmp(&previous)
+    }
+}
+
+struct CsvIndexTakeoverGuard<'a> {
+    state: &'a Mutex<IndexState>,
+    task_cancel: &'a AtomicBool,
+    complete: bool,
+}
+
+impl Drop for CsvIndexTakeoverGuard<'_> {
+    fn drop(&mut self) {
+        if self.complete {
+            return;
+        }
+        if let Ok(mut index) = self.state.lock() {
+            index.status.state = if self.task_cancel.load(Ordering::Acquire) {
+                RowCountState::Cancelled
+            } else {
+                RowCountState::Failed
+            };
+            if index.status.message.is_none() {
+                index.status.message = Some(String::from(
+                    "CSV preparation stopped before the shared index was committed.",
+                ));
+            }
+        }
+    }
+}
+
+impl CsvPreparedBatchBuilder {
+    fn new(columns: &[ColumnSchema]) -> Self {
+        let mut fields = Vec::with_capacity(1 + columns.len() * 3);
+        fields.push(Field::new("__dv_row_id", DataType::UInt64, false));
+        for (index, column) in columns.iter().enumerate() {
+            fields.push(Field::new(&column.name, DataType::Utf8, true));
+            fields.push(Field::new(
+                format!("__dv_raw_{index}"),
+                DataType::Utf8,
+                true,
+            ));
+            fields.push(Field::new(
+                format!("__dv_invalid_{index}"),
+                DataType::Boolean,
+                false,
+            ));
+        }
+        Self {
+            schema: Arc::new(Schema::new(fields)),
+            row_ids: UInt64Builder::new(),
+            normalized: (0..columns.len()).map(|_| StringBuilder::new()).collect(),
+            raw: (0..columns.len()).map(|_| StringBuilder::new()).collect(),
+            invalid: (0..columns.len()).map(|_| BooleanBuilder::new()).collect(),
+            rows: 0,
+            estimated_bytes: 0,
+        }
+    }
+
+    fn append(&mut self, row_id: u64, values: &[DataValue]) -> Result<(), DataError> {
+        if values.len() != self.normalized.len() {
+            return Err(DataError::query_failed(
+                "A prepared CSV row does not match its visible schema.",
+            ));
+        }
+        self.row_ids.append_value(row_id);
+        self.estimated_bytes = self.estimated_bytes.saturating_add(8);
+        for (index, value) in values.iter().enumerate() {
+            self.normalized[index].append_option(value.display.as_deref());
+            self.raw[index].append_option(value.raw_display.as_deref());
+            self.invalid[index].append_value(value.state == DataValueState::Invalid);
+            self.estimated_bytes = self
+                .estimated_bytes
+                .saturating_add(value.display.as_ref().map_or(0, String::len))
+                .saturating_add(value.raw_display.as_ref().map_or(0, String::len))
+                .saturating_add(9);
+        }
+        self.rows += 1;
+        Ok(())
+    }
+
+    fn should_flush(&self, target_rows: usize) -> bool {
+        self.rows >= target_rows.min(PREPARED_BATCH_MAX_ROWS)
+            || self.estimated_bytes >= PREPARED_BATCH_ESTIMATED_BYTES
+    }
+
+    fn finish(&mut self) -> Result<Option<PreparedBatch>, DataError> {
+        if self.rows == 0 {
+            return Ok(None);
+        }
+        let mut arrays = Vec::with_capacity(1 + self.normalized.len() * 3);
+        arrays.push(Arc::new(self.row_ids.finish()) as ArrayRef);
+        for index in 0..self.normalized.len() {
+            arrays.push(Arc::new(self.normalized[index].finish()) as ArrayRef);
+            arrays.push(Arc::new(self.raw[index].finish()) as ArrayRef);
+            arrays.push(Arc::new(self.invalid[index].finish()) as ArrayRef);
+        }
+        let batch = RecordBatch::try_new(Arc::clone(&self.schema), arrays)
             .map_err(|error| DataError::query_failed(error.to_string()))?;
-        let mut reader = ReaderBuilder::new()
-            .has_headers(false)
-            .flexible(true)
-            .from_path(&context.source.path)
-            .map_err(|error| DataError::invalid_csv(&context.source.path, error))?;
-        let mut appender = context
-            .connection
-            .appender("dv_source")
-            .map_err(|error| DataError::query_failed(error.to_string()))?;
+        let estimated_bytes = self.estimated_bytes;
+        self.rows = 0;
+        self.estimated_bytes = 0;
+        Ok(Some(PreparedBatch {
+            batch,
+            estimated_bytes,
+        }))
+    }
+}
+
+fn write_prepared_batch(
+    writer: &mut ArrowWriter<File>,
+    prepared: PreparedBatch,
+    metrics: &Mutex<QueryPreparationMetrics>,
+) -> Result<(usize, usize, usize), DataError> {
+    let rows = prepared.batch.num_rows();
+    if rows > PREPARED_BATCH_MAX_ROWS {
+        return Err(DataError::query_failed(format!(
+            "A prepared CSV Arrow batch has {rows} rows; the limit is {PREPARED_BATCH_MAX_ROWS}."
+        )));
+    }
+    let decoded_bytes = prepared
+        .batch
+        .columns()
+        .iter()
+        .map(|array| array.get_array_memory_size())
+        .sum::<usize>();
+    if decoded_bytes > PREPARED_BATCH_HARD_BYTES {
+        return Err(DataError::query_failed(format!(
+            "A prepared CSV Arrow batch requires {decoded_bytes} bytes; the limit is {PREPARED_BATCH_HARD_BYTES} bytes."
+        )));
+    }
+    if let Ok(mut metrics) = metrics.lock() {
+        metrics.peak_decoded_batch_bytes =
+            metrics.peak_decoded_batch_bytes.max(decoded_bytes as u64);
+        metrics.record_batches_accepted = metrics.record_batches_accepted.saturating_add(1);
+        metrics.max_accepted_batch_rows = metrics.max_accepted_batch_rows.max(rows as u64);
+    }
+    writer
+        .write(&prepared.batch)
+        .map_err(|error| DataError::query_failed(error.to_string()))?;
+    Ok((rows, decoded_bytes, prepared.estimated_bytes))
+}
+
+type CsvSparseGroups = BTreeMap<u64, (Option<Checkpoint>, Vec<(u64, usize)>)>;
+
+impl QueryInputProvider for CsvQueryProvider {
+    fn reusable_source_identity(&self) -> Option<String> {
+        let profile = serde_json::to_string(&self.spec.profile).ok()?;
+        Some(format!(
+            "{}|header={}|{profile}",
+            self.path.to_string_lossy(),
+            self.spec.header_used
+        ))
+    }
+
+    fn source_boundary(
+        &self,
+        request: &BoundarySearchRequest,
+        cancel: &AtomicBool,
+    ) -> Result<Option<BoundarySearchResult>, DataError> {
+        let states = self
+            .states
+            .lock()
+            .map_err(|_| DataError::query_failed("CSV state bitmap is unavailable."))?;
+        let Some(states) = states.as_ref() else {
+            return Ok(None);
+        };
+        let names = self
+            .columns
+            .iter()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
+        states.find_boundary(&names, request, cancel).map(Some)
+    }
+
+    fn preparation_metrics(&self) -> QueryPreparationMetrics {
+        self.metrics
+            .lock()
+            .map(|metrics| *metrics)
+            .unwrap_or_default()
+    }
+
+    fn preparation_aborted(&self) {
+        if !self.deferred_index_worker
+            || self
+                .fallback_index_started
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+        {
+            return;
+        }
+        self.preparation_takeover.store(false, Ordering::Release);
+        self.index_cancel.store(false, Ordering::Release);
+        drop(spawn_index_worker(
+            self.path.clone(),
+            self.spec.header_used,
+            self.expected_columns,
+            self.index_generation,
+            Arc::clone(&self.index_state),
+            Arc::clone(&self.index_cancel),
+            Arc::clone(&self.preparation_takeover),
+        ));
+    }
+
+    fn occupancy_states(&self, row_ids: &[u64], column: &str) -> Result<Vec<bool>, DataError> {
+        if row_ids.len() > 65_536 {
+            return Err(DataError::invalid_request(
+                "CSV occupancy reads exceed 65,536 rows.",
+            ));
+        }
+        let column_index = self
+            .columns
+            .iter()
+            .position(|candidate| candidate.name == column)
+            .ok_or_else(|| DataError::invalid_request(format!("Unknown CSV column: {column}")))?;
+        let states = self
+            .states
+            .lock()
+            .map_err(|_| DataError::query_failed("CSV state bitmap is unavailable."))?;
+        let states = states.as_ref().ok_or_else(|| {
+            DataError::query_failed("CSV state bitmap is not ready for occupancy reads.")
+        })?;
+        row_ids
+            .iter()
+            .map(|row| states.occupancy(*row, column_index))
+            .collect()
+    }
+
+    fn restore_prepared_state(
+        &self,
+        states_path: &Path,
+        rows: u64,
+        columns: usize,
+    ) -> Result<(), DataError> {
+        if columns != self.columns.len() {
+            return Err(DataError::query_failed(
+                "Cached CSV state bitmap column count does not match the source schema.",
+            ));
+        }
+        let restored = CellStateBitmap::read_file(states_path, rows, columns)?;
+        *self
+            .states
+            .lock()
+            .map_err(|_| DataError::query_failed("CSV state bitmap is unavailable."))? =
+            Some(restored);
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.navigation_frontier_row = rows;
+            metrics.state_bitmap_bytes = fs::metadata(states_path)
+                .map(|metadata| metadata.len().saturating_sub(24))
+                .unwrap_or(0);
+        }
+        Ok(())
+    }
+
+    fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
+        self.preparation_takeover.store(true, Ordering::Release);
+        self.index_cancel.store(true, Ordering::Release);
+        if let Ok(mut index) = self.index_state.lock() {
+            index.status.state = RowCountState::Calculating;
+            index.status.rows_scanned = 0;
+            index.status.bytes_scanned = 0;
+            index.status.message = None;
+            index.checkpoints.clear();
+            index.structure_issue_count = 0;
+            index.structure_issues.clear();
+        }
+        let mut takeover_guard = CsvIndexTakeoverGuard {
+            state: &self.index_state,
+            task_cancel: context.cancel,
+            complete: false,
+        };
+        let parquet_partial = context.artifact_directory.join("prepared.parquet.partial");
+        let parquet_path = context.artifact_directory.join("prepared.parquet");
+        let batch_schema = CsvPreparedBatchBuilder::new(&context.source.columns).schema;
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::ZSTD(
+                ZstdLevel::try_new(1)
+                    .map_err(|error| DataError::query_failed(error.to_string()))?,
+            ))
+            .set_max_row_group_row_count(Some(65_536))
+            .build();
+        let mut writer = ArrowWriter::try_new(
+            File::create(&parquet_partial)
+                .map_err(|error| DataError::io(&parquet_partial, error))?,
+            batch_schema,
+            Some(properties),
+        )
+        .map_err(|error| DataError::query_failed(error.to_string()))?;
+        let mut batch = CsvPreparedBatchBuilder::new(&context.source.columns);
+        let mut batch_sizer = AdaptivePreparedBatchSizer::default();
+        let mut reader = match context.source_file {
+            Some(file) => new_reader_from_file(
+                file.try_clone()
+                    .map_err(|error| DataError::io(&context.source.path, error))?,
+            ),
+            None => new_reader(&context.source.path)?,
+        };
         let mut source_row = 0_u64;
-        for (physical_row, record) in reader.byte_records().enumerate() {
+        let mut physical_row = 0_usize;
+        let mut record = ByteRecord::new();
+        let mut checkpoints = Vec::new();
+        let mut checkpoint_stride = CHECKPOINT_INTERVAL;
+        let mut states = CellStateBitmap::new(context.source.columns.len());
+        let mut max_columns = self.expected_columns;
+        let mut structure_issue_count = 0_u64;
+        let mut structure_issues = Vec::new();
+        loop {
             if context.cancel.load(Ordering::Acquire) {
                 return Err(DataError::task_cancelled());
             }
-            if physical_row % CHECKPOINT_INTERVAL as usize == 0 {
-                (context.progress)(source_row)?;
+            let position = reader.position().clone();
+            if !read_record_checked(&context.source.path, &mut reader, &mut record)? {
+                break;
             }
-            let record =
-                record.map_err(|error| DataError::invalid_csv(&context.source.path, error))?;
             if self.spec.header_used && physical_row == 0 {
+                physical_row += 1;
                 continue;
             }
-            let mut values = Vec::with_capacity(1 + context.source.columns.len() * 3);
-            values.push(Value::UBigInt(source_row));
+            let width = record.len();
+            if width > MAX_COLUMNS {
+                return Err(DataError::csv_limit_exceeded(
+                    &context.source.path,
+                    format!("record has {width} columns; maximum is {MAX_COLUMNS}"),
+                ));
+            }
+            max_columns = max_columns.max(width);
+            if width != self.expected_columns {
+                structure_issue_count = structure_issue_count.saturating_add(1);
+                if structure_issues.len() < MAX_STRUCTURE_ISSUES {
+                    structure_issues.push(CsvStructureIssue {
+                        row: source_row + 1,
+                        expected_columns: self.expected_columns,
+                        actual_columns: width,
+                    });
+                }
+            }
+            if source_row % CHECKPOINT_INTERVAL == 0 {
+                if let Ok(mut metrics) = self.metrics.lock() {
+                    metrics.source_read_bytes = position.byte();
+                    metrics.navigation_frontier_row = 0;
+                }
+                if let Ok(mut index) = self.index_state.lock() {
+                    index.status.rows_scanned = source_row;
+                    index.status.bytes_scanned = position.byte();
+                    index.max_columns = max_columns;
+                    index.structure_issue_count = structure_issue_count;
+                    index.structure_issues.clone_from(&structure_issues);
+                }
+                (context.progress)(source_row)?;
+            }
+            record_checkpoint(
+                &mut checkpoints,
+                &mut checkpoint_stride,
+                source_row,
+                position,
+            );
+            let mut values = Vec::with_capacity(context.source.columns.len());
+            let mut row_states = Vec::with_capacity(context.source.columns.len());
             let mut visible_index = 0_usize;
             for profile in &self.spec.profile.columns {
                 if profile.target_type == CsvTargetType::Skip {
@@ -1090,14 +1522,8 @@ impl QueryInputProvider for CsvQueryProvider {
                 let raw = std::str::from_utf8(raw_bytes)
                     .map_err(|error| DataError::invalid_csv(&context.source.path, error))?;
                 let converted = convert_value_for_query(raw, query_target_type(column), profile);
-                values.push(converted.display.clone().map_or(Value::Null, Value::Text));
-                values.push(
-                    converted
-                        .raw_display
-                        .clone()
-                        .map_or(Value::Null, Value::Text),
-                );
-                values.push(Value::Boolean(converted.state == DataValueState::Invalid));
+                row_states.push(converted.state);
+                values.push(converted);
                 visible_index += 1;
             }
             if visible_index != context.source.columns.len() {
@@ -1105,31 +1531,312 @@ impl QueryInputProvider for CsvQueryProvider {
                     "CSV query profile does not cover its visible schema.",
                 ));
             }
-            appender
-                .append_row(appender_params_from_iter(values.iter()))
-                .map_err(|error| DataError::query_failed(error.to_string()))?;
+            states.push_row(&row_states)?;
+            batch.append(source_row, &values)?;
+            if batch.should_flush(batch_sizer.target_rows) {
+                (context.progress)(source_row)?;
+                if context.cancel.load(Ordering::Acquire) {
+                    return Err(DataError::task_cancelled());
+                }
+                if let Some(batch) = batch.finish()? {
+                    let (rows, actual, estimated) =
+                        write_prepared_batch(&mut writer, batch, &self.metrics)?;
+                    match batch_sizer.observe(rows, actual, estimated) {
+                        std::cmp::Ordering::Greater => {
+                            if let Ok(mut metrics) = self.metrics.lock() {
+                                metrics.adaptive_batch_growths =
+                                    metrics.adaptive_batch_growths.saturating_add(1);
+                            }
+                        }
+                        std::cmp::Ordering::Less => {
+                            if let Ok(mut metrics) = self.metrics.lock() {
+                                metrics.adaptive_batch_shrinks =
+                                    metrics.adaptive_batch_shrinks.saturating_add(1);
+                            }
+                        }
+                        std::cmp::Ordering::Equal => {}
+                    }
+                }
+                (context.progress)(source_row.saturating_add(1))?;
+                if context.cancel.load(Ordering::Acquire) {
+                    return Err(DataError::task_cancelled());
+                }
+            }
             source_row = source_row.saturating_add(1);
+            physical_row += 1;
         }
-        appender
-            .flush()
-            .map_err(|error| DataError::query_failed(error.to_string()))
+        if let Some(batch) = batch.finish()? {
+            (context.progress)(source_row)?;
+            if context.cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+            let (rows, actual, estimated) =
+                write_prepared_batch(&mut writer, batch, &self.metrics)?;
+            match batch_sizer.observe(rows, actual, estimated) {
+                std::cmp::Ordering::Greater => {
+                    if let Ok(mut metrics) = self.metrics.lock() {
+                        metrics.adaptive_batch_growths =
+                            metrics.adaptive_batch_growths.saturating_add(1);
+                    }
+                }
+                std::cmp::Ordering::Less => {
+                    if let Ok(mut metrics) = self.metrics.lock() {
+                        metrics.adaptive_batch_shrinks =
+                            metrics.adaptive_batch_shrinks.saturating_add(1);
+                    }
+                }
+                std::cmp::Ordering::Equal => {}
+            }
+            (context.progress)(source_row)?;
+            if context.cancel.load(Ordering::Acquire) {
+                return Err(DataError::task_cancelled());
+            }
+        }
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.parquet_close_budget_checks =
+                metrics.parquet_close_budget_checks.saturating_add(1);
+        }
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        writer
+            .close()
+            .map_err(|error| DataError::query_failed(error.to_string()))?;
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.parquet_close_budget_checks =
+                metrics.parquet_close_budget_checks.saturating_add(1);
+        }
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&parquet_partial)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| DataError::io(&parquet_partial, error))?;
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.parquet_close_budget_checks =
+                metrics.parquet_close_budget_checks.saturating_add(1);
+        }
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        fs::rename(&parquet_partial, &parquet_path)
+            .map_err(|error| DataError::io(&parquet_partial, error))?;
+        let states_partial = context.artifact_directory.join("states.bin.partial");
+        let states_path = context.artifact_directory.join("states.bin");
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        let state_file_bytes = states.write_file(&states_partial)?;
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        fs::rename(&states_partial, &states_path)
+            .map_err(|error| DataError::io(&states_partial, error))?;
+        let offsets_partial = context.artifact_directory.join("offsets.idx.partial");
+        let offsets_path = context.artifact_directory.join("offsets.idx");
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        let mut offsets = File::create(&offsets_partial)
+            .map_err(|error| DataError::io(&offsets_partial, error))?;
+        offsets
+            .write_all(b"DVOF\x01\0\0\0")
+            .and_then(|()| offsets.write_all(&(checkpoints.len() as u64).to_le_bytes()))
+            .map_err(|error| DataError::io(&offsets_partial, error))?;
+        for checkpoint in &checkpoints {
+            offsets
+                .write_all(&checkpoint.row.to_le_bytes())
+                .and_then(|()| offsets.write_all(&checkpoint.position.byte().to_le_bytes()))
+                .map_err(|error| DataError::io(&offsets_partial, error))?;
+        }
+        offsets
+            .sync_all()
+            .map_err(|error| DataError::io(&offsets_partial, error))?;
+        (context.progress)(source_row)?;
+        if context.cancel.load(Ordering::Acquire) {
+            return Err(DataError::task_cancelled());
+        }
+        drop(offsets);
+        fs::rename(&offsets_partial, &offsets_path)
+            .map_err(|error| DataError::io(&offsets_partial, error))?;
+        let offsets_file_bytes = fs::metadata(&offsets_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let parquet = parquet_path.to_string_lossy().replace('\\', "/");
+        context
+            .connection
+            .execute_batch(&format!(
+                "CREATE VIEW dv_source AS SELECT * FROM read_parquet({})",
+                super::query_quote_literal(&parquet)
+            ))
+            .map_err(|error| DataError::query_failed(error.to_string()))?;
+        (context.progress)(source_row)?;
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.source_read_bytes = reader.position().byte();
+            metrics.navigation_frontier_row = source_row;
+            metrics.state_bitmap_bytes = states.payload_bytes() as u64;
+            metrics.cache_output_bytes = fs::metadata(&parquet_path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(0)
+                .saturating_add(state_file_bytes)
+                .saturating_add(offsets_file_bytes);
+        }
+        let prepared_checkpoints = checkpoints.clone();
+        *self.checkpoints.lock().map_err(|_| {
+            DataError::query_failed("CSV sparse checkpoint index is unavailable.")
+        })? = checkpoints;
+        if let Ok(mut index) = self.index_state.lock() {
+            index.status.state = RowCountState::Complete;
+            index.status.rows_scanned = source_row;
+            index.status.bytes_scanned = index.status.total_bytes;
+            index.checkpoints = prepared_checkpoints;
+            index.max_columns = max_columns;
+            index.structure_issue_count = structure_issue_count;
+            index.structure_issues = structure_issues;
+        }
+        *self
+            .states
+            .lock()
+            .map_err(|_| DataError::query_failed("CSV state bitmap is unavailable."))? =
+            Some(states);
+        takeover_guard.complete = true;
+        Ok(())
     }
 
-    fn format_query_display(&self, column: &str, kind: ValueKind, value: &str) -> String {
-        self.spec
+    fn sparse_query_values(
+        &self,
+        row_ids: &[u64],
+        columns: &[String],
+    ) -> Result<QueryExactValues, DataError> {
+        if row_ids.is_empty() {
+            return Ok(QueryExactValues {
+                columns: columns.to_vec(),
+                rows: Vec::new(),
+            });
+        }
+        let visible_profiles = self
+            .spec
             .profile
             .columns
             .iter()
-            .find(|profile| profile.source_name == column)
-            .map_or_else(
-                || value.to_owned(),
-                |profile| format_numeric_display(value, kind, profile),
-            )
+            .filter(|profile| profile.target_type != CsvTargetType::Skip)
+            .collect::<Vec<_>>();
+        let selected = columns
+            .iter()
+            .map(|name| {
+                let visible_index = self
+                    .columns
+                    .iter()
+                    .position(|column| column.name == *name)
+                    .ok_or_else(|| {
+                        DataError::invalid_request(format!("Unknown projected column: {name}"))
+                    })?;
+                let profile = visible_profiles.get(visible_index).ok_or_else(|| {
+                    DataError::query_failed("CSV query profile does not match its visible schema.")
+                })?;
+                Ok((visible_index, *profile))
+            })
+            .collect::<Result<Vec<_>, DataError>>()?;
+        let checkpoints = self
+            .checkpoints
+            .lock()
+            .map_err(|_| DataError::query_failed("CSV sparse checkpoint index is unavailable."))?
+            .clone();
+        let mut grouped = CsvSparseGroups::new();
+        for (output_index, row_id) in row_ids.iter().copied().enumerate() {
+            let checkpoint = checkpoints
+                .iter()
+                .rev()
+                .find(|checkpoint| checkpoint.row <= row_id)
+                .cloned();
+            let key = checkpoint.as_ref().map_or(0, |value| value.row);
+            grouped
+                .entry(key)
+                .or_insert_with(|| (checkpoint, Vec::new()))
+                .1
+                .push((row_id, output_index));
+        }
+        let mut output = vec![None; row_ids.len()];
+        for (_, (checkpoint, mut targets)) in grouped {
+            targets.sort_unstable_by_key(|(row, _)| *row);
+            let (mut reader, mut current_row) = reader_at(&self.path, checkpoint.as_ref())?;
+            if checkpoint.is_none() && self.spec.header_used {
+                let mut header = ByteRecord::new();
+                read_record_checked(&self.path, &mut reader, &mut header)?;
+            }
+            let mut record = ByteRecord::new();
+            let mut target_index = 0_usize;
+            while target_index < targets.len() {
+                let target_row = targets[target_index].0;
+                while current_row <= target_row {
+                    if !read_record_checked(&self.path, &mut reader, &mut record)? {
+                        return Err(DataError::invalid_request(
+                            "A query source row is outside the CSV file.",
+                        ));
+                    }
+                    if current_row == target_row {
+                        break;
+                    }
+                    current_row += 1;
+                }
+                let values = selected
+                    .iter()
+                    .map(|(visible_index, profile)| {
+                        let raw = std::str::from_utf8(
+                            record.get(profile.source_index).unwrap_or_default(),
+                        )
+                        .map_err(|_| {
+                            DataError::invalid_encoding(&self.path, reader.position().byte())
+                        })?;
+                        let mut value = convert_value(
+                            raw,
+                            query_target_type(&self.columns[*visible_index]),
+                            profile,
+                        );
+                        if value.raw_display == value.source_display {
+                            value.raw_display = None;
+                        }
+                        Ok(value)
+                    })
+                    .collect::<Result<Vec<_>, DataError>>()?;
+                while target_index < targets.len() && targets[target_index].0 == target_row {
+                    output[targets[target_index].1] = Some(values.clone());
+                    target_index += 1;
+                }
+                current_row += 1;
+            }
+        }
+        let rows = output
+            .into_iter()
+            .map(|row| {
+                row.ok_or_else(|| DataError::query_failed("A CSV sparse row was not decoded."))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(QueryExactValues {
+            columns: columns.to_vec(),
+            rows,
+        })
+    }
+
+    fn copy_query_values(
+        &self,
+        row_ids: &[u64],
+        columns: &[String],
+    ) -> Result<QueryExactValues, DataError> {
+        self.sparse_query_values(row_ids, columns)
     }
 }
 
 fn query_target_type(column: &ColumnSchema) -> CsvTargetType {
-    match column.logical_type.as_str() {
+    match column.logical_type.split('(').next().unwrap_or_default() {
         "Boolean" => CsvTargetType::Boolean,
         "Int64" => CsvTargetType::Int64,
         "UInt64" => CsvTargetType::UInt64,
@@ -1137,7 +1844,20 @@ fn query_target_type(column: &ColumnSchema) -> CsvTargetType {
         "Decimal" => CsvTargetType::Decimal,
         "Date" => CsvTargetType::Date,
         "Timestamp" => CsvTargetType::Timestamp,
+        "Duration" => CsvTargetType::Duration,
         _ => CsvTargetType::Text,
+    }
+}
+
+fn csv_logical_type(target: CsvTargetType, profile: &crate::domain::CsvColumnProfile) -> String {
+    if target == CsvTargetType::Duration {
+        let unit = profile
+            .duration_unit
+            .map(super::duration_unit_name)
+            .unwrap_or("unknown");
+        format!("Duration({unit})")
+    } else {
+        format!("{target:?}")
     }
 }
 
@@ -1154,11 +1874,30 @@ impl TabularSource for CsvSource {
             header_used: self.header_used,
             profile: self.active_profile(),
         };
+        let columns = summary.columns;
         Ok(QuerySourceSpec {
             path,
-            columns: summary.columns,
+            columns: columns.clone(),
             total_rows: summary.row_count,
-            provider: Arc::new(CsvQueryProvider { spec: csv }),
+            provider: Arc::new(CsvQueryProvider {
+                path: self.path.clone(),
+                columns,
+                spec: csv,
+                checkpoints: Mutex::new(Vec::new()),
+                states: Mutex::new(None),
+                metrics: Mutex::new(QueryPreparationMetrics::default()),
+                index_state: Arc::clone(&self.state),
+                index_cancel: Arc::clone(&self.cancel),
+                preparation_takeover: Arc::clone(&self.preparation_takeover),
+                expected_columns: if self.header_used {
+                    self.header_values.len()
+                } else {
+                    self.preview_max_columns
+                },
+                index_generation: self.generation,
+                deferred_index_worker: self.file_size >= PREPARATION_COORDINATOR_FILE_THRESHOLD,
+                fallback_index_started: AtomicBool::new(false),
+            }),
         })
     }
 
@@ -1173,6 +1912,30 @@ impl TabularSource for CsvSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         CsvSource::read_page_projected(self, offset, limit, columns)
+    }
+
+    fn read_copy_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        if limit == 0
+            || limit
+                .checked_mul(columns.len())
+                .is_none_or(|cells| cells > crate::domain::COPY_MAX_BATCH_CELLS)
+        {
+            return Err(DataError::invalid_request(
+                "CSV copy batches must contain 1 to 64,000 cells.",
+            ));
+        }
+        self.read_projected_bounded(
+            offset,
+            limit,
+            Some(columns),
+            crate::domain::COPY_MAX_BATCH_CELLS,
+            self.summary().column_count,
+        )
     }
 
     fn find_boundary(
@@ -1293,6 +2056,7 @@ fn spawn_index_worker(
     generation: u64,
     state: Arc<Mutex<IndexState>>,
     cancel: Arc<AtomicBool>,
+    preparation_takeover: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
         // Keep the preview response observably first even for tiny files.
@@ -1304,6 +2068,9 @@ fn spawn_index_worker(
         let Ok(mut current) = state.lock() else {
             return;
         };
+        if preparation_takeover.load(Ordering::Acquire) {
+            return;
+        }
         if current.status.generation != generation
             || current.status.state == RowCountState::Cancelled
         {
@@ -1400,10 +2167,14 @@ fn record_checkpoint(
 
 fn new_reader(path: &Path) -> Result<Reader<BufReader<File>>, DataError> {
     let file = File::open(path).map_err(|error| DataError::io(path, error))?;
-    Ok(ReaderBuilder::new()
+    Ok(new_reader_from_file(file))
+}
+
+fn new_reader_from_file(file: File) -> Reader<BufReader<File>> {
+    ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
-        .from_reader(BufReader::new(file)))
+        .from_reader(BufReader::new(file))
 }
 
 fn reader_at(
@@ -1603,15 +2374,26 @@ fn projection_indices(
 ) -> Result<Vec<usize>, DataError> {
     match requested {
         None => Ok((0..schema.len()).collect()),
+        Some(columns) => projection_indices_bounded(schema, Some(columns), MAX_PROJECTION_COLUMNS),
+    }
+}
+
+fn projection_indices_bounded(
+    schema: &[ColumnSchema],
+    requested: Option<&[String]>,
+    max_columns: usize,
+) -> Result<Vec<usize>, DataError> {
+    match requested {
+        None => Ok((0..schema.len()).collect()),
         Some(columns) => {
             if columns.is_empty() {
                 return Err(DataError::invalid_request(
                     "Column projection must contain at least one column.",
                 ));
             }
-            if columns.len() > MAX_PROJECTION_COLUMNS {
+            if columns.len() > max_columns {
                 return Err(DataError::invalid_request(format!(
-                    "Column projection cannot exceed {MAX_PROJECTION_COLUMNS} columns."
+                    "Column projection cannot exceed {max_columns} columns."
                 )));
             }
             let mut seen = HashSet::with_capacity(columns.len());
@@ -1638,6 +2420,7 @@ fn projection_indices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use duckdb::Connection;
     use std::{
         fs,
         io::{BufWriter, Write},
@@ -2204,6 +2987,78 @@ mod tests {
     }
 
     #[test]
+    fn page_007_sparse_query_uses_checkpoints_and_preserves_order_profile_and_empty_states() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("query-sparse.csv");
+        let mut contents = String::from("amount,text\n");
+        for row in 0..5_000_u64 {
+            let line = match row {
+                0 => String::from("1,alpha\n"),
+                2 => String::from("NULL,\n"),
+                4_096 => String::from("bad,z\n"),
+                4_097 => String::from("4,tail\n"),
+                _ => format!("{row},mid\n"),
+            };
+            contents.push_str(&line);
+        }
+        fs::write(&path, contents).unwrap();
+        let source = CsvSource::open(&path, HeaderMode::Present).unwrap();
+        wait_complete(&source);
+        let mut profile = source.active_profile();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation += 1;
+        profile.columns[0].target_type = CsvTargetType::Int64;
+        profile.columns[1].target_type = CsvTargetType::Text;
+        let source = source.prepare_profile(&profile).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let connection = Connection::open_in_memory().unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut progress = |_| Ok(());
+        spec.provider
+            .prepare(QueryPrepareContext {
+                connection: &connection,
+                source: &spec,
+                source_file: None,
+                artifact_directory: directory.path(),
+                cancel: &cancel,
+                progress: &mut progress,
+            })
+            .unwrap();
+
+        let sparse = spec
+            .provider
+            .sparse_query_values(
+                &[4_097, 0, 2, 4_096],
+                &[String::from("amount"), String::from("text")],
+            )
+            .unwrap();
+        assert_eq!(sparse.columns, ["amount", "text"]);
+        assert_eq!(sparse.rows[0][0].display.as_deref(), Some("4"));
+        assert_eq!(sparse.rows[0][1].display.as_deref(), Some("tail"));
+        assert_eq!(sparse.rows[1][0].display.as_deref(), Some("1"));
+        assert_eq!(sparse.rows[1][1].display.as_deref(), Some("alpha"));
+        assert_eq!(sparse.rows[2][0].state, DataValueState::Null);
+        assert_eq!(sparse.rows[2][0].raw_display.as_deref(), Some("NULL"));
+        assert_eq!(sparse.rows[2][1].state, DataValueState::Empty);
+        assert_eq!(sparse.rows[3][0].state, DataValueState::Invalid);
+        assert_eq!(sparse.rows[3][0].raw_display.as_deref(), Some("bad"));
+        assert_eq!(sparse.rows[3][1].display.as_deref(), Some("z"));
+
+        let bulk = source
+            .read_copy_projected(0, 5_000, &[String::from("amount")])
+            .unwrap();
+        assert_eq!(bulk.rows.len(), 5_000);
+        assert_eq!(bulk.rows[0][0].display.as_deref(), Some("1"));
+        assert_eq!(bulk.rows[2][0].state, DataValueState::Null);
+        assert_eq!(bulk.rows[4_096][0].state, DataValueState::Invalid);
+        assert_eq!(bulk.rows[4_999][0].display.as_deref(), Some("4999"));
+        assert_eq!(
+            source.read_page_projected(0, 201, None).unwrap_err().code,
+            crate::domain::DataErrorCode::InvalidRequest
+        );
+    }
+
+    #[test]
     fn csv011_preview_sampling_uses_logical_rows_and_the_distributed_formula() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("preview-sampling.csv");
@@ -2474,5 +3329,96 @@ mod tests {
                 assert_eq!(actual, expected, "{file}");
             }
         }
+    }
+
+    #[test]
+    fn deferred_index_worker_falls_back_when_preparation_cannot_start() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("deferred-index.csv");
+        let mut contents = String::from("value\n");
+        for row in 0..5_000 {
+            contents.push_str(&format!("value-{row}\n"));
+        }
+        fs::write(&path, contents).unwrap();
+        let bytes = fs::metadata(&path).unwrap().len();
+        let columns = vec![ColumnSchema {
+            name: String::from("value"),
+            logical_type: String::from("Utf8"),
+            nullable: true,
+            physical_type: String::from("BYTE_ARRAY"),
+        }];
+        let state = Arc::new(Mutex::new(IndexState {
+            status: RowCountStatus {
+                state: RowCountState::Calculating,
+                rows_scanned: 0,
+                bytes_scanned: 0,
+                total_bytes: bytes,
+                generation: 1,
+                message: None,
+            },
+            checkpoints: Vec::new(),
+            structure_issue_count: 0,
+            structure_issues: Vec::new(),
+            max_columns: 1,
+        }));
+        let provider = CsvQueryProvider {
+            path: path.clone(),
+            columns: columns.clone(),
+            spec: CsvQuerySpec {
+                header_used: true,
+                profile: default_profile(CsvProfileMode::Auto, 1, &columns),
+            },
+            checkpoints: Mutex::new(Vec::new()),
+            states: Mutex::new(None),
+            metrics: Mutex::new(QueryPreparationMetrics::default()),
+            index_state: Arc::clone(&state),
+            index_cancel: Arc::new(AtomicBool::new(false)),
+            preparation_takeover: Arc::new(AtomicBool::new(false)),
+            expected_columns: 1,
+            index_generation: 1,
+            deferred_index_worker: true,
+            fallback_index_started: AtomicBool::new(false),
+        };
+
+        provider.preparation_aborted();
+        provider.preparation_aborted();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let status = state.lock().unwrap().status.clone();
+            if status.state != RowCountState::Calculating {
+                assert_eq!(status.state, RowCountState::Complete);
+                assert_eq!(status.rows_scanned, 5_000);
+                assert_eq!(status.bytes_scanned, bytes);
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn adaptive_prepared_batch_sizer_grows_and_shrinks_at_measured_byte_gates() {
+        let mut sizer = AdaptivePreparedBatchSizer::default();
+        assert_eq!(sizer.target_rows, 16_384);
+        assert_eq!(
+            sizer.observe(16_384, 1024 * 1024, 1024 * 1024),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(sizer.target_rows, 32_768);
+        assert_eq!(
+            sizer.observe(32_768, 2 * 1024 * 1024, 2 * 1024 * 1024),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(sizer.target_rows, 65_536);
+        assert_eq!(
+            sizer.observe(20_000, 24 * 1024 * 1024, 23 * 1024 * 1024),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(sizer.target_rows, 32_768);
+        assert_eq!(
+            sizer.observe(20_000, 47 * 1024 * 1024, 10 * 1024 * 1024),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(sizer.target_rows, 16_384);
     }
 }

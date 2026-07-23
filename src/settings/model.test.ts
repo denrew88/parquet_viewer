@@ -113,6 +113,53 @@ describe("app settings model", () => {
     expect(() => parseAppSettings({ ...v1, future: true })).toThrow(InvalidAppSettingsError);
   });
 
+  it("migrates V3 timestamp precision into the V4 timestamp and duration defaults", () => {
+    const current = defaultAppSettings();
+    const legacyFormats = Object.fromEntries(
+      Object.entries(current.displayFormats).filter(
+        ([key]) => key !== "duration" && key !== "timestamp",
+      ),
+    );
+    const v3 = {
+      ...current,
+      schemaVersion: 3,
+      displayFormats: {
+        ...legacyFormats,
+        timestamp: { fractionalDigits: { mode: "fixed", digits: 6 } },
+      },
+    };
+
+    const migrated = parseAppSettings(v3);
+    expect(migrated.schemaVersion).toBe(APP_SETTINGS_SCHEMA_VERSION);
+    expect(migrated.displayFormats.timestamp).toEqual({
+      ...DEFAULT_DISPLAY_FORMATS.timestamp,
+      fractionalDigits: { mode: "fixed", digits: 6 },
+    });
+    expect(migrated.displayFormats.duration).toEqual(DEFAULT_DISPLAY_FORMATS.duration);
+  });
+
+  it.each([
+    ["timestamp date", { timestamp: { dateFormat: "YY-MM-DD" } }],
+    ["timestamp fraction", { timestamp: { fractionalDigits: { mode: "fixed", digits: 10 } } }],
+    ["duration style", { duration: { style: "clock" } }],
+  ])("rejects an invalid V4 %s setting", (_name, override) => {
+    const defaults = defaultAppSettings();
+    const timestamp = {
+      ...defaults.displayFormats.timestamp,
+      ...("timestamp" in override ? override.timestamp : {}),
+    };
+    const duration = {
+      ...defaults.displayFormats.duration,
+      ...("duration" in override ? override.duration : {}),
+    };
+    expect(() =>
+      parseAppSettings({
+        ...defaults,
+        displayFormats: { ...defaults.displayFormats, timestamp, duration },
+      }),
+    ).toThrow(InvalidAppSettingsError);
+  });
+
   it("accepts inclusive copy-limit boundaries", () => {
     expect(
       parseAppSettings({

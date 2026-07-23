@@ -38,6 +38,12 @@ export interface GridKeyCommand {
 
 export type SelectionAction =
   | { type: "reset"; sessionId: string; bounds: GridBounds }
+  | {
+      type: "remapColumns";
+      previousColumnIds: readonly string[];
+      nextColumnIds: readonly string[];
+      bounds: GridBounds;
+    }
   | { type: "click"; coordinate: GridCoordinate; shiftKey?: boolean; bounds: GridBounds }
   | { type: "drag"; coordinate: GridCoordinate; bounds: GridBounds }
   | { type: "row"; row: number; bounds: GridBounds }
@@ -227,6 +233,27 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
     if (state.sessionId === action.sessionId) return state;
     const next = createSelection(action.sessionId, action.bounds);
     return { ...next, generation: state.generation + 1 };
+  }
+  if (action.type === "remapColumns") {
+    if (!validBounds(action.bounds)) return state;
+    const remap = (coordinate: GridCoordinate): GridCoordinate => {
+      const columnId = action.previousColumnIds[coordinate.column];
+      const nextColumn = columnId ? action.nextColumnIds.indexOf(columnId) : -1;
+      return {
+        row: Math.max(0, Math.min(action.bounds.rowCount - 1, coordinate.row)),
+        column: Math.max(
+          0,
+          Math.min(action.bounds.columnCount - 1, nextColumn < 0 ? 0 : nextColumn),
+        ),
+      };
+    };
+    return makeState(
+      state,
+      remap(state.anchor),
+      remap(state.active),
+      state.kind,
+      state.includeColumnHeaders,
+    );
   }
   if (!validBounds(action.bounds)) return state;
   if (action.type === "click" || action.type === "drag") {

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-23T05:12:57.904230+00:00",
+  "manifest": "artifacts/phase-14/fixture-manifest.json",
+  "manifestSha256": "a45bd406122e16b1a5090e410142e6238563e197e5ce153a16b2c5cd86da075b",
+  "largeHashesVerified": true,
+  "results": [
+    {
+      "id": "csv-state-matrix",
+      "result": "PASS",
+      "bytes": 425,
+      "sha256": "3e8ca80096f6ed000d1ce7e8cb19caa8acfb8d027ac32dbee0874e4ac3ff5c4d",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-state-matrix-oracle",
+      "result": "PASS",
+      "bytes": 6838,
+      "sha256": "ee0f148a6a771333ffe4b9fd318696a471fad4c01e78a90ddca8ca6111fbe845",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-checkpoint-boundaries",
+      "result": "PASS",
+      "bytes": 1474844,
+      "sha256": "b3233574e3caf8a401cf74f698a5c1b00ef375d4db1e706e98afbbdfe320b215",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-checkpoint-boundaries-oracle",
+      "result": "PASS",
+      "bytes": 774,
+      "sha256": "4109bed93e9ec3c6b81e72f09e4655d3b1048be548084594611f8222fe78f287",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-typed-raw",
+      "result": "PASS",
+      "bytes": 443,
+      "sha256": "8cbcd3f178b878b1364006eb91a44c5a89ce4e25520177a7fa7459a95dcf8b1a",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-typed-raw-oracle",
+      "result": "PASS",
+      "bytes": 8246,
+      "sha256": "881698a6293d549c9dffbb34a1dafea7d05c7d04476e6734a76f67f500198ee7",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-5850000-low",
+      "result": "PASS",
+      "bytes": 641656312,
+      "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+      "source": "phase13-reference"
+    },
+    {
+      "id": "csv-5850000-high",
+      "result": "PASS",
+      "bytes": 979427914,
+      "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+      "source": "phase13-reference"
+    },
+    {
+      "id": "csv-5850000-long-invalid",
+      "result": "PASS",
+      "bytes": 642704881,
+      "sha256": "8426413113a812a4293ccf9eaef72f4cff33ab83d139c162fc96a8219d286450",
+      "source": "phase13-reference"
+    },
+    {
+      "id": "csv-state-matrix",
+      "result": "PASS",
+      "rows": 6,
+      "bitmapHex": "008001d8800dd8800dd8800d"
+    },
+    {
+      "id": "csv-checkpoint-boundaries",
+      "result": "PASS",
+      "rows": 65537,
+      "logicalRecordStarts": 65537,
+      "checkedOffsets": 21
+    },
+    {
+      "id": "csv-typed-raw",
+      "result": "PASS",
+      "rows": 5,
+      "columns": 8
+    }
+  ],
+  "summary": {
+    "status": "PASS",
+    "checks": 12,
+    "failures": 0
+  }
+}

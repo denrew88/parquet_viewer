@@ -5,6 +5,8 @@ import type {
   CsvProfilePreviewResponse,
   CsvTargetType,
   CsvValidationStatusWire,
+  CsvDurationInputFormat,
+  DurationUnit,
 } from "../backend";
 
 export const CSV_PROFILE_TYPES = [
@@ -17,6 +19,7 @@ export const CSV_PROFILE_TYPES = [
   "Decimal",
   "Date",
   "Timestamp",
+  "Duration",
   "Skip",
 ] as const;
 
@@ -33,6 +36,8 @@ export interface CsvColumnSettings {
   thousandSeparator: "" | "," | "." | " ";
   dateFormats: readonly string[];
   timezone: string;
+  durationUnit: DurationUnit;
+  durationInputFormat: CsvDurationInputFormat;
   failurePolicy: CsvFailurePolicy;
 }
 
@@ -148,6 +153,8 @@ export function defaultColumnSettings(type: CsvProfileType = "Auto"): CsvColumnS
     thousandSeparator: "",
     dateFormats: ["YYYY-MM-DD"],
     timezone: "UTC",
+    durationUnit: "ns",
+    durationInputFormat: "daysClock",
     failurePolicy: "preserve-invalid",
   };
 }
@@ -327,6 +334,7 @@ const uiTypeByWire: Readonly<Record<CsvTargetType, CsvProfileType>> = {
   decimal: "Decimal",
   date: "Date",
   timestamp: "Timestamp",
+  duration: "Duration",
   skip: "Skip",
 };
 
@@ -340,6 +348,7 @@ const wireTypeByUi: Readonly<Record<CsvProfileType, CsvTargetType>> = {
   Decimal: "decimal",
   Date: "date",
   Timestamp: "timestamp",
+  Duration: "duration",
   Skip: "skip",
 };
 
@@ -383,6 +392,8 @@ export function wireProfileToColumns(profile: CsvParsingProfileWire): CsvColumnP
       thousandSeparator: (column.thousandSeparator ?? "") as "" | "," | "." | " ",
       dateFormats: [...column.temporalFormats],
       timezone: timezoneLabel(column),
+      durationUnit: column.durationUnit ?? "ns",
+      durationInputFormat: column.durationInputFormat ?? "daysClock",
       failurePolicy:
         column.failurePolicy === "preserveInvalid"
           ? "preserve-invalid"
@@ -422,6 +433,9 @@ export function uiRequestToWireProfile(
         thousandSeparator: column.settings.thousandSeparator || null,
         temporalFormats: [...column.settings.dateFormats],
         ...timezoneWire(column.settings.timezone),
+        durationUnit: column.settings.type === "Duration" ? column.settings.durationUnit : null,
+        durationInputFormat:
+          column.settings.type === "Duration" ? column.settings.durationInputFormat : null,
         failurePolicy:
           column.settings.failurePolicy === "preserve-invalid"
             ? "preserveInvalid"

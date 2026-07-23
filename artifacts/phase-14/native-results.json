@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "overall": "PASS",
+  "executable": "src-tauri/target/release/data-viewer.exe",
+  "fixture": ".tmp/phase14-fixtures/small/csv-state-matrix.csv",
+  "startedAtUtc": "2026-07-23T07:09:17.554Z",
+  "finishedAtUtc": "2026-07-23T07:09:22.518Z",
+  "checks": [
+    {
+      "id": "NATIVE14-RUNTIME",
+      "status": "PASS",
+      "summary": "Tauri URL, Rust invoke와 WebView2 CDP를 확인했습니다.",
+      "details": {
+        "url": "http://tauri.localhost/",
+        "devicePixelRatio": 1
+      }
+    },
+    {
+      "id": "NATIVE14-SORT",
+      "status": "PASS",
+      "summary": "빈 level 추가 후 컬럼을 결정하고 명시적으로 Apply했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE14-SETTINGS",
+      "status": "PASS",
+      "summary": "기본 표시 설정과 단일 인라인 상세 accordion을 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE14-COLUMN-DRAG",
+      "status": "PASS",
+      "summary": "헤더와 mounted 셀 strip, live reflow, 원본 순서 복원을 확인했습니다.",
+      "details": {
+        "overlayGeometry": [
+          {
+            "top": 249.3699951171875,
+            "height": 48.480010986328125
+          },
+          {
+            "top": 297.8500061035156,
+            "height": 48.480010986328125
+          }
+        ]
+      }
+    }
+  ],
+  "failure": null
+}

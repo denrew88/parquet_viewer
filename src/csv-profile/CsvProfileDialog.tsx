@@ -292,6 +292,7 @@ export function CsvProfileDialog({
   const showTemporalSettings =
     hasSelection && selectedTypes.every((type) => ["Date", "Timestamp"].includes(type));
   const showTimezoneSettings = hasSelection && selectedTypes.every((type) => type === "Timestamp");
+  const showDurationSettings = hasSelection && selectedTypes.every((type) => type === "Duration");
   const showFailureSetting =
     hasSelection && selectedTypes.every((type) => !["Text", "Skip"].includes(type));
   const fractionalColumns = selectedColumns.filter((column) => {
@@ -306,6 +307,12 @@ export function CsvProfileDialog({
   );
   const mixedDateFormats = getMixedSetting(draft.columns, selection.selectedIds, "dateFormats");
   const mixedTimezone = getMixedSetting(draft.columns, selection.selectedIds, "timezone");
+  const mixedDurationUnit = getMixedSetting(draft.columns, selection.selectedIds, "durationUnit");
+  const mixedDurationInputFormat = getMixedSetting(
+    draft.columns,
+    selection.selectedIds,
+    "durationInputFormat",
+  );
   const mixedFailure = getMixedSetting(draft.columns, selection.selectedIds, "failurePolicy");
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selection.selectedIds.has(id));
@@ -853,6 +860,56 @@ export function CsvProfileDialog({
                   placeholder="+09:00"
                   type="text"
                 />
+              </label>
+            </>
+          ) : null}
+          {showDurationSettings ? (
+            <>
+              <label>
+                <span>Duration source unit</span>
+                <select
+                  aria-label="Duration source unit for selected columns"
+                  disabled={isApplying || selection.selectedIds.size === 0}
+                  onChange={(event) =>
+                    applySelected({
+                      durationUnit: event.target.value as "s" | "ms" | "us" | "ns",
+                    })
+                  }
+                  value={mixedDurationUnit.kind === "single" ? mixedDurationUnit.value : ""}
+                >
+                  {mixedDurationUnit.kind !== "single" ? (
+                    <option disabled value="">
+                      {mixedDurationUnit.kind === "mixed" ? "Mixed" : "Select"}
+                    </option>
+                  ) : null}
+                  <option value="s">Seconds (s)</option>
+                  <option value="ms">Milliseconds (ms)</option>
+                  <option value="us">Microseconds (us)</option>
+                  <option value="ns">Nanoseconds (ns)</option>
+                </select>
+              </label>
+              <label>
+                <span>Duration input format</span>
+                <select
+                  aria-label="Duration input format for selected columns"
+                  disabled={isApplying || selection.selectedIds.size === 0}
+                  onChange={(event) =>
+                    applySelected({
+                      durationInputFormat: event.target.value as "rawInteger" | "daysClock",
+                    })
+                  }
+                  value={
+                    mixedDurationInputFormat.kind === "single" ? mixedDurationInputFormat.value : ""
+                  }
+                >
+                  {mixedDurationInputFormat.kind !== "single" ? (
+                    <option disabled value="">
+                      {mixedDurationInputFormat.kind === "mixed" ? "Mixed" : "Select"}
+                    </option>
+                  ) : null}
+                  <option value="rawInteger">Raw integer count</option>
+                  <option value="daysClock">Days + clock</option>
+                </select>
               </label>
             </>
           ) : null}

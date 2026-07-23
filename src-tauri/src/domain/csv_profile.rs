@@ -25,7 +25,24 @@ pub enum CsvTargetType {
     Decimal,
     Date,
     Timestamp,
+    Duration,
     Skip,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DurationUnit {
+    S,
+    Ms,
+    Us,
+    Ns,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CsvDurationInputFormat {
+    RawInteger,
+    DaysClock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +76,8 @@ pub struct CsvColumnProfile {
     pub temporal_formats: Vec<String>,
     pub timezone_policy: CsvTimezonePolicy,
     pub timezone_offset_minutes: Option<i32>,
+    pub duration_unit: Option<DurationUnit>,
+    pub duration_input_format: Option<CsvDurationInputFormat>,
     pub failure_policy: CsvConversionFailurePolicy,
 }
 
@@ -85,6 +104,8 @@ impl CsvColumnProfile {
             temporal_formats: Vec::new(),
             timezone_policy: CsvTimezonePolicy::Preserve,
             timezone_offset_minutes: None,
+            duration_unit: None,
+            duration_input_format: None,
             failure_policy: CsvConversionFailurePolicy::PreserveInvalid,
         }
     }

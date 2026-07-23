@@ -1,17 +1,211 @@
-use crate::domain::{DataError, DataValue, ValueKind};
+use crate::domain::{
+    DataError, DataValue, DateDisplayFormat, DisplayFormats, DurationDisplayStyle,
+    DurationUnitSuffix, TimestampDateTimeSeparator, TimestampFractionalDigits, TimestampTimeFormat,
+    TimestampTimezoneSuffix, ValueKind,
+};
 use arrow_array::{
     Array, BinaryArray, BooleanArray, Date32Array, Date64Array, Decimal128Array, Decimal256Array,
-    FixedSizeBinaryArray, FixedSizeListArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, LargeBinaryArray, LargeListArray, LargeStringArray, ListArray, MapArray,
-    StringArray, StructArray, TimestampMicrosecondArray, TimestampMillisecondArray,
-    TimestampNanosecondArray, TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array,
-    UInt8Array,
+    DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
+    DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float32Array, Float64Array,
+    Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeListArray,
+    LargeStringArray, ListArray, MapArray, StringArray, StructArray, TimestampMicrosecondArray,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt16Array,
+    UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_schema::{DataType, TimeUnit};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{DateTime, Datelike, FixedOffset, Timelike, Utc};
 use chrono_tz::Tz;
 use std::path::Path;
+
+pub(crate) fn format_data_value_display(value: &DataValue, formats: &DisplayFormats) -> DataValue {
+    if value.display.is_none() || value.state == crate::domain::DataValueState::Invalid {
+        return value.clone();
+    }
+    let display = match value.kind {
+        ValueKind::Timestamp => format_timestamp_display(value, formats),
+        ValueKind::Duration => format_duration_display(value, formats),
+        _ => value.display.clone().unwrap_or_default(),
+    };
+    if value.display.as_deref() == Some(display.as_str()) {
+        value.clone()
+    } else {
+        let mut formatted = value.clone();
+        formatted.raw_display = formatted.raw_display.or_else(|| formatted.display.clone());
+        formatted.display = Some(display);
+        formatted
+    }
+}
+
+fn format_timestamp_display(value: &DataValue, formats: &DisplayFormats) -> String {
+    let source = value.display.as_deref().unwrap_or_default();
+    let normalized = source.replace('T', " ");
+    let Some((date, clock)) = normalized.split_once(' ') else {
+        return source.to_owned();
+    };
+    let date_parts = date.split('-').collect::<Vec<_>>();
+    if date_parts.len() != 3 {
+        return source.to_owned();
+    }
+    let (clock, fraction) = clock.split_once('.').unwrap_or((clock, ""));
+    let clock_parts = clock.split(':').collect::<Vec<_>>();
+    if clock_parts.len() != 3 {
+        return source.to_owned();
+    }
+    let date = display_date(
+        date_parts[0],
+        date_parts[1],
+        date_parts[2],
+        formats.timestamp.date_format,
+    );
+    if formats.timestamp.time_format == TimestampTimeFormat::Hidden {
+        return date;
+    }
+    let separator = match formats.timestamp.date_time_separator {
+        TimestampDateTimeSeparator::Space => " ",
+        TimestampDateTimeSeparator::T => "T",
+    };
+    let mut time = match formats.timestamp.time_format {
+        TimestampTimeFormat::HourMinuteSecond => {
+            format!("{}:{}:{}", clock_parts[0], clock_parts[1], clock_parts[2])
+        }
+        TimestampTimeFormat::HourMinute => format!("{}:{}", clock_parts[0], clock_parts[1]),
+        TimestampTimeFormat::Hidden => unreachable!(),
+    };
+    if formats.timestamp.time_format == TimestampTimeFormat::HourMinuteSecond {
+        let digits = match formats.timestamp.fractional_digits {
+            TimestampFractionalDigits::Preserve => fraction.len(),
+            TimestampFractionalDigits::Fixed { digits } => usize::from(digits),
+        };
+        if digits > 0 {
+            let mut adjusted = fraction.to_owned();
+            adjusted.truncate(digits);
+            while adjusted.len() < digits {
+                adjusted.push('0');
+            }
+            time.push('.');
+            time.push_str(&adjusted);
+        }
+    }
+    let suffix = match formats.timestamp.timezone_suffix {
+        TimestampTimezoneSuffix::Hidden => String::new(),
+        TimestampTimezoneSuffix::Name => value
+            .timezone
+            .as_deref()
+            .map(|timezone| format!(" [{timezone}]"))
+            .unwrap_or_default(),
+        TimestampTimezoneSuffix::Offset => timestamp_offset_suffix(value).unwrap_or_default(),
+    };
+    format!("{date}{separator}{time}{suffix}")
+}
+
+fn display_date(year: &str, month: &str, day: &str, format: DateDisplayFormat) -> String {
+    match format {
+        DateDisplayFormat::YearMonthDayDash => format!("{year}-{month}-{day}"),
+        DateDisplayFormat::YearMonthDaySlash => format!("{year}/{month}/{day}"),
+        DateDisplayFormat::DayMonthYearDash => format!("{day}-{month}-{year}"),
+        DateDisplayFormat::MonthDayYearDash => format!("{month}-{day}-{year}"),
+    }
+}
+
+fn timestamp_offset_suffix(value: &DataValue) -> Option<String> {
+    use chrono::Offset;
+
+    let raw = value.source_display.as_deref()?.parse::<i64>().ok()?;
+    let unit = value.unit.as_deref()?;
+    let (seconds, nanos) = match unit {
+        "s" => (raw, 0),
+        "ms" => (raw.div_euclid(1_000), raw.rem_euclid(1_000) * 1_000_000),
+        "us" => (raw.div_euclid(1_000_000), raw.rem_euclid(1_000_000) * 1_000),
+        "ns" => (raw.div_euclid(1_000_000_000), raw.rem_euclid(1_000_000_000)),
+        _ => return None,
+    };
+    let utc = DateTime::<Utc>::from_timestamp(seconds, nanos as u32)?;
+    let timezone = value.timezone.as_deref()?;
+    let seconds = if timezone == "UTC" || timezone == "Etc/UTC" {
+        0
+    } else if let Ok(zone) = timezone.parse::<Tz>() {
+        utc.with_timezone(&zone).offset().fix().local_minus_utc()
+    } else {
+        parse_fixed_offset(timezone)?.local_minus_utc()
+    };
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let seconds = seconds.abs();
+    Some(format!(
+        "{sign}{:02}:{:02}",
+        seconds / 3_600,
+        seconds % 3_600 / 60
+    ))
+}
+
+fn format_duration_display(value: &DataValue, formats: &DisplayFormats) -> String {
+    let Some(source) = value.source_display.as_deref() else {
+        return value.display.clone().unwrap_or_default();
+    };
+    let Ok(count) = source.parse::<i64>() else {
+        return value.display.clone().unwrap_or_default();
+    };
+    let Some(unit) = value.unit.as_deref() else {
+        return value.display.clone().unwrap_or_default();
+    };
+    let multiplier = match unit {
+        "s" => 1_000_000_000_i128,
+        "ms" => 1_000_000_i128,
+        "us" => 1_000_i128,
+        "ns" => 1_i128,
+        _ => return value.display.clone().unwrap_or_default(),
+    };
+    let negative = count < 0;
+    let nanoseconds = i128::from(count).abs().saturating_mul(multiplier);
+    let seconds = nanoseconds / 1_000_000_000;
+    let fraction = nanoseconds % 1_000_000_000;
+    let preserve = match unit {
+        "s" => 0,
+        "ms" => 3,
+        "us" => 6,
+        "ns" => 9,
+        _ => 0,
+    };
+    let digits = match formats.duration.fractional_digits {
+        TimestampFractionalDigits::Preserve => preserve,
+        TimestampFractionalDigits::Fixed { digits } => usize::from(digits),
+    };
+    let fraction = if digits == 0 {
+        String::new()
+    } else {
+        let full = format!("{fraction:09}");
+        format!(".{}", &full[..digits])
+    };
+    let sign = if negative { "-" } else { "" };
+    let display = match formats.duration.style {
+        DurationDisplayStyle::TotalSeconds => format!("{sign}{seconds}{fraction} s"),
+        DurationDisplayStyle::TotalHours => format!(
+            "{sign}{:02}:{:02}:{:02}{fraction}",
+            seconds / 3_600,
+            seconds % 3_600 / 60,
+            seconds % 60
+        ),
+        DurationDisplayStyle::DaysClock => {
+            let days = seconds / 86_400;
+            let clock = format!(
+                "{:02}:{:02}:{:02}{fraction}",
+                seconds % 86_400 / 3_600,
+                seconds % 3_600 / 60,
+                seconds % 60
+            );
+            if days == 0 {
+                format!("{sign}{clock}")
+            } else {
+                format!("{sign}{days}d {clock}")
+            }
+        }
+    };
+    if formats.duration.unit_suffix == DurationUnitSuffix::Source {
+        format!("{display} [unit={unit}]")
+    } else {
+        display
+    }
+}
 
 const MAX_BINARY_PREVIEW_BYTES: usize = 256;
 const MAX_NESTED_COLLECTION_ITEMS: usize = 32;
@@ -87,6 +281,17 @@ pub(crate) fn value_at(array: &dyn Array, index: usize) -> Result<DataValue, Dat
             )
             .with_source(raw.to_string())
             .with_temporal_metadata(unit_name, timezone.as_deref())
+        }
+        DataType::Duration(unit) => {
+            let raw = duration_raw(array, index, unit)?;
+            let unit_name = time_unit_name(unit);
+            DataValue::converted(
+                ValueKind::Duration,
+                format_duration(raw, unit),
+                format!("{raw} [unit={unit_name}]"),
+            )
+            .with_source(raw.to_string())
+            .with_temporal_metadata(unit_name, None)
         }
         DataType::List(_) => DataValue::displayed(
             ValueKind::List,
@@ -247,6 +452,60 @@ fn timestamp_raw(array: &dyn Array, index: usize, unit: &TimeUnit) -> Result<i64
     }
 }
 
+fn duration_raw(array: &dyn Array, index: usize, unit: &TimeUnit) -> Result<i64, DataError> {
+    match unit {
+        TimeUnit::Second => Ok(downcast::<DurationSecondArray>(array)?.value(index)),
+        TimeUnit::Millisecond => Ok(downcast::<DurationMillisecondArray>(array)?.value(index)),
+        TimeUnit::Microsecond => Ok(downcast::<DurationMicrosecondArray>(array)?.value(index)),
+        TimeUnit::Nanosecond => Ok(downcast::<DurationNanosecondArray>(array)?.value(index)),
+    }
+}
+
+fn time_unit_name(unit: &TimeUnit) -> &'static str {
+    match unit {
+        TimeUnit::Second => "s",
+        TimeUnit::Millisecond => "ms",
+        TimeUnit::Microsecond => "us",
+        TimeUnit::Nanosecond => "ns",
+    }
+}
+
+fn format_duration(raw: i64, unit: &TimeUnit) -> String {
+    let negative = raw < 0;
+    let absolute = i128::from(raw).abs();
+    let multiplier = match unit {
+        TimeUnit::Second => 1_000_000_000_i128,
+        TimeUnit::Millisecond => 1_000_000_i128,
+        TimeUnit::Microsecond => 1_000_i128,
+        TimeUnit::Nanosecond => 1_i128,
+    };
+    let digits = match unit {
+        TimeUnit::Second => 0,
+        TimeUnit::Millisecond => 3,
+        TimeUnit::Microsecond => 6,
+        TimeUnit::Nanosecond => 9,
+    };
+    let nanoseconds = absolute * multiplier;
+    let seconds = nanoseconds / 1_000_000_000;
+    let fraction = nanoseconds % 1_000_000_000;
+    let days = seconds / 86_400;
+    let hours = seconds % 86_400 / 3_600;
+    let minutes = seconds % 3_600 / 60;
+    let remainder = seconds % 60;
+    let sign = if negative { "-" } else { "" };
+    let fraction = if digits == 0 {
+        String::new()
+    } else {
+        let fraction = format!("{fraction:09}");
+        format!(".{}", &fraction[..digits])
+    };
+    if days == 0 {
+        format!("{sign}{hours:02}:{minutes:02}:{remainder:02}{fraction}")
+    } else {
+        format!("{sign}{days}d {hours:02}:{minutes:02}:{remainder:02}{fraction}")
+    }
+}
+
 fn format_timestamp(raw: i64, unit: &TimeUnit, timezone: Option<&str>) -> String {
     let (seconds, nanos, precision) = match unit {
         TimeUnit::Second => (raw, 0, 0),
@@ -295,16 +554,6 @@ fn format_timestamp(raw: i64, unit: &TimeUnit, timezone: Option<&str>) -> String
         local.minute(),
         local.second()
     )
-}
-
-pub(crate) fn format_timestamp_source(raw: i64, unit: &str, timezone: Option<&str>) -> String {
-    let unit = match unit {
-        "s" => TimeUnit::Second,
-        "ms" => TimeUnit::Millisecond,
-        "us" => TimeUnit::Microsecond,
-        _ => TimeUnit::Nanosecond,
-    };
-    format_timestamp(raw, &unit, timezone)
 }
 
 fn parse_fixed_offset(value: &str) -> Option<FixedOffset> {
@@ -539,6 +788,29 @@ mod tests {
         assert_eq!(
             format_timestamp(0, &TimeUnit::Second, Some("+09:00")),
             "1970-01-01 09:00:00"
+        );
+    }
+
+    #[test]
+    fn dur_arrow_value_preserves_signed_count_unit_display_and_raw_copy() {
+        let values =
+            DurationNanosecondArray::from(vec![Some(-86_400_000_000_001_i64), Some(0_i64), None]);
+        let negative = value_at(&values, 0).unwrap();
+        assert_eq!(negative.kind, ValueKind::Duration);
+        assert_eq!(negative.display.as_deref(), Some("-1d 00:00:00.000000001"));
+        assert_eq!(negative.source_display.as_deref(), Some("-86400000000001"));
+        assert_eq!(
+            negative.raw_display.as_deref(),
+            Some("-86400000000001 [unit=ns]")
+        );
+        assert_eq!(negative.unit.as_deref(), Some("ns"));
+        assert_eq!(
+            value_at(&values, 1).unwrap().state,
+            crate::domain::DataValueState::Valid
+        );
+        assert_eq!(
+            value_at(&values, 2).unwrap().state,
+            crate::domain::DataValueState::Null
         );
     }
 

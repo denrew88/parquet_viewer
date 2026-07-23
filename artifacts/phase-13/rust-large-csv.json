@@ -1,0 +1,100 @@
+{
+  "cancel": {
+    "elapsedMs": 307.8845,
+    "fixtureId": "csv-5850000-high",
+    "fixtureSha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+    "terminal": "cancelled"
+  },
+  "copyOneColumn64000Rows": {
+    "implementation": "parameterized contiguous __dv_row_id range",
+    "latencyMs": [
+      72.7811,
+      80.5053,
+      67.7437,
+      83.37459999999999,
+      104.7566
+    ],
+    "offsets": [
+      0,
+      800000,
+      1600000,
+      3200000,
+      5786000
+    ],
+    "p95Ms": 104.7566,
+    "rowsPerSecondAtP95": 610940.0266904423
+  },
+  "directCsvPageBaseline": {
+    "fixtureId": "csv-5850000-low",
+    "fixtureSha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+    "latencyMs": [
+      1.0544,
+      330.46950000000004,
+      1783.4368
+    ],
+    "note": "Direct source pages use the same DataSource product path without a prepared artifact.",
+    "offsets": [
+      0,
+      986803,
+      5849800
+    ],
+    "p95Ms": 1783.4368,
+    "preparedP95Ms": 7.6482,
+    "preparedSpeedupAtRecordedP95": 233.18386025470045
+  },
+  "filteredSortedQuery": {
+    "boundaryElapsedMs": 23.6494,
+    "boundaryExpectedTarget": 60,
+    "elapsedMs": 658.4339,
+    "pageLatencyMs": [
+      25.0336,
+      18.1087,
+      21.8106
+    ],
+    "resultRows": 2925000
+  },
+  "fixtureId": "csv-5850000-low",
+  "fixtureSha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+  "page": {
+    "latencyMs": [
+      7.6482,
+      3.7304,
+      5.4346000000000005,
+      4.744,
+      4.7032
+    ],
+    "offsets": [
+      0,
+      1,
+      986803,
+      2925000,
+      5849800
+    ],
+    "p95Ms": 7.6482
+  },
+  "prepare": {
+    "elapsedMs": 151500.2361,
+    "rows": 5850000,
+    "rowsPerSecond": 38613.80120977911
+  },
+  "profile": "release ignored prepared CSV product-path integration/performance",
+  "resource": {
+    "finalActiveQueries": 0,
+    "finalProcessTempBytes": 10,
+    "handlesAfter": 134,
+    "handlesBefore": 132,
+    "inactiveBytesDeleted": 0,
+    "processTempBaselineBytes": 10,
+    "rssAfterBytes": 28360704,
+    "rssBeforeBytes": 8720384,
+    "rssCapBytes": 1572864000,
+    "sampledPeakRssBytes": 676880384,
+    "tempHighWaterBytes": 459288586
+  },
+  "schemaVersion": 1,
+  "sourceBoundary": {
+    "elapsedMs": 4.3904,
+    "expectedTarget": 96
+  },
+  "status": "PASS"
+}

@@ -12,7 +12,7 @@ import {
 } from "../copy/model";
 import { COPY_PRESETS, DEFAULT_COPY_PRESET } from "../copy/presets";
 
-export const APP_SETTINGS_SCHEMA_VERSION = 3 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 4 as const;
 export const DEFAULT_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const MIN_QUERY_TEMP_LIMIT_BYTES = 64 * 1024 * 1024;
 export const MAX_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
@@ -57,6 +57,11 @@ export type FloatingNotation = "general" | "fixed" | "scientific";
 export type FixedDigits =
   { readonly mode: "preserve" } | { readonly mode: "fixed"; readonly digits: number };
 export type DateDisplayFormat = "YYYY-MM-DD" | "YYYY/MM/DD" | "DD-MM-YYYY" | "MM-DD-YYYY";
+export type TimestampDateTimeSeparator = "space" | "t";
+export type TimestampTimeFormat = "hourMinuteSecond" | "hourMinute" | "hidden";
+export type TimestampTimezoneSuffix = "hidden" | "offset" | "name";
+export type DurationDisplayStyle = "daysClock" | "totalHours" | "totalSeconds";
+export type DurationUnitSuffix = "hidden" | "source";
 export type BinaryDisplayEncoding = "hex" | "base64";
 export type NestedDisplayFormat = "compact" | "pretty";
 
@@ -65,7 +70,18 @@ export interface DisplayFormats {
   readonly floatingPoint: { readonly notation: FloatingNotation; readonly precision: number };
   readonly decimal: { readonly scale: FixedDigits; readonly grouping: DigitGrouping };
   readonly date: { readonly format: DateDisplayFormat };
-  readonly timestamp: { readonly fractionalDigits: FixedDigits };
+  readonly timestamp: {
+    readonly dateFormat: DateDisplayFormat;
+    readonly dateTimeSeparator: TimestampDateTimeSeparator;
+    readonly timeFormat: TimestampTimeFormat;
+    readonly fractionalDigits: FixedDigits;
+    readonly timezoneSuffix: TimestampTimezoneSuffix;
+  };
+  readonly duration: {
+    readonly style: DurationDisplayStyle;
+    readonly fractionalDigits: FixedDigits;
+    readonly unitSuffix: DurationUnitSuffix;
+  };
   readonly boolean: { readonly representation: BooleanRepresentation };
   readonly binary: { readonly encoding: BinaryDisplayEncoding; readonly previewBytes: number };
   readonly string: {
@@ -76,12 +92,21 @@ export interface DisplayFormats {
   readonly nested: { readonly format: NestedDisplayFormat };
 }
 
+export interface LegacyDisplayFormatsV3 extends Omit<DisplayFormats, "timestamp" | "duration"> {
+  readonly timestamp: { readonly fractionalDigits: FixedDigits };
+}
+
 export interface AppSettingsV3 extends Omit<AppSettingsV2, "schemaVersion"> {
+  readonly schemaVersion: 3;
+  readonly displayFormats: LegacyDisplayFormatsV3;
+}
+
+export interface AppSettingsV4 extends Omit<AppSettingsV2, "schemaVersion"> {
   readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
   readonly displayFormats: DisplayFormats;
 }
 
-export type AppSettings = AppSettingsV3;
+export type AppSettings = AppSettingsV4;
 
 export interface SettingsValidationIssue {
   readonly path: string;
@@ -285,7 +310,18 @@ export const DEFAULT_DISPLAY_FORMATS: DisplayFormats = Object.freeze({
   floatingPoint: Object.freeze({ notation: "general", precision: 17 }),
   decimal: Object.freeze({ scale: Object.freeze({ mode: "preserve" }), grouping: "none" }),
   date: Object.freeze({ format: "YYYY-MM-DD" }),
-  timestamp: Object.freeze({ fractionalDigits: Object.freeze({ mode: "preserve" }) }),
+  timestamp: Object.freeze({
+    dateFormat: "YYYY-MM-DD",
+    dateTimeSeparator: "space",
+    timeFormat: "hourMinuteSecond",
+    fractionalDigits: Object.freeze({ mode: "preserve" }),
+    timezoneSuffix: "hidden",
+  }),
+  duration: Object.freeze({
+    style: "daysClock",
+    fractionalDigits: Object.freeze({ mode: "preserve" }),
+    unitSuffix: "hidden",
+  }),
   boolean: Object.freeze({ representation: "lowercase" }),
   binary: Object.freeze({ encoding: "hex", previewBytes: 32 }),
   string: Object.freeze({ renderLineBreaks: true, wrapLongLines: true, maximumVisibleLines: 2 }),
@@ -339,6 +375,7 @@ function parseDisplayFormats(
     "decimal",
     "date",
     "timestamp",
+    "duration",
     "boolean",
     "binary",
     "string",
@@ -354,6 +391,7 @@ function parseDisplayFormats(
   const decimal = record(root.decimal);
   const date = record(root.date);
   const timestamp = record(root.timestamp);
+  const duration = record(root.duration);
   const boolean = record(root.boolean);
   const binary = record(root.binary);
   const string = record(root.string);
@@ -364,6 +402,7 @@ function parseDisplayFormats(
     decimal,
     date,
     timestamp,
+    duration,
     boolean,
     binary,
     string,
@@ -377,6 +416,7 @@ function parseDisplayFormats(
     !decimal ||
     !date ||
     !timestamp ||
+    !duration ||
     !boolean ||
     !binary ||
     !string ||
@@ -387,7 +427,16 @@ function parseDisplayFormats(
   issues.push(...exactKeys(floating, ["notation", "precision"], `${path}.floatingPoint`));
   issues.push(...exactKeys(decimal, ["scale", "grouping"], `${path}.decimal`));
   issues.push(...exactKeys(date, ["format"], `${path}.date`));
-  issues.push(...exactKeys(timestamp, ["fractionalDigits"], `${path}.timestamp`));
+  issues.push(
+    ...exactKeys(
+      timestamp,
+      ["dateFormat", "dateTimeSeparator", "timeFormat", "fractionalDigits", "timezoneSuffix"],
+      `${path}.timestamp`,
+    ),
+  );
+  issues.push(
+    ...exactKeys(duration, ["style", "fractionalDigits", "unitSuffix"], `${path}.duration`),
+  );
   issues.push(...exactKeys(boolean, ["representation"], `${path}.boolean`));
   issues.push(...exactKeys(binary, ["encoding", "previewBytes"], `${path}.binary`));
   issues.push(
@@ -427,6 +476,48 @@ function parseDisplayFormats(
     timestamp.fractionalDigits,
     `${path}.timestamp.fractionalDigits`,
     9,
+    issues,
+  );
+  const timestampDateFormat = enumValue(
+    timestamp.dateFormat,
+    ["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY", "MM-DD-YYYY"],
+    `${path}.timestamp.dateFormat`,
+    issues,
+  );
+  const dateTimeSeparator = enumValue(
+    timestamp.dateTimeSeparator,
+    ["space", "t"],
+    `${path}.timestamp.dateTimeSeparator`,
+    issues,
+  );
+  const timeFormat = enumValue(
+    timestamp.timeFormat,
+    ["hourMinuteSecond", "hourMinute", "hidden"],
+    `${path}.timestamp.timeFormat`,
+    issues,
+  );
+  const timezoneSuffix = enumValue(
+    timestamp.timezoneSuffix,
+    ["hidden", "offset", "name"],
+    `${path}.timestamp.timezoneSuffix`,
+    issues,
+  );
+  const durationStyle = enumValue(
+    duration.style,
+    ["daysClock", "totalHours", "totalSeconds"],
+    `${path}.duration.style`,
+    issues,
+  );
+  const durationFractionalDigits = parseFixedDigits(
+    duration.fractionalDigits,
+    `${path}.duration.fractionalDigits`,
+    9,
+    issues,
+  );
+  const durationUnitSuffix = enumValue(
+    duration.unitSuffix,
+    ["hidden", "source"],
+    `${path}.duration.unitSuffix`,
     issues,
   );
   const booleanRepresentation = enumValue(
@@ -473,6 +564,13 @@ function parseDisplayFormats(
     !decimalGrouping ||
     !dateFormat ||
     !fractionalDigits ||
+    !timestampDateFormat ||
+    !dateTimeSeparator ||
+    !timeFormat ||
+    !timezoneSuffix ||
+    !durationStyle ||
+    !durationFractionalDigits ||
+    !durationUnitSuffix ||
     !booleanRepresentation ||
     !binaryEncoding ||
     !previewBytes ||
@@ -488,7 +586,18 @@ function parseDisplayFormats(
     },
     decimal: { scale: decimalScale, grouping: decimal.grouping as DigitGrouping },
     date: { format: date.format as DateDisplayFormat },
-    timestamp: { fractionalDigits },
+    timestamp: {
+      dateFormat: timestamp.dateFormat as DateDisplayFormat,
+      dateTimeSeparator: timestamp.dateTimeSeparator as TimestampDateTimeSeparator,
+      timeFormat: timestamp.timeFormat as TimestampTimeFormat,
+      fractionalDigits,
+      timezoneSuffix: timestamp.timezoneSuffix as TimestampTimezoneSuffix,
+    },
+    duration: {
+      style: duration.style as DurationDisplayStyle,
+      fractionalDigits: durationFractionalDigits,
+      unitSuffix: duration.unitSuffix as DurationUnitSuffix,
+    },
     boolean: { representation: boolean.representation as BooleanRepresentation },
     binary: {
       encoding: binary.encoding as BinaryDisplayEncoding,
@@ -501,6 +610,52 @@ function parseDisplayFormats(
     },
     nested: { format: nested.format as NestedDisplayFormat },
   };
+}
+
+function parseLegacyV3DisplayFormats(
+  value: unknown,
+  issues: SettingsValidationIssue[],
+): DisplayFormats | null {
+  const path = "settings.displayFormats";
+  const root = record(value);
+  if (!root) {
+    issues.push({ path, message: "Expected an object." });
+    return null;
+  }
+  issues.push(
+    ...exactKeys(
+      root,
+      [
+        "integer",
+        "floatingPoint",
+        "decimal",
+        "date",
+        "timestamp",
+        "boolean",
+        "binary",
+        "string",
+        "nested",
+      ],
+      path,
+    ),
+  );
+  const timestamp = record(root.timestamp);
+  if (!timestamp) {
+    issues.push({ path: `${path}.timestamp`, message: "Expected an object." });
+    return null;
+  }
+  issues.push(...exactKeys(timestamp, ["fractionalDigits"], `${path}.timestamp`));
+  return parseDisplayFormats(
+    {
+      ...root,
+      timestamp: {
+        ...DEFAULT_DISPLAY_FORMATS.timestamp,
+        fractionalDigits: timestamp.fractionalDigits,
+      },
+      duration: DEFAULT_DISPLAY_FORMATS.duration,
+    },
+    issues,
+  );
 }
 
 function freezeSettings(settings: AppSettings): AppSettings {
@@ -530,6 +685,7 @@ export function parseAppSettings(value: unknown): AppSettings {
     throw new InvalidAppSettingsError([{ path: "settings", message: "Expected an object." }]);
   const isV1 = item.schemaVersion === 1;
   const isV2 = item.schemaVersion === 2;
+  const isV3 = item.schemaVersion === 3;
   const issues = exactKeys(
     item,
     isV1 ? v1SettingsKeys : isV2 ? v2SettingsKeys : settingsKeys,
@@ -538,8 +694,12 @@ export function parseAppSettings(value: unknown): AppSettings {
   const customOptions = parseCustomOptions(item.copyCustomOptions, issues);
   const copyLimits = isV1 ? DEFAULT_COPY_LIMITS : parseCopyLimits(item.copyLimits, issues);
   const displayFormats =
-    isV1 || isV2 ? DEFAULT_DISPLAY_FORMATS : parseDisplayFormats(item.displayFormats, issues);
-  if (!isV1 && !isV2 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
+    isV1 || isV2
+      ? DEFAULT_DISPLAY_FORMATS
+      : isV3
+        ? parseLegacyV3DisplayFormats(item.displayFormats, issues)
+        : parseDisplayFormats(item.displayFormats, issues);
+  if (!isV1 && !isV2 && !isV3 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
     issues.push({ path: "settings.schemaVersion", message: "Unsupported settings version." });
   }
   if (!copyPresets.includes(item.copyPreset as CopyPreset)) {

@@ -1,0 +1,2135 @@
+{
+  "schemaVersion": 1,
+  "generatorVersion": "phase13-fixtures-v1",
+  "generator": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/scripts/generate_phase13_fixtures.py",
+  "generatorSha256": "3b30129297e99ad3c60116ca34c61e69c70fa3dba60b8c29fae8b60631a7aafd",
+  "seed": 20260722,
+  "generatedAtUtc": "2026-07-22T14:31:33.993133+00:00",
+  "outputDirectory": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures",
+  "largeIncluded": true,
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "1.26.4",
+    "pyarrow": "22.0.0",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "configuration": {
+    "largeRows": 5850000,
+    "largeColumns": 15,
+    "largeBatchRows": 50000,
+    "parquetRowGroupRows": 65536,
+    "compression": "zstd"
+  },
+  "fixtures": [
+    {
+      "id": "boundary-states-small",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/boundary-states-small.parquet",
+      "profile": "typed-empty-vs-occupied",
+      "rows": 8,
+      "columns": 7,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "text_value",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "int_value",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "bool_value",
+          "type": "bool",
+          "nullable": true
+        },
+        {
+          "name": "float_value",
+          "type": "double",
+          "nullable": true
+        },
+        {
+          "name": "binary_value",
+          "type": "binary",
+          "nullable": true
+        },
+        {
+          "name": "duration_ns",
+          "type": "duration[ns]",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "a65cc2998973524f7a5b52c7a7a3813daf2a2703d3ffe088613a32b1696a3f77",
+      "bytes": 2259,
+      "sha256": "95e632a4ea5a00738128f1b5c9d603fcd175ca614a4b06ced744e077561ec862",
+      "oracle": {
+        "emptyDefinition": "null or empty string only",
+        "occupied": {
+          "text_value": [
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "int_value": [
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true
+          ],
+          "bool_value": [
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true
+          ],
+          "float_value": [
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true
+          ],
+          "binary_value": [
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true
+          ],
+          "duration_ns": [
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true
+          ]
+        }
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "boundary-query-map",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/boundary-query-map.parquet",
+      "profile": "filter-stable-three-sort",
+      "rows": 200,
+      "columns": 6,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "source_row_id",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "included",
+          "type": "bool",
+          "nullable": true
+        },
+        {
+          "name": "sort_a",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "sort_b",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "sort_c",
+          "type": "int16",
+          "nullable": true
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "28a3b84284c6f431e47a7829f9282002fd2b81e64ecdd31d3903fa3b892cf291",
+      "bytes": 2682,
+      "sha256": "015290ca1c79d25b24198def51a3a4113c786c8477dc049732ed2eb0fcd4c5a0",
+      "oracle": {
+        "filterOnlySourceRowIds": [
+          92,
+          165,
+          111,
+          184,
+          130,
+          3,
+          149,
+          22,
+          168,
+          41,
+          187,
+          60,
+          6,
+          79,
+          25,
+          98,
+          44,
+          117,
+          63,
+          136,
+          82,
+          155,
+          101,
+          174,
+          120,
+          193,
+          139,
+          12,
+          158,
+          31,
+          177,
+          50,
+          196,
+          69,
+          15,
+          88,
+          34,
+          107,
+          53,
+          126,
+          72,
+          145,
+          91,
+          164,
+          110,
+          183,
+          129,
+          2,
+          148,
+          21,
+          167,
+          40,
+          186,
+          59,
+          5,
+          78,
+          24,
+          97,
+          43,
+          116,
+          62,
+          135,
+          81,
+          154,
+          100,
+          173,
+          119,
+          192,
+          138,
+          11,
+          157,
+          30,
+          176,
+          49,
+          195,
+          68,
+          14,
+          87,
+          33,
+          106,
+          52,
+          125,
+          71,
+          144,
+          90,
+          163,
+          109,
+          182,
+          128,
+          1,
+          147,
+          20,
+          166,
+          39,
+          185,
+          58,
+          4,
+          77,
+          23,
+          96,
+          42,
+          115,
+          61,
+          134,
+          80,
+          153,
+          99,
+          172,
+          118,
+          191,
+          137,
+          10,
+          156,
+          29,
+          175,
+          48,
+          194,
+          67,
+          13,
+          86,
+          32,
+          105,
+          51,
+          124,
+          70,
+          143,
+          89,
+          162,
+          108,
+          181,
+          127,
+          0,
+          146
+        ],
+        "sortOnlySourceRowIds": [
+          174,
+          194,
+          129,
+          84,
+          39,
+          62,
+          17,
+          152,
+          172,
+          107,
+          127,
+          130,
+          150,
+          85,
+          105,
+          40,
+          195,
+          18,
+          173,
+          63,
+          83,
+          41,
+          61,
+          16,
+          196,
+          151,
+          128,
+          114,
+          134,
+          69,
+          179,
+          2,
+          157,
+          92,
+          112,
+          47,
+          67,
+          90,
+          25,
+          45,
+          0,
+          135,
+          158,
+          178,
+          113,
+          68,
+          3,
+          23,
+          46,
+          1,
+          136,
+          156,
+          91,
+          89,
+          180,
+          74,
+          9,
+          164,
+          119,
+          162,
+          97,
+          52,
+          7,
+          187,
+          30,
+          165,
+          185,
+          120,
+          140,
+          75,
+          98,
+          118,
+          53,
+          73,
+          8,
+          163,
+          186,
+          76,
+          96,
+          31,
+          51,
+          141,
+          14,
+          149,
+          169,
+          104,
+          124,
+          59,
+          82,
+          37,
+          192,
+          170,
+          125,
+          80,
+          15,
+          35,
+          38,
+          58,
+          13,
+          148,
+          103,
+          126,
+          146,
+          81,
+          36,
+          171,
+          191,
+          102,
+          193,
+          109,
+          44,
+          64,
+          199,
+          22,
+          42,
+          177,
+          197,
+          132,
+          87,
+          110,
+          20,
+          155,
+          175,
+          198,
+          133,
+          153,
+          88,
+          108,
+          43,
+          66,
+          86,
+          21,
+          176,
+          111,
+          131,
+          154,
+          94,
+          49,
+          4,
+          184,
+          139,
+          159,
+          182,
+          117,
+          137,
+          72,
+          27,
+          50,
+          5,
+          160,
+          95,
+          138,
+          93,
+          28,
+          48,
+          26,
+          161,
+          181,
+          116,
+          71,
+          6,
+          115,
+          34,
+          54,
+          189,
+          144,
+          79,
+          99,
+          122,
+          57,
+          77,
+          12,
+          32,
+          10,
+          190,
+          145,
+          100,
+          55,
+          78,
+          33,
+          168,
+          123,
+          143,
+          166,
+          121,
+          56,
+          11,
+          167,
+          29,
+          24,
+          142,
+          147,
+          70,
+          65,
+          60,
+          188,
+          183,
+          106,
+          101,
+          19
+        ],
+        "filterThenSortSourceRowIds": [
+          174,
+          194,
+          129,
+          39,
+          62,
+          172,
+          107,
+          127,
+          130,
+          105,
+          40,
+          195,
+          173,
+          63,
+          41,
+          61,
+          196,
+          128,
+          134,
+          69,
+          2,
+          157,
+          92,
+          67,
+          90,
+          25,
+          0,
+          135,
+          158,
+          68,
+          3,
+          23,
+          1,
+          136,
+          156,
+          91,
+          89,
+          164,
+          119,
+          162,
+          97,
+          52,
+          187,
+          30,
+          165,
+          185,
+          120,
+          98,
+          118,
+          53,
+          163,
+          186,
+          96,
+          31,
+          51,
+          14,
+          149,
+          124,
+          59,
+          82,
+          192,
+          125,
+          80,
+          15,
+          58,
+          13,
+          148,
+          126,
+          146,
+          81,
+          191,
+          193,
+          109,
+          44,
+          22,
+          42,
+          177,
+          87,
+          110,
+          20,
+          155,
+          175,
+          153,
+          88,
+          108,
+          43,
+          86,
+          21,
+          176,
+          111,
+          154,
+          49,
+          4,
+          184,
+          139,
+          182,
+          117,
+          137,
+          72,
+          50,
+          5,
+          138,
+          48,
+          181,
+          116,
+          71,
+          6,
+          115,
+          34,
+          144,
+          79,
+          99,
+          77,
+          12,
+          32,
+          10,
+          145,
+          100,
+          78,
+          33,
+          168,
+          143,
+          166,
+          11,
+          167,
+          29,
+          24,
+          147,
+          70,
+          60,
+          183,
+          106,
+          101
+        ],
+        "sort": [
+          "sort_a ASC NULLS LAST",
+          "sort_b ASC NULLS LAST",
+          "sort_c DESC NULLS LAST",
+          "source_row_id ASC"
+        ]
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "boundary-long-string",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/boundary-long-string.parquet",
+      "profile": "decoded-byte-cap",
+      "rows": 5,
+      "columns": 2,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "payload",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "8f3b0b9319cc194bbdc0566f4e0e509f7f1abbe9188016fcc3e9b9c456a1f328",
+      "bytes": 1636,
+      "sha256": "8eb4f6697ef0e195b038ebfde760909aa2848b52f61a31b9f863c1cab50cbf00",
+      "oracle": {
+        "utf8ByteLengths": [
+          0,
+          1,
+          1024,
+          65537,
+          8388625
+        ],
+        "decodeCapBytes": 8388608
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-empty",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/empty.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 0,
+      "columns": 0,
+      "schema": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "oracle": {
+        "expectation": "valid-empty"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-header-only",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/header-only.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 0,
+      "columns": 3,
+      "schema": null,
+      "bytes": 6,
+      "sha256": "facf7c7ae315fc177ccc74b3d837762f7257b6ded1e1f906b7d034f25590263d",
+      "oracle": {
+        "expectation": "valid-header-only"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-duplicate-blank-header",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/duplicate-blank-header.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 1,
+      "columns": 3,
+      "schema": null,
+      "bytes": 11,
+      "sha256": "4c256f599ef6e2d8639c84710d216b0223732f5ab30830167f31fcd24d31fcb1",
+      "oracle": {
+        "expectation": "valid-duplicate-blank-header"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-quoted-lf",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/quoted-lf.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 2,
+      "columns": 2,
+      "schema": null,
+      "bytes": 30,
+      "sha256": "a076e68b3b70822f70dd9f01355e272db29cb2c90a7d65e78be2ceba7ee91de2",
+      "oracle": {
+        "expectation": "valid-quoted-lf"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-crlf-trailing",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/crlf-trailing.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 2,
+      "columns": 3,
+      "schema": null,
+      "bytes": 20,
+      "sha256": "675b6b3da49ca4b2250917ecbc40435309dff12a3cfac415b4d7f48d01e378d7",
+      "oracle": {
+        "expectation": "valid-crlf-trailing"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-tab",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/tab.tsv",
+      "profile": "csv-parser-matrix",
+      "rows": 1,
+      "columns": 2,
+      "schema": null,
+      "bytes": 8,
+      "sha256": "8db4d84da82d0020646ed808dff19ce516a74a948820cc5cdbbe1ce69c7e037d",
+      "oracle": {
+        "expectation": "valid-tab"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-semicolon",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/semicolon.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 1,
+      "columns": 2,
+      "schema": null,
+      "bytes": 8,
+      "sha256": "403bea5152c251c5bc7ef420d824d191605723f99392e83a0549ad58c6d46291",
+      "oracle": {
+        "expectation": "valid-semicolon"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-bom",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/bom.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 1,
+      "columns": 2,
+      "schema": null,
+      "bytes": 11,
+      "sha256": "4baf8d035fbc583379d998ac9ed3d18276d308ee43cf945ee88d0c54cca33992",
+      "oracle": {
+        "expectation": "valid-utf8-bom"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-malformed",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/malformed.csv",
+      "profile": "csv-parser-matrix",
+      "rows": null,
+      "columns": 2,
+      "schema": null,
+      "bytes": 20,
+      "sha256": "5fd5b522c2ba52debaac7c9b09bd17d2b4e50c017b5eb47ee95965ff3e6b5588",
+      "oracle": {
+        "expectation": "invalid-unclosed-quote"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-invalid-utf8",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/invalid-utf8.csv",
+      "profile": "csv-parser-matrix",
+      "rows": null,
+      "columns": 2,
+      "schema": null,
+      "bytes": 8,
+      "sha256": "cb3982d3e13229d94a13e183b60b93e7fabc655889c888fc9c45aa7f97b69c85",
+      "oracle": {
+        "expectation": "invalid-utf8"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-matrix-long-row",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-prepared-matrix/long-row.csv",
+      "profile": "csv-parser-matrix",
+      "rows": 1,
+      "columns": 2,
+      "schema": null,
+      "bytes": 1048591,
+      "sha256": "20d1ae948519d836d7e65ccc7377ae0aea482b83474da8cb1955c0e3de7642ab",
+      "oracle": {
+        "expectation": "valid",
+        "payloadUtf8Bytes": 1048577
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-profile-types",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/csv-profile-types.csv",
+      "profile": "all-csv-profile-types",
+      "rows": 3,
+      "columns": 10,
+      "schema": [
+        {
+          "name": "text",
+          "profileType": "Text"
+        },
+        {
+          "name": "boolean",
+          "profileType": "Boolean"
+        },
+        {
+          "name": "int64",
+          "profileType": "Int64"
+        },
+        {
+          "name": "uint64",
+          "profileType": "Uint64"
+        },
+        {
+          "name": "float64",
+          "profileType": "Float64"
+        },
+        {
+          "name": "decimal",
+          "profileType": "Decimal"
+        },
+        {
+          "name": "date",
+          "profileType": "Date"
+        },
+        {
+          "name": "timestamp",
+          "profileType": "Timestamp"
+        },
+        {
+          "name": "duration",
+          "profileType": "Duration"
+        },
+        {
+          "name": "skip",
+          "profileType": "Skip"
+        }
+      ],
+      "bytes": 380,
+      "sha256": "54dd38ebe78ee12dfbc6b2e0fa46fe7d87ae0537b3b89bb9441e72bb8122df05",
+      "oracle": {
+        "trim": true,
+        "nullToken": "NULL",
+        "durationSourceUnit": "ns",
+        "durationInputFormat": "daysClock"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "duration-profile",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/duration-profile.csv",
+      "profile": "duration-grammar",
+      "rows": 10,
+      "columns": 5,
+      "schema": null,
+      "bytes": 454,
+      "sha256": "4c5e6489a16fba7b8cb0b9e48c6cffebc5131ff1015a7ba9d06011f816c91344",
+      "oracle": {
+        "daysClockGrammar": "[+|-][<unsigned days>d ]HH:MM:SS[.1..9]",
+        "rawIntegerGrammar": "signed decimal integer",
+        "sourceUnits": [
+          "s",
+          "ms",
+          "us",
+          "ns"
+        ]
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "duration-arrow",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/duration-arrow.parquet",
+      "profile": "arrow-duration-units",
+      "rows": 9,
+      "columns": 4,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "duration_s",
+          "type": "duration[s]",
+          "nullable": true
+        },
+        {
+          "name": "duration_ms",
+          "type": "duration[ms]",
+          "nullable": true
+        },
+        {
+          "name": "duration_us",
+          "type": "duration[us]",
+          "nullable": true
+        },
+        {
+          "name": "duration_ns",
+          "type": "duration[ns]",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "b2de9a8f0029e540b8ac7c7578cdfb53200ca7b2d28c67d8b655189daa6730d9",
+      "bytes": 1568,
+      "sha256": "bc4b843030de7925a00014dfb64a674e41dbbb0581e52a92332cb054151d6313",
+      "oracle": {
+        "counts": [
+          null,
+          0,
+          1,
+          -1,
+          86400,
+          -86400,
+          9007199254740991,
+          -9223372036854775808,
+          9223372036854775807
+        ],
+        "units": [
+          "s",
+          "ms",
+          "us",
+          "ns"
+        ],
+        "nullIsEmpty": true,
+        "zeroIsOccupied": true
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "duration-pandas-metadata",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/duration-pandas-metadata.parquet",
+      "profile": "pandas-numpy-timedelta-metadata",
+      "rows": 5,
+      "columns": 1,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "timedelta",
+          "type": "duration[ns]",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "f2d12b45149730accf2ae6aff9b19e0164ab038e75041af6892cd105699e7eda",
+      "bytes": 1278,
+      "sha256": "62fbdf06fd7d98e59baa114916d4fc664535090cfef9f6b38dc5e8bcd92b0c03",
+      "oracle": {
+        "counts": [
+          null,
+          0,
+          1,
+          -1,
+          86400000000000
+        ],
+        "unit": "ns"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "duration-negative-types",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/duration-negative-types.parquet",
+      "profile": "duration-lookalike-negative-types",
+      "rows": 4,
+      "columns": 6,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "physical_int64",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "time32_s",
+          "type": "time32[ms]",
+          "nullable": true
+        },
+        {
+          "name": "time64_ns",
+          "type": "time64[ns]",
+          "nullable": true
+        },
+        {
+          "name": "interval_year_month_physical",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "interval_day_time_physical",
+          "type": "fixed_size_binary[8]",
+          "nullable": true
+        },
+        {
+          "name": "interval_month_day_nano_physical",
+          "type": "fixed_size_binary[16]",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "83b5f021e12735ccb9ce50ee5e0b1c59432fe3568af2cd9cf2255a9cfb16fe97",
+      "bytes": 2243,
+      "sha256": "536ea7d1614d6009e19ffebfdbec78d8d657d511a9a0cd7aa521d5cfdb2ba256",
+      "oracle": {
+        "durationColumns": [],
+        "int64RemainsInteger": true,
+        "unsupported": [
+          "time32_s",
+          "time64_ns"
+        ],
+        "intervalPayloadsArePhysicalOnly": true,
+        "pyarrowParquetTypedInterval": "UNSUPPORTED"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "timestamp-zones",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/timestamp-zones.parquet",
+      "profile": "timestamp-timezone-and-nanoseconds",
+      "rows": 3,
+      "columns": 5,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "naive",
+          "type": "timestamp[ns]",
+          "nullable": true
+        },
+        {
+          "name": "utc",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": true
+        },
+        {
+          "name": "fixed_plus_09",
+          "type": "timestamp[ns, tz=+09:00]",
+          "nullable": true
+        },
+        {
+          "name": "asia_seoul",
+          "type": "timestamp[ns, tz=Asia/Seoul]",
+          "nullable": true
+        },
+        {
+          "name": "america_new_york",
+          "type": "timestamp[ns, tz=America/New_York]",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "7bfd12a06c0e38bd565ddcb0d42a193f8951ebe50b17fb1e3d40f6cdaf5b6916",
+      "bytes": 1968,
+      "sha256": "d054bc7ec0054574685fa70bcdba22adac1fb4c2ca37144151d7744a35bdde14",
+      "oracle": {
+        "epochNanoseconds": [
+          "1735690434111111111",
+          "1741506600123456789",
+          "1762066800999999999"
+        ],
+        "timezonePolicy": "preserve source timezone metadata and wall-clock fields"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "ui-wide-documents",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/ui-wide-documents.parquet",
+      "profile": "80-visible-logical-columns",
+      "rows": 2,
+      "columns": 80,
+      "rowGroups": 1,
+      "schema": [
+        {
+          "name": "column_00",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_01",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_02",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_03",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_04",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_05",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_06",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_07",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_08",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_09",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_10",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_11",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_12",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_13",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_14",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_15",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_16",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_17",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_18",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_19",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_20",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_21",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_22",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_23",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_24",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_25",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_26",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_27",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_28",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_29",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_30",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_31",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_32",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_33",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_34",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_35",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_36",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_37",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_38",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_39",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_40",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_41",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_42",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_43",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_44",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_45",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_46",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_47",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_48",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_49",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_50",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_51",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_52",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_53",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_54",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_55",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_56",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_57",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_58",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_59",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_60",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_61",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_62",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_63",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_64",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_65",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_66",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_67",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_68",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_69",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_70",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_71",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_72",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_73",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_74",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_75",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_76",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_77",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_78",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "column_79",
+          "type": "int64",
+          "nullable": true
+        }
+      ],
+      "schemaSha256": "9a9d8a9651ee0e120531813043cd46e05287972e7b1fd095f3bccf5a105953e4",
+      "bytes": 25480,
+      "sha256": "ac9fc1e2ea42a921defa0e5b1c6a4fbf6005f31361f28b4e9d6506347ce10378",
+      "oracle": {
+        "columnOrder": [
+          "column_00",
+          "column_01",
+          "column_02",
+          "column_03",
+          "column_04",
+          "column_05",
+          "column_06",
+          "column_07",
+          "column_08",
+          "column_09",
+          "column_10",
+          "column_11",
+          "column_12",
+          "column_13",
+          "column_14",
+          "column_15",
+          "column_16",
+          "column_17",
+          "column_18",
+          "column_19",
+          "column_20",
+          "column_21",
+          "column_22",
+          "column_23",
+          "column_24",
+          "column_25",
+          "column_26",
+          "column_27",
+          "column_28",
+          "column_29",
+          "column_30",
+          "column_31",
+          "column_32",
+          "column_33",
+          "column_34",
+          "column_35",
+          "column_36",
+          "column_37",
+          "column_38",
+          "column_39",
+          "column_40",
+          "column_41",
+          "column_42",
+          "column_43",
+          "column_44",
+          "column_45",
+          "column_46",
+          "column_47",
+          "column_48",
+          "column_49",
+          "column_50",
+          "column_51",
+          "column_52",
+          "column_53",
+          "column_54",
+          "column_55",
+          "column_56",
+          "column_57",
+          "column_58",
+          "column_59",
+          "column_60",
+          "column_61",
+          "column_62",
+          "column_63",
+          "column_64",
+          "column_65",
+          "column_66",
+          "column_67",
+          "column_68",
+          "column_69",
+          "column_70",
+          "column_71",
+          "column_72",
+          "column_73",
+          "column_74",
+          "column_75",
+          "column_76",
+          "column_77",
+          "column_78",
+          "column_79"
+        ]
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "copy-history-mock",
+      "kind": "json",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/small/copy-history-mock.json",
+      "profile": "bounded-copy-history",
+      "rows": 8,
+      "columns": 4,
+      "schema": null,
+      "bytes": 905,
+      "sha256": "43cb761df364d758a220ef82b9d31af1c8a24727b70882c967822bf7625bf96e",
+      "oracle": {
+        "visiblePreviousLimit": 5
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-5850000-low",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/csv-5850000-low.csv",
+      "profile": "low-cardinality-15-column",
+      "rows": 5850000,
+      "columns": 15,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "metric_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_05",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "bytes": 641656312,
+      "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+      "oracle": {
+        "rowIdRange": [
+          0,
+          5849999
+        ],
+        "malformedRows": []
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "boundary-5850000-low",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/boundary-5850000-low.parquet",
+      "profile": "low-cardinality-15-column",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroups": 90,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "metric_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_05",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "schemaSha256": "0332cadb7f6b262707504f22b0cdffc15d21a0b0975ed1d7631ca477f7dd9a66",
+      "bytes": 130394395,
+      "sha256": "76f63843ec145047fff0596a5f7cdf9fca777dea2f319b27ceec22632b7f0def",
+      "oracle": {
+        "rowIdRange": [
+          0,
+          5849999
+        ],
+        "rowFunction": "stable_u64(index, salt)"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-5850000-high",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/csv-5850000-high.csv",
+      "profile": "high-cardinality-15-column",
+      "rows": 5850000,
+      "columns": 15,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "metric_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_05",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "bytes": 979427914,
+      "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+      "oracle": {
+        "rowIdRange": [
+          0,
+          5849999
+        ],
+        "malformedRows": []
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "boundary-5850000-high",
+      "kind": "parquet",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/boundary-5850000-high.parquet",
+      "profile": "high-cardinality-15-column",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroups": 90,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "metric_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_05",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "schemaSha256": "0332cadb7f6b262707504f22b0cdffc15d21a0b0975ed1d7631ca477f7dd9a66",
+      "bytes": 380618634,
+      "sha256": "30fc7b291f7c936311e74dbb785e3005ebb0d4d432f5795fad269b31de9e44ba",
+      "oracle": {
+        "rowIdRange": [
+          0,
+          5849999
+        ],
+        "rowFunction": "stable_u64(index, salt)"
+      },
+      "audit": "PASS"
+    },
+    {
+      "id": "csv-5850000-long-invalid",
+      "kind": "csv",
+      "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/csv-5850000-long-invalid.csv",
+      "profile": "low-cardinality-final-long-malformed-row",
+      "rows": 5850000,
+      "columns": 15,
+      "schema": [
+        {
+          "name": "row_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "group_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "nullable": false
+        },
+        {
+          "name": "optional_value",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "event_time",
+          "type": "timestamp[ns, tz=UTC]",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "metric_00",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_01",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_02",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_03",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_04",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "metric_05",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "bytes": 642704881,
+      "sha256": "8426413113a812a4293ccf9eaef72f4cff33ab83d139c162fc96a8219d286450",
+      "oracle": {
+        "malformedRows": [
+          5849999
+        ],
+        "malformedPayloadBytes": 1048577,
+        "error": "unclosed quote at final logical row"
+      },
+      "audit": "PASS"
+    }
+  ],
+  "summary": {
+    "fixtureCount": 27,
+    "bytes": 2775891702,
+    "allAuditsPass": true
+  },
+  "validation": "PASS"
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "source": "e2e/phase13.spec.ts full Playwright run",
+  "projects": [
+    {
+      "project": "desktop-wide",
+      "viewport": { "width": 1440, "height": 900 },
+      "finalRow": { "cellBottom": 812, "gridContentBottom": 830, "bottomClearance": 18, "focused": true }
+    },
+    {
+      "project": "desktop-compact",
+      "viewport": { "width": 1024, "height": 768 },
+      "finalRow": { "cellBottom": 680, "gridContentBottom": 698, "bottomClearance": 18, "focused": true }
+    },
+    {
+      "project": "desktop-minimum",
+      "viewport": { "width": 800, "height": 600 },
+      "finalRow": { "cellBottom": 512, "gridContentBottom": 530, "bottomClearance": 18, "focused": true }
+    }
+  ],
+  "native": {
+    "viewport": { "width": 1180, "height": 760 },
+    "devicePixelRatio": 1,
+    "cellBottom": 656,
+    "gridContentBottom": 675,
+    "bottomClearance": 18,
+    "focused": true
+  }
+}

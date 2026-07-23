@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "source": "rust-large-csv.json",
+  "fixture": {
+    "id": "csv-5850000-low",
+    "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+    "rows": 5850000,
+    "columns": 15
+  },
+  "prepare": {
+    "elapsedMs": 151500.2361,
+    "rowsPerSecond": 38613.80120977911,
+    "correctRows": 5850000
+  },
+  "preparedPage": {
+    "offsets": [0, 1, 986803, 2925000, 5849800],
+    "latencyMs": [7.6482, 3.7304, 5.4346, 4.744, 4.7032],
+    "p95Ms": 7.6482,
+    "correctness": "PASS"
+  },
+  "copyOneColumn64000Rows": {
+    "path": "parameterized contiguous __dv_row_id range",
+    "offsets": [0, 800000, 1600000, 3200000, 5786000],
+    "latencyMs": [72.7811, 80.5053, 67.7437, 83.3746, 104.7566],
+    "p95Ms": 104.7566,
+    "rowsPerSecondAtP95": 610940.0266904423,
+    "correctness": "PASS"
+  },
+  "filteredSortedQuery": {
+    "criteria": ["active=true", "row_id desc", "group_id asc", "category asc"],
+    "elapsedMs": 658.4339,
+    "resultRows": 2925000,
+    "pageLatencyMs": [25.0336, 18.1087, 21.8106],
+    "correctness": "PASS"
+  },
+  "boundary": {
+    "sourceExpectedTarget": 96,
+    "sourceElapsedMs": 4.3904,
+    "queryExpectedTarget": 60,
+    "queryElapsedMs": 23.6494,
+    "correctness": "PASS"
+  },
+  "cancel": {
+    "fixtureId": "csv-5850000-high",
+    "fixtureSha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+    "prepareCancelElapsedMs": 307.8845,
+    "terminal": "cancelled",
+    "gateMs": 2000,
+    "status": "PASS"
+  },
+  "resource": {
+    "sampledPeakRssBytes": 676880384,
+    "rssCapBytes": 1572864000,
+    "tempHighWaterBytes": 459288586,
+    "processTempBaselineBytes": 10,
+    "finalProcessTempBytes": 10,
+    "finalActiveQueries": 0,
+    "handlesBefore": 132,
+    "handlesAfter": 134,
+    "status": "PASS"
+  },
+  "gates": {
+    "CSVPERF-001": "PARTIAL: low prepare만 측정; high/long-invalid prepare는 미측정",
+    "CSVPERF-002": "BLOCKED: prepare 중 20-page foreground 측정 없음",
+    "CSVPERF-003": "PASS: prepared first/middle/last/random page",
+    "CSVPERF-004": "PARTIAL: low source near boundary만 측정",
+    "CSVPERF-005": "PARTIAL: low filter+3-sort만 측정",
+    "CSVPERF-006": "PARTIAL: low filtered/sorted boundary cold 1회만 측정",
+    "CSVPERF-007": "BLOCKED: query plan 20회 변경 미측정",
+    "CSVPERF-008": "PARTIAL: 1열 64k batch 측정; 전체 585만행/다중열/copy cancel 미측정",
+    "CSVPERF-009": "BLOCKED: 100-cycle prepared soak 미측정",
+    "CSVPERF-010": "BLOCKED: Native Tauri 측정 아님",
+    "CSVPERF-011": "PARTIAL: direct page 대비만 측정; 복수 prepared 후보 없음",
+    "CSVPERF-012": "BLOCKED: NSIS installed release 측정 아님"
+  },
+  "status": "PARTIAL"
+}

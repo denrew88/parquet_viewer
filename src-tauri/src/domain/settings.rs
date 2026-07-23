@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 3;
+pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 4;
 pub const DEFAULT_QUERY_TEMP_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const MIN_QUERY_TEMP_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = DEFAULT_QUERY_TEMP_LIMIT_BYTES;
@@ -102,6 +102,44 @@ pub enum TimestampFractionalDigits {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum TimestampDateTimeSeparator {
+    Space,
+    T,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TimestampTimeFormat {
+    HourMinuteSecond,
+    HourMinute,
+    Hidden,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TimestampTimezoneSuffix {
+    Hidden,
+    Offset,
+    Name,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DurationDisplayStyle {
+    DaysClock,
+    TotalHours,
+    TotalSeconds,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DurationUnitSuffix {
+    Hidden,
+    Source,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum BinaryDisplayEncoding {
     Hex,
     Base64,
@@ -143,7 +181,19 @@ pub struct DateDisplaySettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TimestampDisplayFormat {
+    pub date_format: DateDisplayFormat,
+    pub date_time_separator: TimestampDateTimeSeparator,
+    pub time_format: TimestampTimeFormat,
     pub fractional_digits: TimestampFractionalDigits,
+    pub timezone_suffix: TimestampTimezoneSuffix,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DurationDisplayFormat {
+    pub style: DurationDisplayStyle,
+    pub fractional_digits: TimestampFractionalDigits,
+    pub unit_suffix: DurationUnitSuffix,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +231,7 @@ pub struct DisplayFormats {
     pub decimal: DecimalDisplayFormat,
     pub date: DateDisplaySettings,
     pub timestamp: TimestampDisplayFormat,
+    pub duration: DurationDisplayFormat,
     pub boolean: BooleanDisplayFormat,
     pub binary: BinaryDisplayFormat,
     pub string: StringDisplayFormat,
@@ -205,7 +256,16 @@ impl Default for DisplayFormats {
                 format: DateDisplayFormat::YearMonthDayDash,
             },
             timestamp: TimestampDisplayFormat {
+                date_format: DateDisplayFormat::YearMonthDayDash,
+                date_time_separator: TimestampDateTimeSeparator::Space,
+                time_format: TimestampTimeFormat::HourMinuteSecond,
                 fractional_digits: TimestampFractionalDigits::Preserve,
+                timezone_suffix: TimestampTimezoneSuffix::Hidden,
+            },
+            duration: DurationDisplayFormat {
+                style: DurationDisplayStyle::DaysClock,
+                fractional_digits: TimestampFractionalDigits::Preserve,
+                unit_suffix: DurationUnitSuffix::Hidden,
             },
             boolean: BooleanDisplayFormat {
                 representation: BooleanRepresentation::Lowercase,
@@ -242,6 +302,12 @@ impl DisplayFormats {
         {
             return Err(String::from(
                 "settings.displayFormats.timestamp.fractionalDigits.digits must be between 0 and 9.",
+            ));
+        }
+        if matches!(self.duration.fractional_digits, TimestampFractionalDigits::Fixed { digits } if digits > 9)
+        {
+            return Err(String::from(
+                "settings.displayFormats.duration.fractionalDigits.digits must be between 0 and 9.",
             ));
         }
         if !(1..=256).contains(&self.binary.preview_bytes) {
@@ -413,7 +479,7 @@ mod tests {
     #[test]
     fn settings_default_matches_frontend_contract() {
         let value = serde_json::to_value(AppSettingsV1::default()).unwrap();
-        assert_eq!(value["schemaVersion"], 3);
+        assert_eq!(value["schemaVersion"], APP_SETTINGS_SCHEMA_VERSION);
         assert_eq!(value["copyPreset"], "excel");
         assert_eq!(value["copyCustomOptions"]["preset"], "custom");
         assert_eq!(value["csvDefaultParsingMode"], "auto");
@@ -532,6 +598,7 @@ mod tests {
                         fractional_digits: TimestampFractionalDigits::Fixed {
                             digits: timestamp_digits,
                         },
+                        ..DisplayFormats::default().timestamp
                     },
                     binary: BinaryDisplayFormat {
                         encoding: BinaryDisplayEncoding::Base64,
@@ -572,6 +639,7 @@ mod tests {
                 DisplayFormats {
                     timestamp: TimestampDisplayFormat {
                         fractional_digits: TimestampFractionalDigits::Fixed { digits: 10 },
+                        ..DisplayFormats::default().timestamp
                     },
                     ..DisplayFormats::default()
                 },

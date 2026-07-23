@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::Manager;
 
 mod commands;
+mod copy;
 mod data;
 mod domain;
 mod platform;
@@ -45,6 +46,10 @@ pub fn run() {
             commands::execute_query,
             commands::get_query_status,
             commands::read_query_page,
+            commands::start_copy,
+            commands::get_copy_status,
+            commands::cancel_copy,
+            commands::get_copy_history,
             commands::list_distinct_values,
             commands::cancel_query,
             commands::find_query_match,
@@ -66,6 +71,9 @@ pub fn run() {
             commands::get_csv_profile_validation_status,
             commands::cancel_csv_profile_validation,
             commands::apply_csv_profile,
+            commands::prepare_csv_session,
+            commands::get_csv_preparation_status,
+            commands::cancel_csv_preparation,
             commands::get_data_file_status,
             commands::cancel_data_file_task,
             commands::close_data_file,

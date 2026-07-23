@@ -20,6 +20,62 @@ describe("global display formatting", () => {
     });
   });
 
+  it("formats timestamps without timezone conversion using the selected type-wide shape", () => {
+    const defaults = defaultAppSettings().displayFormats;
+    const formatted = formatDataValue(
+      {
+        kind: "timestamp",
+        display: "2025-12-18T01:23:34.111111111+09:00",
+        state: "valid",
+        sourceDisplay: "1766017414111111111",
+        unit: "ns",
+        timezone: "+09:00",
+        rawDisplay: "1766017414111111111 [unit=ns, timezone=+09:00]",
+        diagnostic: null,
+      },
+      {
+        ...defaults,
+        timestamp: {
+          dateFormat: "DD-MM-YYYY",
+          dateTimeSeparator: "t",
+          timeFormat: "hourMinuteSecond",
+          fractionalDigits: { mode: "fixed", digits: 3 },
+          timezoneSuffix: "offset",
+        },
+      },
+    );
+    expect(formatted.display).toBe("18-12-2025T01:23:34.111+09:00");
+    expect(formatted.rawDisplay).toBe("1766017414111111111 [unit=ns, timezone=+09:00]");
+  });
+
+  it("formats Duration with exact BigInt arithmetic and preserves raw source metadata", () => {
+    const defaults = defaultAppSettings().displayFormats;
+    const duration: DataValue = {
+      kind: "duration",
+      display: "1d 02:03:04.005006007",
+      state: "valid",
+      sourceDisplay: "93784005006007",
+      unit: "ns",
+      timezone: null,
+      rawDisplay: "93784005006007 [unit=ns]",
+      diagnostic: null,
+    };
+    expect(formatDataValue(duration, defaults).display).toBe("1d 02:03:04.005006007");
+    expect(
+      formatDataValue(duration, {
+        ...defaults,
+        duration: {
+          style: "totalHours",
+          fractionalDigits: { mode: "fixed", digits: 3 },
+          unitSuffix: "source",
+        },
+      }),
+    ).toMatchObject({
+      display: "26:03:04.005 [unit=ns]",
+      rawDisplay: "93784005006007 [unit=ns]",
+    });
+  });
+
   it("formats integer, decimal, boolean, and string display without changing raw text", () => {
     const defaults = defaultAppSettings().displayFormats;
     const formats = {

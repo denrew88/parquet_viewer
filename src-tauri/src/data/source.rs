@@ -9,7 +9,7 @@ use duckdb::Connection;
 use crate::domain::{
     BoundarySearchRequest, BoundarySearchResult, ColumnSchema, CsvColumnValidation,
     CsvParsingProfile, CsvProfilePreview, DataError, DataPage, FileSummary, FormatDescriptor,
-    HeaderMode, ValueKind,
+    HeaderMode,
 };
 
 #[derive(Debug, Clone)]
@@ -36,20 +36,132 @@ pub type QueryPrepareProgress<'a> = dyn FnMut(u64) -> Result<(), DataError> + 'a
 pub struct QueryPrepareContext<'a> {
     pub connection: &'a Connection,
     pub source: &'a QuerySourceSpec,
+    /// Stable handle used by reusable CSV preparation. Providers that do not
+    /// scan a local source directly receive `None`.
+    pub source_file: Option<&'a std::fs::File>,
+    pub artifact_directory: &'a Path,
     pub cancel: &'a AtomicBool,
     pub progress: &'a mut QueryPrepareProgress<'a>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct QueryPreparationMetrics {
+    /// Bytes consumed by this provider's preparation reader. It is not a
+    /// process-wide or source-lifetime I/O counter.
+    pub source_read_bytes: u64,
+    pub cache_output_bytes: u64,
+    pub navigation_frontier_row: u64,
+    pub state_bitmap_bytes: u64,
+    pub peak_decoded_batch_bytes: u64,
+    pub record_batches_accepted: u64,
+    pub max_accepted_batch_rows: u64,
+    pub adaptive_batch_growths: u64,
+    pub adaptive_batch_shrinks: u64,
+    pub parquet_close_budget_checks: u64,
 }
 
 pub trait QueryInputProvider: Debug + Send + Sync {
     fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError>;
 
-    fn format_query_display(&self, _column: &str, _kind: ValueKind, value: &str) -> String {
-        value.to_owned()
+    /// Whether the visible columns in `dv_source` retain their native logical
+    /// types. CSV deliberately stores converted display values as VARCHAR and
+    /// therefore still needs typed casts in predicates and ordering.
+    fn native_query_types(&self) -> bool {
+        false
     }
 
-    fn exact_query_values(
+    /// Stable identity for a session-owned reusable query artifact. Providers
+    /// returning `None` always use the direct prepare path.
+    fn reusable_source_identity(&self) -> Option<String> {
+        None
+    }
+
+    /// Extra read-only database path required by a reusable provider wrapper.
+    fn prepared_artifact_path(&self) -> Option<&Path> {
+        None
+    }
+
+    /// Source-order navigation accelerated by a provider-owned state index.
+    /// Returning `None` delegates to the generic bounded page reader.
+    fn source_boundary(
+        &self,
+        _request: &BoundarySearchRequest,
+        _cancel: &AtomicBool,
+    ) -> Result<Option<BoundarySearchResult>, DataError> {
+        Ok(None)
+    }
+
+    fn preparation_metrics(&self) -> QueryPreparationMetrics {
+        QueryPreparationMetrics::default()
+    }
+
+    /// Restores provider-owned background metadata work when preparation could
+    /// not start (for example, temp lease allocation failed).
+    fn preparation_aborted(&self) {}
+
+    fn restore_prepared_state(
+        &self,
+        _states_path: &Path,
+        _rows: u64,
+        _columns: usize,
+    ) -> Result<(), DataError> {
+        Err(DataError::query_failed(
+            "The query source cannot restore a persistent preparation state.",
+        ))
+    }
+
+    fn sparse_query_values(
         &self,
         _row_ids: &[u64],
+        _columns: &[String],
+    ) -> Result<QueryExactValues, DataError> {
+        Err(DataError::query_failed(
+            "The query source does not support sparse projected reads.",
+        ))
+    }
+
+    fn occupancy_states(&self, row_ids: &[u64], column: &str) -> Result<Vec<bool>, DataError> {
+        let values = self.sparse_query_values(row_ids, &[column.to_owned()])?;
+        if values.rows.len() != row_ids.len() || values.rows.iter().any(|row| row.len() != 1) {
+            return Err(DataError::query_failed(
+                "A source occupancy read returned a mismatched shape.",
+            ));
+        }
+        Ok(values
+            .rows
+            .into_iter()
+            .map(|row| {
+                matches!(
+                    row[0].state,
+                    crate::domain::DataValueState::Valid | crate::domain::DataValueState::Invalid
+                )
+            })
+            .collect())
+    }
+
+    /// Returns a source-wide occupancy invariant when metadata can prove that
+    /// every value in a column is either occupied (`true`) or empty (`false`).
+    /// A filtered/sorted query preserves that invariant, so boundary navigation
+    /// can jump to the result edge without reading every source row.
+    fn uniform_occupancy(&self, _column: &str) -> Option<bool> {
+        None
+    }
+
+    fn copy_query_values(
+        &self,
+        row_ids: &[u64],
+        columns: &[String],
+    ) -> Result<QueryExactValues, DataError> {
+        self.sparse_query_values(row_ids, columns)
+    }
+
+    /// Reads a contiguous source-row range without materialising an `IN (...)`
+    /// identity list. Providers with an indexed, reusable artifact can override
+    /// this for page and source-order copy workloads.
+    fn contiguous_query_values(
+        &self,
+        _offset: u64,
+        _limit: usize,
         _columns: &[String],
     ) -> Result<Option<QueryExactValues>, DataError> {
         Ok(None)
@@ -113,6 +225,17 @@ pub trait TabularSource: Debug + Send + Sync {
         limit: usize,
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError>;
+
+    fn read_copy_projected(
+        &self,
+        _offset: u64,
+        _limit: usize,
+        _columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        Err(DataError::invalid_request(
+            "This source does not support bulk projected copy reads.",
+        ))
+    }
 
     fn read_cell_value(
         &self,
@@ -198,6 +321,15 @@ impl DataSource {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         self.inner.read_page_projected(offset, limit, columns)
+    }
+
+    pub(crate) fn read_copy_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        self.inner.read_copy_projected(offset, limit, columns)
     }
 
     pub fn read_cell_value(

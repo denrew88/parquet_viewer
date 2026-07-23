@@ -6,10 +6,17 @@
     "height": 900
   },
   "finalRow": {
-    "cellTop": 782,
-    "cellBottom": 830,
+    "cellTop": 764,
+    "cellBottom": 812,
+    "cellHeight": 48,
     "gridTop": 212,
-    "gridBottom": 830
+    "gridBottom": 830,
+    "gridContentBottom": 830,
+    "scrollTop": 9599436,
+    "scrollHeight": 9600054,
+    "clientHeight": 618,
+    "canvasBottom": 830,
+    "bottomClearance": 18
   },
   "settings": {
     "top": 70,

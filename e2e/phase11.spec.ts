@@ -58,18 +58,32 @@ test("keeps a 5.85M-row grid navigable through the final-row segment", async ({
       return {
         cellTop: cellRect.top,
         cellBottom: cellRect.bottom,
+        cellHeight: cellRect.height,
         gridTop: gridRect.top,
         gridBottom: gridRect.bottom,
+        gridContentBottom: gridRect.top + (gridElement as HTMLElement).clientHeight,
+        scrollTop: (gridElement as HTMLElement).scrollTop,
+        scrollHeight: (gridElement as HTMLElement).scrollHeight,
+        clientHeight: (gridElement as HTMLElement).clientHeight,
+        canvasBottom:
+          (gridElement as HTMLElement)
+            .querySelector<HTMLElement>(".virtual-grid__canvas")
+            ?.getBoundingClientRect().bottom ?? 0,
+        bottomClearance: Number((gridElement as HTMLElement).dataset.bottomClearance),
       };
     },
     await grid.elementHandle(),
   );
   expect(geometry.cellTop).toBeGreaterThanOrEqual(geometry.gridTop + 36);
-  expect(geometry.cellBottom).toBeLessThanOrEqual(geometry.gridBottom + 1);
+  expect(geometry.cellHeight).toBe(48);
+  expect(geometry.cellBottom, JSON.stringify(geometry)).toBeLessThanOrEqual(
+    geometry.gridContentBottom - geometry.bottomClearance + 1,
+  );
+  expect(geometry.gridContentBottom).toBeLessThanOrEqual(geometry.gridBottom);
 
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Application settings" });
-  await settings.getByLabel("Integer grouping").selectOption("comma");
+  await settings.getByRole("combobox", { name: "Integer grouping" }).selectOption("comma");
   if (testInfo.project.name === "desktop-wide") {
     const settingsGeometry = await settings.evaluate((dialog) => {
       const rect = dialog.getBoundingClientRect();

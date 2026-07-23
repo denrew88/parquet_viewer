@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "overall": "PASS",
+  "startedAtUtc": "2026-07-22T21:18:11.767Z",
+  "finishedAtUtc": "2026-07-22T21:18:16.471Z",
+  "execution": {
+    "executable": "src-tauri/target/debug/data-viewer.exe",
+    "browserMock": false,
+    "nativeRustIpc": true,
+    "url": "http://tauri.localhost/",
+    "title": "small-csv.csv - Data Viewer",
+    "devicePixelRatio": 1,
+    "cdpPort": 9333,
+    "testDataRoot": ".tmp/phase13-native-attached",
+    "webViewProcesses": null,
+    "launchMode": "attach"
+  },
+  "fixtures": {
+    "manifest": "artifacts/phase-13/fixture-manifest.json",
+    "bootstrap": "fixtures/phase-7/small-csv.csv",
+    "large": ".tmp/phase13-fixtures/large/boundary-5850000-low.parquet",
+    "duration": ".tmp/phase13-fixtures/small/duration-arrow.parquet"
+  },
+  "checks": [
+    {
+      "id": "NATIVE13-PREFLIGHT",
+      "status": "PASS",
+      "summary": "manifest의 585만 행 Parquet와 Arrow Duration 파일 크기·SHA-256을 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE13-RUNTIME",
+      "status": "PASS",
+      "summary": "실제 Tauri URL, Rust invoke와 Windows WebView2 CDP를 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE13-DURATION-OPEN",
+      "status": "PASS",
+      "summary": "CDP 연결 후 native open-paths event를 통해 Arrow Duration 파일을 open_data_paths IPC로 열었습니다.",
+      "details": {
+        "requestId": "phase13-native-1784755092192",
+        "eventEmitted": true,
+        "tabVisible": true
+      }
+    },
+    {
+      "id": "NATIVE13-LARGE-OPEN",
+      "status": "PASS",
+      "summary": "WebView2 연결 후 native open-paths event를 통해 585만 행 파일을 open_data_paths IPC로 열었습니다.",
+      "details": {
+        "requestId": "phase13-native-1784755092259",
+        "eventEmitted": true,
+        "tabVisible": true
+      }
+    },
+    {
+      "id": "NATIVE13-DRAG",
+      "status": "PASS",
+      "summary": "실제 pointer로 file tab과 column header를 재정렬했고 내부 drag 중 file-drop overlay는 0회였습니다.",
+      "details": {
+        "tabOrder": [
+          "small-csv.csv",
+          "boundary-5850000-low.parquet",
+          "duration-arrow.parquet"
+        ],
+        "columnOrder": [
+          "duration_ms",
+          "duration_s"
+        ]
+      }
+    },
+    {
+      "id": "NATIVE13-DURATION-CLIPBOARD",
+      "status": "PASS",
+      "summary": "Arrow Duration 셀을 실제 Windows clipboard로 복사하고 sentinel 교체를 확인했습니다.",
+      "details": {
+        "status": "PASS",
+        "text": "00:00:00.000",
+        "row": 1,
+        "logicalColumn": 0
+      }
+    },
+    {
+      "id": "NATIVE13-SURFACE-SETTINGS",
+      "status": "PASS",
+      "summary": "transient outside/Escape와 Timestamp/Duration Settings focus·Date-only 숨김을 확인했습니다.",
+      "details": {
+        "chooserEscapeFocusRestored": true,
+        "chooserSelectionDismissed": true,
+        "settingsFocusRestored": true
+      }
+    },
+    {
+      "id": "NATIVE13-SORT-FIND",
+      "status": "PASS",
+      "summary": "Duration에서 2기준 pointer reorder/apply와 Ctrl+F 명시 실행을 실제 query IPC로 확인했습니다.",
+      "details": {
+        "sortQueryChanged": true,
+        "typingQueryUnchanged": true,
+        "sorts": 2,
+        "findSubmitted": true,
+        "queryId": "frontend-query-1784755095680-2"
+      }
+    },
+    {
+      "id": "NATIVE13-FINAL-ROW",
+      "status": "PASS",
+      "summary": "585만 행의 실제 마지막 행이 WebView2 scrollbar 위에서 완전히 표시되고 focus를 유지했습니다.",
+      "details": {
+        "cellTop": 608,
+        "cellBottom": 656,
+        "cellHeight": 48,
+        "gridTop": 212,
+        "gridBottom": 690,
+        "gridContentBottom": 675,
+        "bottomClearance": 18,
+        "clientHeight": 463,
+        "scrollHeight": 9600054,
+        "mountedRows": 17,
+        "mountedCells": 170,
+        "focused": true
+      }
+    }
+  ],
+  "ipcCounts": {},
+  "artifacts": [
+    "artifacts/phase-13/native-results.json",
+    "artifacts/phase-13/ui/native-smoke.md",
+    "artifacts/phase-13/ui/native-phase13-final.png"
+  ],
+  "failure": null
+}

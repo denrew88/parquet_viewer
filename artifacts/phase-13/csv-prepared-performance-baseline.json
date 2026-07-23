@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "source": "rust-large-csv.json.directCsvPageBaseline",
+  "fixture": {
+    "id": "csv-5850000-low",
+    "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+    "rows": 5850000,
+    "columns": 15
+  },
+  "directCsvPage": {
+    "offsets": [0, 986803, 5849800],
+    "latencyMs": [1.0544, 330.4695, 1783.4368],
+    "p95Ms": 1783.4368,
+    "correctness": "PASS"
+  },
+  "unmeasured": {
+    "prepareElapsedMs": null,
+    "queryLatencyMs": null,
+    "boundaryLatencyMs": null,
+    "copyLatencyMs": null,
+    "rssBytes": null,
+    "tempBytes": null,
+    "reason": "이번 release harness에서는 direct CSV의 세 page offset만 동일 제품 경로로 측정했다."
+  },
+  "status": "PARTIAL"
+}

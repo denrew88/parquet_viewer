@@ -1,11 +1,12 @@
 use crate::{
     data::{
-        query_invalid_name as invalid_name, query_quote_identifier as quote_identifier,
-        query_quote_literal as quote_literal, QuerySourceSpec,
+        duration_unit_from_logical_type, parse_query_duration, query_invalid_name as invalid_name,
+        query_quote_identifier as quote_identifier, query_quote_literal as quote_literal,
+        QuerySourceSpec,
     },
     domain::{
-        scalar_type_for_column, FilterOperator, QueryPlan, QueryScalarType, QuerySearchMode,
-        QuerySortDirection,
+        scalar_type_for_column, DataError, FilterOperator, QueryPlan, QueryScalarType,
+        QuerySearchMode, QuerySortDirection,
     },
 };
 
@@ -60,7 +61,7 @@ pub fn find_matches_sql(
                 ),
             };
             format!(
-                "SELECT q.__dv_result_position, {target_order} AS target_order, {} AS column_id FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE {predicate}",
+                "SELECT q.rowid AS __dv_result_position, {target_order} AS target_order, {} AS column_id FROM query_result q JOIN dv_source s USING (__dv_row_id) WHERE {predicate}",
                 quote_literal(target)
             )
         })
@@ -75,7 +76,10 @@ pub fn find_matches_sql(
     ), targets.iter().map(|_| search.text.clone()).collect()))
 }
 
-pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> MaterializeSql {
+pub fn materialize_sql(
+    source: &QuerySourceSpec,
+    plan: &QueryPlan,
+) -> Result<MaterializeSql, DataError> {
     let projected = if plan.projection.is_empty() {
         (0..source.columns.len()).collect::<Vec<_>>()
     } else {
@@ -98,14 +102,20 @@ pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> Materializ
             .iter()
             .position(|column| column.name == filter.column_id)
             .expect("validated filter column");
-        let column = typed_column(&quote_identifier(&filter.column_id), filter.scalar_type);
+        let column = typed_source_column(
+            source,
+            &quote_identifier(&filter.column_id),
+            filter.scalar_type,
+        );
         let invalid = invalid_name(column_index);
+        let values = normalized_filter_values(&source.columns[column_index], filter)?;
         predicates.push(filter_predicate(
             &column,
             &invalid,
             filter.scalar_type,
+            source.provider.native_query_types(),
             filter.operator,
-            &filter.values,
+            &values,
             &mut parameters,
         ));
     }
@@ -162,7 +172,8 @@ pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> Materializ
                 .expect("validated sort column");
             format!(
                 "{} {} NULLS LAST",
-                typed_column(
+                typed_source_column(
+                    source,
                     &quote_identifier(&sort.column_id),
                     scalar_type_for_column(column)
                 ),
@@ -175,24 +186,60 @@ pub fn materialize_sql(source: &QuerySourceSpec, plan: &QueryPlan) -> Materializ
         .collect::<Vec<_>>();
     order.push(String::from("__dv_row_id ASC"));
     let order_sql = order.join(", ");
-    MaterializeSql {
+    Ok(MaterializeSql {
         sql: format!(
-            "CREATE TABLE query_result AS SELECT __dv_row_id, row_number() OVER (ORDER BY {order_sql}) - 1 AS __dv_result_position FROM dv_source{where_clause} ORDER BY {order_sql}"
+            "INSERT INTO query_result SELECT __dv_row_id FROM dv_source{where_clause} ORDER BY {order_sql}"
         ),
         parameters,
         columns: projected,
+    })
+}
+
+fn normalized_filter_values(
+    column: &crate::domain::ColumnSchema,
+    filter: &crate::domain::QueryFilter,
+) -> Result<Vec<String>, DataError> {
+    if filter.scalar_type != QueryScalarType::Duration {
+        return Ok(filter.values.clone());
     }
+    let unit = duration_unit_from_logical_type(&column.logical_type).ok_or_else(|| {
+        DataError::invalid_request(format!(
+            "Duration column '{}' does not declare a supported source unit.",
+            column.name
+        ))
+    })?;
+    filter
+        .values
+        .iter()
+        .map(|value| {
+            parse_query_duration(value, unit)
+                .map(|count| count.to_string())
+                .ok_or_else(|| {
+                    DataError::invalid_request(format!(
+                        "Duration literal cannot be represented exactly in {}: {value}",
+                        column.logical_type
+                    ))
+                })
+        })
+        .collect()
 }
 
 fn filter_predicate(
     column: &str,
     invalid: &str,
     scalar: QueryScalarType,
+    native_query_types: bool,
     operator: FilterOperator,
     values: &[String],
     parameters: &mut Vec<String>,
 ) -> String {
-    let placeholder = || format!("TRY_CAST(? AS {})", scalar_sql_type(scalar));
+    let placeholder = || {
+        if native_query_types {
+            format!("cast_to_type(?, {column})")
+        } else {
+            format!("TRY_CAST(? AS {})", scalar_sql_type(scalar))
+        }
+    };
     match operator {
         FilterOperator::IsNull => format!("({column} IS NULL AND NOT {invalid})"),
         FilterOperator::IsNotNull => format!("({column} IS NOT NULL OR {invalid})"),
@@ -256,6 +303,7 @@ pub fn scalar_sql_type(scalar: QueryScalarType) -> &'static str {
         QueryScalarType::Decimal => "DECIMAL(38, 9)",
         QueryScalarType::Date => "DATE",
         QueryScalarType::Timestamp => "TIMESTAMPTZ",
+        QueryScalarType::Duration => "BIGINT",
         QueryScalarType::Boolean => "BOOLEAN",
     }
 }
@@ -265,6 +313,18 @@ fn typed_column(identifier: &str, scalar: QueryScalarType) -> String {
         identifier.to_owned()
     } else {
         format!("TRY_CAST({identifier} AS {})", scalar_sql_type(scalar))
+    }
+}
+
+fn typed_source_column(
+    source: &QuerySourceSpec,
+    identifier: &str,
+    scalar: QueryScalarType,
+) -> String {
+    if source.provider.native_query_types() {
+        identifier.to_owned()
+    } else {
+        typed_column(identifier, scalar)
     }
 }
 
@@ -284,6 +344,22 @@ mod tests {
             _context: QueryPrepareContext<'_>,
         ) -> Result<(), crate::domain::DataError> {
             unreachable!("SQL construction tests do not prepare query inputs")
+        }
+    }
+
+    #[derive(Debug)]
+    struct NativeTypedProvider;
+
+    impl QueryInputProvider for NativeTypedProvider {
+        fn prepare(
+            &self,
+            _context: QueryPrepareContext<'_>,
+        ) -> Result<(), crate::domain::DataError> {
+            unreachable!("SQL construction tests do not prepare query inputs")
+        }
+
+        fn native_query_types(&self) -> bool {
+            true
         }
     }
 
@@ -313,9 +389,133 @@ mod tests {
             sort: Vec::new(),
             projection: Vec::new(),
         };
-        let sql = materialize_sql(&source, &plan);
+        let sql = materialize_sql(&source, &plan).unwrap();
         assert!(!sql.sql.contains("OR true"));
         assert_eq!(sql.parameters, ["x' OR true --"]);
         assert!(sql.sql.contains("\"odd\"\"name\""));
+    }
+
+    #[test]
+    fn idx_001_materialization_writes_only_ordered_source_identity() {
+        let source = QuerySourceSpec {
+            path: PathBuf::from("C:/data/source.parquet"),
+            columns: vec![ColumnSchema {
+                name: String::from("value"),
+                logical_type: String::from("Int64"),
+                nullable: false,
+                physical_type: String::from("INT64"),
+            }],
+            total_rows: Some(3),
+            provider: Arc::new(UnusedProvider),
+        };
+        let sql = materialize_sql(
+            &source,
+            &QueryPlan {
+                filters: Vec::new(),
+                search: None,
+                sort: Vec::new(),
+                projection: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        assert!(sql
+            .sql
+            .starts_with("INSERT INTO query_result SELECT __dv_row_id"));
+        assert!(sql.sql.ends_with("ORDER BY __dv_row_id ASC"));
+        assert!(!sql.sql.contains("row_number"));
+        assert!(!sql.sql.contains("__dv_result_position"));
+        assert!(!sql.sql.contains("JOIN dv_source"));
+    }
+
+    #[test]
+    fn parquet_native_numeric_sort_and_filter_do_not_cast_to_double() {
+        let source = QuerySourceSpec {
+            path: PathBuf::from("C:/data/source.parquet"),
+            columns: vec![ColumnSchema {
+                name: String::from("group_id"),
+                logical_type: String::from("Int64"),
+                nullable: false,
+                physical_type: String::from("INT64"),
+            }],
+            total_rows: Some(3),
+            provider: Arc::new(NativeTypedProvider),
+        };
+        let sql = materialize_sql(
+            &source,
+            &QueryPlan {
+                filters: vec![QueryFilter {
+                    id: String::from("f"),
+                    column_id: String::from("group_id"),
+                    scalar_type: QueryScalarType::Number,
+                    operator: FilterOperator::GreaterThanOrEqual,
+                    values: vec![String::from("1")],
+                }],
+                search: None,
+                sort: vec![crate::domain::QuerySort {
+                    column_id: String::from("group_id"),
+                    direction: crate::domain::QuerySortDirection::Ascending,
+                    nulls_last: true,
+                }],
+                projection: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        assert!(sql
+            .sql
+            .contains("\"group_id\" >= cast_to_type(?, \"group_id\")"));
+        assert!(sql.sql.contains("ORDER BY \"group_id\" ASC NULLS LAST"));
+        assert!(!sql.sql.contains("TRY_CAST(\"group_id\" AS DOUBLE)"));
+    }
+
+    #[test]
+    fn parquet_native_filter_parameter_preserves_integer_precision_above_2_pow_53() {
+        let connection = duckdb::Connection::open_in_memory().unwrap();
+        let exact_matches: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM (VALUES (9007199254740992::BIGINT), (9007199254740993::BIGINT)) values_table(value) WHERE value = cast_to_type(?, value)",
+                duckdb::params!["9007199254740993"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(exact_matches, 1);
+    }
+
+    #[test]
+    fn dur_filter_literals_are_normalized_exactly_to_source_unit() {
+        let source = QuerySourceSpec {
+            path: PathBuf::from("C:/data/source.parquet"),
+            columns: vec![ColumnSchema {
+                name: String::from("elapsed"),
+                logical_type: String::from("Duration(Millisecond)"),
+                nullable: false,
+                physical_type: String::from("INT64"),
+            }],
+            total_rows: Some(3),
+            provider: Arc::new(NativeTypedProvider),
+        };
+        let plan = QueryPlan {
+            filters: vec![QueryFilter {
+                id: String::from("duration"),
+                column_id: String::from("elapsed"),
+                scalar_type: QueryScalarType::Duration,
+                operator: FilterOperator::Between,
+                values: vec![String::from("1s"), String::from("00:00:02.500")],
+            }],
+            search: None,
+            sort: Vec::new(),
+            projection: Vec::new(),
+        };
+        let materialized = materialize_sql(&source, &plan).unwrap();
+        assert_eq!(materialized.parameters, ["1000", "2500"]);
+
+        let mut inexact = plan;
+        inexact.filters[0].values[0] = String::from("1us");
+        assert_eq!(
+            materialize_sql(&source, &inexact).unwrap_err().code,
+            crate::domain::DataErrorCode::InvalidRequest
+        );
     }
 }

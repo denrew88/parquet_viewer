@@ -89,6 +89,25 @@ export async function expectNoHorizontalPageOverflow(page: Page): Promise<void> 
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
 }
 
+export async function waitForScrollIdle(page: Page, quietMs = 100): Promise<void> {
+  await page.evaluate(
+    (quiet) =>
+      new Promise<void>((resolve) => {
+        let timer = window.setTimeout(finish, quiet);
+        function finish() {
+          window.removeEventListener("scroll", onScroll, true);
+          resolve();
+        }
+        function onScroll() {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(finish, quiet);
+        }
+        window.addEventListener("scroll", onScroll, true);
+      }),
+    quietMs,
+  );
+}
+
 export async function expectVisibleControlsInside(locator: Locator): Promise<void> {
   const clipped = await locator.evaluate((container) => {
     const parent = container.getBoundingClientRect();

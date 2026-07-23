@@ -8,6 +8,9 @@ export const GRID_ROW_OVERSCAN = 8;
 export const GRID_COLUMN_OVERSCAN = 3;
 export const GRID_PREFETCH_DISTANCE = 40;
 export const GRID_MAX_SEGMENT_ROWS = 200_000;
+// WebView2 can paint an overlay scrollbar over the scrollable content. Keep the
+// final row clear of that track even when clientHeight does not subtract it.
+export const GRID_BOTTOM_CLEARANCE = 18;
 
 export function segmentStartForRow(row: number, rowCount: number): number {
   if (rowCount <= GRID_MAX_SEGMENT_ROWS) return 0;

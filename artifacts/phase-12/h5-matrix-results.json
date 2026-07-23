@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase12-h5-matrix-v1",
+  "auditedAtUtc": "2026-07-21T14:37:45.547556+00:00",
+  "manifest": ".tmp/phase12-h5/manifest.json",
+  "cases": [
+    {
+      "id": "format-missing",
+      "sha256": "421060ee9c99dba3816cc02ca84d521e2850df330de7a2bf1abf54cfbe247e74",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-oesh5",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-oefh5",
+      "sha256": "2278b77215e2fd421edb5324da1b8998f4c18f97ff62d56d0db374ee612f45dd",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-oesf5",
+      "sha256": "a6ce51d560f24e8042b8a472739a601fefffe97ae5b6b9c8692eac2b3ff3e542",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-arbitrary",
+      "sha256": "c003936bf61644bd638ef16a7765c45d1266fd4426f83d8f5c0dd98b9d41d6a8",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-integer",
+      "sha256": "d6ed747a71e235114890efaad263f10320d91717096094fee411f9996534e4c7",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "format-array",
+      "sha256": "0ad6e55f23cb739f0a7f4da06bf7873bc534c57d7fd3011f4746afe5bb7c7f7d",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "extension-uppercase-h5",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "extension-hdf5",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "extension-uppercase-hdf5",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "oes-int32",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "oes-int64",
+      "sha256": "b5ceea40e74f539ad41e21846c52056020ff04544449bc1cef3c6ba0f56e198a",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "axis-integer",
+      "sha256": "1c6ec5d93e2e3249e27aaa3092b94a0e8fe1f1838981163cce9ea086f0006f20",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "axis-float",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "axis-string",
+      "sha256": "2351a5412b6a69b546796c47b5e08d77743330d188e65c4c6e2873bbea314e0d",
+      "logicalChecksumSha256": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+      "result": "PASS"
+    },
+    {
+      "id": "wide-copy",
+      "sha256": "5d74afde401ba259d05bc8e649a8a98a8688fc5f70edd33c9eddd1242adf28fd",
+      "logicalChecksumSha256": "9d04b117f7974b4e28818a5c0255fe417e2e1581b2a282be16eda7b8147bb785",
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-extension",
+      "sha256": "341d0c9838f138805706bb86627d15f5b14f91ab57d0088f8fd24fcab29ea1ae",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "bad-signature",
+      "sha256": "0f0ee01f8367154510f009332302f97234eb100f99e2fe48d07d390a19fa523e",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "missing-version",
+      "sha256": "3f81ca996a47ce6f64793b28395eeaa4e5a43ab1d7e3b8b7d6d71ee44b002f2d",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-version-value",
+      "sha256": "1d47d2ea5cef886c0fe1890d63dca2742dfb775624047950f27c28dc07458c60",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-version-rank",
+      "sha256": "799fddca6d648267a29aaa4e97a754a224e3e51409e0327d3f08bc3e7961c86c",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-version-type",
+      "sha256": "f99728501705851a8caa666e8a047d536dc20b83e90a35bbc3301e89c4ec7e47",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "missing-shape",
+      "sha256": "1021badbf2060b3c22d4bbbdd94727e4c3d656db040d3d7934303bd5fa013706",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-shape-length",
+      "sha256": "ee55f12ed2c4383c6d328c9a34876d7ba5a8b8e616fbe09c5a16ca3d90696649",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-shape-type",
+      "sha256": "3b766eaf7bdb9228cf1a91a18cf9d820e7439b7c0de61069169db3e5da1b62cc",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wrong-shape-value",
+      "sha256": "d5241b408e4edc5bf58f341545536bf0e9d2804f7ed416ba657a9568fa52b2cb",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "missing-time",
+      "sha256": "9e7bcc825acd32c0ad99490abde2d339245bd2e4e68c90452bfea79c6acb96df",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "missing-wavelength",
+      "sha256": "1b11d29eab23f622f2fdf91acdf194f4e3111f4b1765238d0043db307bccf321",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "missing-oes",
+      "sha256": "0104ed4942d6221386b58f9b25f143af8a39d65f1767d0d1bb8b513e27b69553",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "time-wrong-rank",
+      "sha256": "0cd2eccac10dcf2bb09319d4a32d118493a65e5f609ac6eb4c5324e997ab7801",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "time-wrong-type",
+      "sha256": "efee8935d11f7b7a9fba28e0665941b4ef797d25f732839fbcb0d898a31eaea1",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "wavelength-wrong-shape",
+      "sha256": "aa12b4601bc1722c61e8b9737ae8d70e15cec1327c4a4278844779b4b1be177e",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "oes-wrong-rank",
+      "sha256": "acc1394adfb642441b813b68ccc1b8458cc119f1af6f62283be2727b4ec3a109",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "oes-wrong-type",
+      "sha256": "696558be596aea79b7e5da8aa8c538deb2d395dfb3e617eb7b7aaf5cec176c28",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "oes-wrong-shape",
+      "sha256": "14c9b8b91c014cbf446a445929e432fc115d650039b5a251d688be9bfe06b691",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    },
+    {
+      "id": "unknown-filter",
+      "sha256": "1544a30518ab0e0704f707a9ae3b9399dca16c2ff66e9643f90f93b4f337ccd2",
+      "logicalChecksumSha256": null,
+      "result": "PASS"
+    }
+  ],
+  "cleanRuntimeAudit": {
+    "scope": "Python wheel-bundled decoder smoke; not product static-runtime evidence",
+    "hdf5PluginPath": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-h5\\empty-plugin-path",
+    "command": [
+      "C:\\Users\\denrew88\\.conda\\envs\\py311\\python.exe",
+      "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\scripts\\audit_phase12_h5_matrix.py",
+      "--clean-read",
+      "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-h5\\valid-format-oesh5.h5"
+    ],
+    "checksum": "e3758da2a39af73a556bbac612276e5fb104be6398db093dbe4f7df0fabdd1a6",
+    "result": "PASS",
+    "productStaticRuntime": "PASS"
+  },
+  "productStaticRuntime": {
+    "result": "PASS",
+    "executable": "src-tauri/target/release/data-viewer.exe",
+    "fixture": ".tmp/phase12-h5/valid-wide-copy.h5",
+    "filter": "Blosc v1/Zstd 32001",
+    "runtimeContract": "Static Blosc registration with HDF5 plugin discovery disabled by the product runtime",
+    "evidence": [
+      "artifacts/phase-12/native-results.json",
+      "artifacts/phase-12/native-results-150dpi.json"
+    ]
+  },
+  "result": "PASS"
+}

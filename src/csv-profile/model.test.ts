@@ -165,6 +165,8 @@ describe("CSV profile wire adapters", () => {
         temporalFormats: ["DD/MM/YYYY"],
         timezonePolicy: "fixedOffset",
         timezoneOffsetMinutes: 540,
+        durationUnit: null,
+        durationInputFormat: null,
         failurePolicy: "asNull",
       },
     ],

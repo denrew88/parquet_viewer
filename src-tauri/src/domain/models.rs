@@ -192,6 +192,7 @@ pub enum ValueKind {
     Decimal,
     Date,
     Timestamp,
+    Duration,
     List,
     Struct,
     Map,

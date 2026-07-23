@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-23T05:25:28.908854+00:00",
+  "machine": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14"
+  },
+  "fixtureEvidence": {
+    "manifest": "artifacts/phase-14/fixture-manifest.json",
+    "manifestSha256": "a45bd406122e16b1a5090e410142e6238563e197e5ce153a16b2c5cd86da075b",
+    "audit": "artifacts/phase-14/fixture-audit.json",
+    "auditSha256": "4562b3b8b76b5f5a415bb2427ddb59a9322659d84e76934ae301aecad0d65f41",
+    "fixtures": [
+      {
+        "id": "csv-5850000-low",
+        "path": ".tmp/phase13-fixtures/large/csv-5850000-low.csv",
+        "rows": 5850000,
+        "columns": 15,
+        "bytes": 641656312,
+        "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0"
+      },
+      {
+        "id": "csv-5850000-high",
+        "path": ".tmp/phase13-fixtures/large/csv-5850000-high.csv",
+        "rows": 5850000,
+        "columns": 15,
+        "bytes": 979427914,
+        "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd"
+      },
+      {
+        "id": "csv-5850000-long-invalid",
+        "path": ".tmp/phase13-fixtures/large/csv-5850000-long-invalid.csv",
+        "rows": 5850000,
+        "columns": 15,
+        "bytes": 642704881,
+        "sha256": "8426413113a812a4293ccf9eaef72f4cff33ab83d139c162fc96a8219d286450"
+      }
+    ]
+  },
+  "baseline": {
+    "fixtureId": "csv-5850000-low",
+    "preparationMs": 151500.0
+  },
+  "caseContract": {
+    "preparation-low": {
+      "samples": 5,
+      "p95Ms": 60000.0
+    },
+    "preparation-high": {
+      "samples": 5,
+      "p95Ms": 60000.0
+    },
+    "ready-page": {
+      "samples": 100,
+      "p95Ms": 20.0
+    },
+    "source-ctrl-vertical-cold": {
+      "samples": 50,
+      "p95Ms": 100.0
+    },
+    "source-ctrl-vertical-warm": {
+      "samples": 50,
+      "p95Ms": 20.0
+    },
+    "source-ctrl-horizontal": {
+      "samples": 50,
+      "p95Ms": 20.0
+    },
+    "query-ctrl-cold": {
+      "samples": 50,
+      "p95Ms": 250.0
+    },
+    "query-ctrl-warm": {
+      "samples": 50,
+      "p95Ms": 20.0
+    },
+    "filter-three-sort": {
+      "samples": 20,
+      "p95Ms": 2000.0
+    },
+    "copy-64000x1": {
+      "samples": 20,
+      "p95Ms": 150.0
+    },
+    "persistent-cache-reopen": {
+      "samples": 20,
+      "p95Ms": 1000.0
+    }
+  },
+  "status": "NOT_RUN",
+  "reason": "Release benchmark raw input has not been supplied."
+}

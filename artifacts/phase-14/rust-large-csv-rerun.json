@@ -1,0 +1,82 @@
+{
+  "cancel": {
+    "elapsedMs": 102.8694,
+    "fixtureId": "csv-5850000-high",
+    "fixtureSha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+    "terminal": "cancelled"
+  },
+  "copyOneColumn64000Rows": {
+    "implementation": "parameterized contiguous __dv_row_id range",
+    "latencyMs": [
+      79.5377,
+      103.4268,
+      80.68939999999999,
+      90.6971,
+      84.81139999999999
+    ],
+    "offsets": [
+      0,
+      800000,
+      1600000,
+      3200000,
+      5786000
+    ],
+    "p95Ms": 103.4268,
+    "rowsPerSecondAtP95": 618795.1285353506
+  },
+  "filteredSortedQuery": {
+    "boundaryElapsedMs": 6.6880999999999995,
+    "boundaryExpectedTarget": 60,
+    "elapsedMs": 634.2934,
+    "pageLatencyMs": [
+      59.1386,
+      51.9806,
+      48.2166
+    ],
+    "resultRows": 2925000
+  },
+  "fixtureId": "csv-5850000-low",
+  "fixtureSha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+  "page": {
+    "latencyMs": [
+      37.341100000000004,
+      31.195899999999998,
+      34.4617,
+      42.0566,
+      27.5532
+    ],
+    "offsets": [
+      0,
+      1,
+      986803,
+      2925000,
+      5849800
+    ],
+    "p95Ms": 42.0566
+  },
+  "prepare": {
+    "elapsedMs": 63130.2452,
+    "rows": 5850000,
+    "rowsPerSecond": 92665.5675337057
+  },
+  "profile": "release ignored prepared CSV product-path integration/performance",
+  "resource": {
+    "finalActiveQueries": 0,
+    "finalProcessTempBytes": 10,
+    "handlesAfter": 142,
+    "handlesBefore": 140,
+    "inactiveBytesDeleted": 0,
+    "processTempBaselineBytes": 10,
+    "rssAfterBytes": 34385920,
+    "rssBeforeBytes": 9023488,
+    "rssCapBytes": 1572864000,
+    "sampledPeakRssBytes": 116006912,
+    "tempHighWaterBytes": 295801951
+  },
+  "schemaVersion": 1,
+  "sourceBoundary": {
+    "elapsedMs": 0.36469999999999997,
+    "expectedTarget": 96
+  },
+  "status": "PASS"
+}

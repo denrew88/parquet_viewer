@@ -1,0 +1,76 @@
+{
+  "cases": [
+    {
+      "boundary": {
+        "coldMs": 9.9046,
+        "column": "optional_value",
+        "expectedTarget": 60,
+        "noTransitionColdMs": 0.0027,
+        "noTransitionTarget": 2924999,
+        "stateRead": "bounded query row-id slices plus Parquet boolean occupancy reads; source-wide metadata invariant used when provable; no DataValue materialization",
+        "warmMs": [
+          0.010499999999999999,
+          0.004,
+          0.0031999999999999997,
+          0.003,
+          0.0029000000000000002
+        ],
+        "warmP95Ms": 0.010499999999999999
+      },
+      "fixtureId": "boundary-5850000-low",
+      "fixtureSha256": "76f63843ec145047fff0596a5f7cdf9fca777dea2f319b27ceec22632b7f0def",
+      "pageLatencyMs": [
+        7.3602,
+        6.7046,
+        5.5087
+      ],
+      "pageOffsets": [
+        0,
+        986803,
+        2924800
+      ],
+      "queryMs": 1063.4141,
+      "resultRows": 2925000
+    },
+    {
+      "boundary": {
+        "coldMs": 9.9971,
+        "column": "optional_value",
+        "expectedTarget": 60,
+        "noTransitionColdMs": 0.0024,
+        "noTransitionTarget": 2924999,
+        "stateRead": "bounded query row-id slices plus Parquet boolean occupancy reads; source-wide metadata invariant used when provable; no DataValue materialization",
+        "warmMs": [
+          0.0096,
+          0.0031999999999999997,
+          0.0029000000000000002,
+          0.0027,
+          0.0028
+        ],
+        "warmP95Ms": 0.0096
+      },
+      "fixtureId": "boundary-5850000-high",
+      "fixtureSha256": "30fc7b291f7c936311e74dbb785e3005ebb0d4d432f5795fad269b31de9e44ba",
+      "pageLatencyMs": [
+        5.7329,
+        6.1066,
+        5.0492
+      ],
+      "pageOffsets": [
+        0,
+        986803,
+        2924800
+      ],
+      "queryMs": 1674.9759,
+      "resultRows": 2925000
+    }
+  ],
+  "gates": {
+    "coldBoundaryMs": 2000,
+    "warmBoundaryP95Ms": 250
+  },
+  "profile": "release ignored product-path integration/performance",
+  "rows": 5850000,
+  "schemaVersion": 1,
+  "status": "PASS"
+}

@@ -14,10 +14,13 @@ import {
   parseCsvParsingProfile,
   parseCsvProfilePreviewResponse,
   parseCsvValidationStatus,
+  parseCsvPreparationStatus,
   parseFileSummary,
   parseFormatDescriptor,
   parseQueryPlan,
   parseQueryStatus,
+  parseCopyOperationHistory,
+  parseCopyOperationStatus,
   parseDistinctValuesResponse,
   parseFindQueryMatchResponse,
   parseFindBoundaryResponse,
@@ -30,6 +33,7 @@ import {
   parseSupportedFormats,
   tauriBackend,
   type CsvParsingProfileWire,
+  type StartCopyRequest,
 } from "./backend";
 import { defaultAppSettings } from "./settings/model";
 
@@ -162,6 +166,8 @@ const validCsvProfile: CsvParsingProfileWire = {
     temporalFormats: [],
     timezonePolicy: "preserve" as const,
     timezoneOffsetMinutes: null,
+    durationUnit: null,
+    durationInputFormat: null,
     failurePolicy: "preserveInvalid" as const,
   })),
 };
@@ -260,6 +266,53 @@ function validQueryStatus(state: "queued" | "running" | "complete" = "queued") {
   };
 }
 
+function validCopyRequest(): StartCopyRequest {
+  return {
+    operationId: "copy-1",
+    documentId: "document-1",
+    sessionId: "session-1",
+    queryId: "query-1",
+    selection: { rowStart: 3, rowEndExclusive: 5, columnIds: ["value"] },
+    options: {
+      delimiter: "\t",
+      includeHeaders: false,
+      quoteMode: "minimal",
+      quoteCharacter: '"',
+      escapeMode: "double",
+      lineEnding: "crlf",
+      nullRepresentation: "",
+      emptyStringRepresentation: "empty",
+      booleanRepresentation: "lowercase",
+      dateTimeRepresentation: { mode: "display" },
+      representation: "display",
+    },
+    maxCells: 1_000_000,
+    maxBytes: 64 * 1024 * 1024,
+  };
+}
+
+function validCopyStatus() {
+  const request = validCopyRequest();
+  return {
+    operationId: request.operationId,
+    startedAt: "2026-07-21T12:00:00.000Z",
+    documentId: request.documentId,
+    sessionId: request.sessionId,
+    queryId: request.queryId,
+    selection: request.selection,
+    options: request.options,
+    state: "complete",
+    stage: "complete",
+    progress: {
+      rowsProcessed: 2,
+      totalRows: 2,
+      cellsProcessed: 2,
+      bytesSerialized: 12,
+    },
+    failure: null,
+  };
+}
+
 describe("backend adapters", () => {
   it("NAV-RPC-008 validates and invokes boundary find/cancel with exact identity", async () => {
     const request = {
@@ -315,6 +368,75 @@ describe("backend adapters", () => {
       expect.objectContaining({ id: "parquet", extensions: ["parquet"] }),
       expect.objectContaining({ id: "oesHdf5", extensions: ["h5", "hdf5"] }),
     ]);
+  });
+
+  it("keeps the 5.85M browser fixture schema and values after committing Find", async () => {
+    const request = {
+      taskId: "browser-large-find-task",
+      documentId: "browser-large-find-document",
+      sessionId: "browser-large-parquet-session",
+      queryId: "browser-large-find-query",
+      plan: {
+        filters: [],
+        search: {
+          text: "label-4",
+          mode: "find" as const,
+          caseSensitive: false,
+          exact: false,
+          targetColumnIds: ["label"],
+        },
+        sort: [],
+        projection: [],
+      },
+    };
+
+    await browserMockBackend.executeQuery(request);
+    const status = await browserMockBackend.getQueryStatus(
+      request.documentId,
+      request.sessionId,
+      request.queryId,
+      request.taskId,
+    );
+    expect(status).toMatchObject({
+      state: "complete",
+      progress: { totalRows: 5_850_000, resultRows: 5_850_000 },
+    });
+    expect(status.columns).toHaveLength(15);
+
+    await expect(
+      browserMockBackend.readQueryPage({
+        documentId: request.documentId,
+        sessionId: request.sessionId,
+        queryId: request.queryId,
+        offset: 0,
+        limit: 200,
+        columns: status.columns,
+      }),
+    ).resolves.toMatchObject({
+      page: { totalRows: 5_850_000, columns: status.columns },
+    });
+
+    await expect(
+      browserMockBackend.readQueryPage({
+        documentId: request.documentId,
+        sessionId: request.sessionId,
+        queryId: request.queryId,
+        offset: 4,
+        limit: 1,
+        columns: ["label", "group_id"],
+      }),
+    ).resolves.toMatchObject({
+      page: {
+        totalRows: 5_850_000,
+        columns: ["label", "group_id"],
+        rows: [
+          [
+            { kind: "string", display: "label-4" },
+            { kind: "int", display: "404" },
+          ],
+        ],
+      },
+    });
   });
 
   it("FMT-007 validates the supported-format command response", async () => {
@@ -442,6 +564,76 @@ describe("backend adapters", () => {
     );
   });
 
+  it("accepts exact Duration metadata and rejects incomplete Duration cells", () => {
+    expect(
+      parseDataValue({
+        kind: "duration",
+        display: "1d 02:03:04.005006007",
+        state: "valid",
+        sourceDisplay: "93784005006007",
+        unit: "ns",
+        timezone: null,
+        rawDisplay: "93784005006007 [unit=ns]",
+        diagnostic: null,
+      }),
+    ).toEqual(expect.objectContaining({ kind: "duration", unit: "ns" }));
+    expect(
+      parseDataValue({
+        kind: "duration",
+        display: "00:00:01",
+        state: "valid",
+        sourceDisplay: "1",
+        unit: null,
+        timezone: null,
+        rawDisplay: "1",
+        diagnostic: null,
+      }),
+    ).toBeNull();
+    expect(
+      parseDataValue({
+        kind: "duration",
+        display: "not-a-duration",
+        state: "invalid",
+        sourceDisplay: "not-a-duration",
+        unit: null,
+        timezone: null,
+        rawDisplay: "not-a-duration",
+        diagnostic: { code: "csvConversionFailed", message: "Invalid Duration value." },
+      }),
+    ).toEqual(expect.objectContaining({ kind: "duration", state: "invalid" }));
+  });
+
+  it("validates CSV preparation identity, progress, and terminal error semantics", () => {
+    const ready = {
+      documentId: "document-csv",
+      sessionId: "csv-session",
+      state: "ready",
+      rowsScanned: 5_850_000,
+      totalRows: 5_850_000,
+      sourceReadBytes: 512_000_000,
+      totalBytes: 512_000_000,
+      cacheOutputBytes: 640_000_000,
+      navigationFrontierRow: 5_850_000,
+      elapsedMs: 900,
+      error: null,
+    };
+    expect(parseCsvPreparationStatus(ready)).toEqual(ready);
+    expect(() => parseCsvPreparationStatus({ ...ready, rowsScanned: 5_850_001 })).toThrow(
+      DataViewerError,
+    );
+    expect(() => parseCsvPreparationStatus({ ...ready, navigationFrontierRow: 5_850_001 })).toThrow(
+      DataViewerError,
+    );
+    expect(() => parseCsvPreparationStatus({ ...ready, state: "failed" })).toThrow(DataViewerError);
+    expect(
+      parseCsvPreparationStatus({
+        ...ready,
+        state: "failed",
+        error: { code: "QueryFailed", message: "Preparation failed." },
+      }).state,
+    ).toBe("failed");
+  });
+
   it("accepts matching separators for integer profiles but rejects them for fractional profiles", () => {
     for (const targetType of ["auto", "int64", "uint64"] as const) {
       expect(() =>
@@ -563,6 +755,7 @@ describe("backend adapters", () => {
       queryId: "query-1",
       offset: 0,
       limit: 200,
+      columns: ["value"],
     };
     const distinctRequest = {
       documentId: "document-1",
@@ -662,6 +855,72 @@ describe("backend adapters", () => {
     expect(invokeMock).toHaveBeenLastCalledWith("get_query_temp_usage", undefined);
     await tauriBackend.clearQueryTemp();
     expect(invokeMock).toHaveBeenLastCalledWith("clear_query_temp", undefined);
+  });
+
+  it("PAGE-002 rejects missing, empty, duplicate, and oversized query projections", async () => {
+    const callsBefore = invokeMock.mock.calls.length;
+    const base = {
+      documentId: "document-1",
+      sessionId: "session-1",
+      queryId: "query-1",
+      offset: 0,
+      limit: 200,
+    };
+    const invalidColumns = [
+      undefined,
+      [],
+      [""],
+      ["value", "value"],
+      Array.from({ length: 65 }, (_, index) => `column-${index}`),
+    ];
+
+    for (const columns of invalidColumns) {
+      await expect(tauriBackend.readQueryPage({ ...base, columns } as never)).rejects.toMatchObject(
+        { code: "InvalidRequest" },
+      );
+    }
+    expect(invokeMock).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it("COPY12 validates the copy snapshot and preserves operation identity on IPC", async () => {
+    invokeMock.mockReset();
+    const request = validCopyRequest();
+    invokeMock.mockResolvedValueOnce(validCopyStatus());
+
+    await expect(tauriBackend.startCopy!(request)).resolves.toMatchObject({
+      operationId: request.operationId,
+      state: "complete",
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith("start_copy", { request });
+
+    const callsBefore = invokeMock.mock.calls.length;
+    await expect(
+      tauriBackend.startCopy!({ ...request, operationId: "copy/path" }),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+    await expect(
+      tauriBackend.startCopy!({
+        ...request,
+        selection: { ...request.selection, columnIds: ["value", "value"] },
+      }),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+    expect(invokeMock).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it("COPY12 rejects malformed terminal reasons and bounds previous history to five", () => {
+    expect(parseCopyOperationStatus(validCopyStatus())).toMatchObject({ state: "complete" });
+    expect(() =>
+      parseCopyOperationStatus({
+        ...validCopyStatus(),
+        state: "failed",
+        failure: { reason: "unknown", message: "failed" },
+      }),
+    ).toThrow(DataViewerError);
+    expect(() =>
+      parseCopyOperationHistory({
+        current: validCopyStatus(),
+        previous: Array.from({ length: 6 }, validCopyStatus),
+      }),
+    ).toThrow(DataViewerError);
   });
 
   it("QRY-002 rejects malformed query DTOs and cross-task responses", async () => {

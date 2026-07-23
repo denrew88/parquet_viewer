@@ -16,6 +16,7 @@ use crate::domain::{
 
 const LEGACY_SETTINGS_SCHEMA_VERSION: u8 = 1;
 const PREVIOUS_SETTINGS_SCHEMA_VERSION: u8 = 2;
+const DISPLAY_SETTINGS_SCHEMA_VERSION: u8 = 3;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -76,6 +77,76 @@ impl LegacyAppSettingsV2 {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAppSettingsV3 {
+    schema_version: u8,
+    copy_preset: CopyPreset,
+    copy_custom_options: CopyOptions,
+    csv_default_parsing_mode: CsvDefaultParsingMode,
+    query_temp_limit_bytes: u64,
+    copy_limits: CopyLimits,
+    display_formats: serde_json::Value,
+}
+
+impl LegacyAppSettingsV3 {
+    fn migrate(self) -> Result<AppSettingsV1, String> {
+        if self.schema_version != DISPLAY_SETTINGS_SCHEMA_VERSION {
+            return Err(String::from("settings.schemaVersion is unsupported."));
+        }
+        let mut display = self
+            .display_formats
+            .as_object()
+            .cloned()
+            .ok_or_else(|| String::from("settings.displayFormats must be an object."))?;
+        let timestamp = display
+            .get_mut("timestamp")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| String::from("settings.displayFormats.timestamp must be an object."))?;
+        if timestamp.keys().any(|key| key != "fractionalDigits")
+            || !timestamp.contains_key("fractionalDigits")
+        {
+            return Err(String::from(
+                "settings.displayFormats.timestamp contains invalid V3 fields.",
+            ));
+        }
+        let defaults = serde_json::to_value(DisplayFormats::default())
+            .map_err(|error| format!("Default settings serialization failed: {error}"))?;
+        let default_root = defaults
+            .as_object()
+            .ok_or_else(|| String::from("Default display settings must be an object."))?;
+        let default_timestamp = default_root
+            .get("timestamp")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| String::from("Default timestamp settings must be an object."))?;
+        for (key, value) in default_timestamp {
+            if key != "fractionalDigits" {
+                timestamp.insert(key.clone(), value.clone());
+            }
+        }
+        display.insert(
+            String::from("duration"),
+            default_root
+                .get("duration")
+                .cloned()
+                .ok_or_else(|| String::from("Default duration settings are unavailable."))?,
+        );
+        let display_formats = serde_json::from_value(serde_json::Value::Object(display))
+            .map_err(|error| format!("Invalid V3 display settings: {error}"))?;
+        let settings = AppSettingsV1 {
+            schema_version: APP_SETTINGS_SCHEMA_VERSION,
+            copy_preset: self.copy_preset,
+            copy_custom_options: self.copy_custom_options,
+            csv_default_parsing_mode: self.csv_default_parsing_mode,
+            query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            copy_limits: self.copy_limits,
+            display_formats,
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
     directory: PathBuf,
@@ -108,6 +179,13 @@ impl SettingsStore {
             });
         if let Ok(settings) = current_result {
             return Ok(settings);
+        }
+
+        let display_result = serde_json::from_slice::<LegacyAppSettingsV3>(&bytes)
+            .map_err(|error| format!("Invalid V3 settings.json: {error}"))
+            .and_then(LegacyAppSettingsV3::migrate);
+        if let Ok(settings) = display_result {
+            return self.save(&settings);
         }
 
         let previous_result = serde_json::from_slice::<LegacyAppSettingsV2>(&bytes)
@@ -434,6 +512,44 @@ mod tests {
             .iter()
             .any(|name| name.starts_with("settings.corrupt-")));
         assert!(names.iter().any(|name| name == "settings.json"));
+    }
+
+    #[test]
+    fn valid_v3_settings_preserve_timestamp_precision_and_add_v4_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        legacy["schemaVersion"] = serde_json::json!(3);
+        legacy["displayFormats"]
+            .as_object_mut()
+            .unwrap()
+            .remove("duration");
+        legacy["displayFormats"]["timestamp"] = serde_json::json!({
+            "fractionalDigits": { "mode": "fixed", "digits": 6 }
+        });
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let store = SettingsStore::new(directory.path());
+        let migrated = store.load().unwrap();
+        let wire = serde_json::to_value(&migrated).unwrap();
+        assert_eq!(migrated.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(
+            wire["displayFormats"]["timestamp"]["fractionalDigits"],
+            serde_json::json!({ "mode": "fixed", "digits": 6 })
+        );
+        assert_eq!(
+            wire["displayFormats"]["timestamp"]["dateFormat"],
+            "YYYY-MM-DD"
+        );
+        assert_eq!(
+            wire["displayFormats"]["timestamp"]["timezoneSuffix"],
+            "hidden"
+        );
+        assert_eq!(wire["displayFormats"]["duration"]["style"], "daysClock");
+        assert_eq!(store.load().unwrap(), migrated);
     }
 
     #[test]

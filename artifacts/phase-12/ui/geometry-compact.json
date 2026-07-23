@@ -1,0 +1,20 @@
+{
+  "result": "PASS",
+  "project": "desktop-compact",
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "finalRow": {
+    "cellTop": 632,
+    "cellBottom": 680,
+    "cellHeight": 48,
+    "gridTop": 212,
+    "gridBottom": 698,
+    "gridContentBottom": 698,
+    "bottomClearance": 18,
+    "clientHeight": 486,
+    "scrollHeight": 9600054,
+    "scrollTop": 9599568
+  }
+}

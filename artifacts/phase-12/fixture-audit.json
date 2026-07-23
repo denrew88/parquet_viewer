@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "revision": "phase12-query-fixtures-v1",
+  "auditedAtUtc": "2026-07-21T14:03:17.148520+00:00",
+  "manifest": "artifacts/phase-12/fixture-manifest.json",
+  "reference": "artifacts/phase-12/reference-pages.json",
+  "fixtures": [
+    {
+      "id": "query-low-5850000-rows-15-columns",
+      "path": ".tmp/phase12-query/query-low-5850000-15c.parquet",
+      "kind": "large-parquet",
+      "sha256": "b9d7cc1b0d0f7277e7474401790109a3ad23e3183cb3fd2829708d5c4212229b",
+      "result": "PASS"
+    },
+    {
+      "id": "query-high-5850000-rows-15-columns",
+      "path": ".tmp/phase12-query/query-high-5850000-15c.parquet",
+      "kind": "large-parquet",
+      "sha256": "17d0d2153e500cc32f52ccf48d017130f3eae37286ea69e48d98c550b2507d09",
+      "result": "PASS"
+    },
+    {
+      "id": "query-null-empty-small-parquet",
+      "path": ".tmp/phase12-query/query-null-empty-small.parquet",
+      "kind": "small-parquet-null-empty",
+      "sha256": "975bc20dc739a879f59598bbc2be91a9832d85341bdb099915ef43004c68045b",
+      "result": "PASS"
+    },
+    {
+      "id": "query-invalid-small-csv",
+      "path": ".tmp/phase12-query/query-invalid-small.csv",
+      "kind": "small-csv-invalid",
+      "sha256": "02cd4bd497bbf68e3c140ff3d044e97d9f6b5570499be2a6abb9c487c8849f09",
+      "result": "PASS"
+    }
+  ],
+  "referenceAudit": {
+    "fixtures": 2,
+    "pagesPerFixture": 25,
+    "referenceSeed": 12012,
+    "result": "PASS"
+  },
+  "result": "PASS"
+}

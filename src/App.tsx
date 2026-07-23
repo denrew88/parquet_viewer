@@ -27,6 +27,7 @@ import {
   type BackendAdapter,
   type CsvHeaderMode,
   type CsvParsingProfileWire,
+  type CsvPreparationStatus,
   type CsvProfileMode,
   type CsvValidationStatusWire,
   type DataPage,
@@ -81,6 +82,8 @@ import {
 } from "./query/state";
 import type { DistinctValuesState } from "./query/ColumnFilterPopover";
 import type { QueryToolbarStatus } from "./query/QueryToolbar";
+import { moveId } from "./gridOrdering";
+import { isInternalPointerReorderActive, usePointerReorder } from "./components/usePointerReorder";
 import "./App.css";
 
 const defaultBackend = createDefaultBackend();
@@ -349,6 +352,14 @@ interface DataViewProps {
   distinctValuesForColumn(columnId: string): DistinctValuesState | undefined;
   documentId: string;
   findDataBoundary: BackendAdapter["findDataBoundary"];
+  startCopy: BackendAdapter["startCopy"];
+  getCopyStatus: BackendAdapter["getCopyStatus"];
+  cancelCopy: BackendAdapter["cancelCopy"];
+  getCopyHistory: BackendAdapter["getCopyHistory"];
+  csvPreparation: CsvPreparationUiState | null;
+  onCancelCsvPreparation(): void;
+  onRetryCsvPreparation(): void;
+  onDismissCsvPreparation(): void;
   readPage(request: Parameters<BackendAdapter["readPage"]>[0]): Promise<DataPage>;
   readCellValue: BackendAdapter["readCellValue"];
   summary: FileSummary;
@@ -379,11 +390,28 @@ function DataView({
   distinctValuesForColumn,
   documentId,
   findDataBoundary,
+  startCopy,
+  getCopyStatus,
+  cancelCopy,
+  getCopyHistory,
+  csvPreparation,
+  onCancelCsvPreparation,
+  onRetryCsvPreparation,
+  onDismissCsvPreparation,
   readPage,
   readCellValue,
   summary,
 }: DataViewProps) {
   const invalidValues = page.rows.flat().filter((value) => value.state === "invalid");
+  const visibleCsvPreparation =
+    csvPreparation &&
+    !csvPreparation.dismissed &&
+    (csvPreparation.status?.state === "preparing" ||
+      csvPreparation.status?.state === "failed" ||
+      csvPreparation.status?.state === "cancelled" ||
+      csvPreparation.requestError)
+      ? csvPreparation
+      : null;
   const hasNotices = summary.rowCountStatus.state === "calculating" || invalidValues.length > 0;
   return (
     <div className={`data-view${hasNotices ? " data-view--notices" : ""}`}>
@@ -426,6 +454,68 @@ function DataView({
           )}
         </div>
       )}
+      {visibleCsvPreparation && (
+        <div
+          className={`csv-preparation csv-preparation--${visibleCsvPreparation.status?.state ?? "failed"}`}
+          role={
+            visibleCsvPreparation.status?.state === "failed" || visibleCsvPreparation.requestError
+              ? "alert"
+              : "status"
+          }
+        >
+          {visibleCsvPreparation.status?.state === "preparing" && (
+            <LoaderCircle aria-hidden="true" />
+          )}
+          <div>
+            <strong>
+              {visibleCsvPreparation.status?.state === "preparing"
+                ? "Preparing CSV for fast queries"
+                : visibleCsvPreparation.status?.state === "cancelled"
+                  ? "CSV preparation cancelled"
+                  : "CSV preparation failed"}
+            </strong>
+            {visibleCsvPreparation.status?.state === "preparing" ? (
+              <span>
+                {visibleCsvPreparation.status.rowsScanned.toLocaleString()}
+                {visibleCsvPreparation.status.totalRows === null
+                  ? " rows"
+                  : ` / ${visibleCsvPreparation.status.totalRows.toLocaleString()} rows`}
+                {` · ${(visibleCsvPreparation.status.elapsedMs / 1_000).toFixed(1)}s`}
+              </span>
+            ) : (
+              <span>
+                {visibleCsvPreparation.requestError ??
+                  (visibleCsvPreparation.status?.error
+                    ? `${visibleCsvPreparation.status.error.code}: ${visibleCsvPreparation.status.error.message}`
+                    : null) ??
+                  "The preparation task did not complete."}
+              </span>
+            )}
+          </div>
+          {visibleCsvPreparation.status?.state === "preparing" ? (
+            <button
+              disabled={visibleCsvPreparation.action === "cancelling"}
+              onClick={onCancelCsvPreparation}
+              type="button"
+            >
+              {visibleCsvPreparation.action === "cancelling" ? "Cancelling..." : "Cancel"}
+            </button>
+          ) : (
+            <div className="csv-preparation__actions">
+              <button
+                disabled={visibleCsvPreparation.action === "starting"}
+                onClick={onRetryCsvPreparation}
+                type="button"
+              >
+                {visibleCsvPreparation.action === "starting" ? "Retrying..." : "Retry"}
+              </button>
+              <button onClick={onDismissCsvPreparation} type="button">
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <VirtualDataGrid
         active={active}
         cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
@@ -437,9 +527,13 @@ function DataView({
         distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
         documentId={documentId}
         findDataBoundary={findDataBoundary}
+        startCopy={startCopy}
+        getCopyStatus={getCopyStatus}
+        cancelCopyOperation={cancelCopy}
+        getCopyHistory={getCopyHistory}
         findTarget={queryState?.findTarget ?? undefined}
         isLoading={isLoading}
-        logicalColumnNames={queryState?.queryId ? page.columns : undefined}
+        logicalColumnNames={queryState?.queryId ? queryState.resultColumns : undefined}
         onCancelQuery={queryState ? onCancelQuery : undefined}
         onFindNext={queryState ? () => onFindMatch("next") : undefined}
         onFindPrevious={queryState ? () => onFindMatch("previous") : undefined}
@@ -861,9 +955,19 @@ interface QueryDistinctState {
 interface QueryUiState extends DocumentQueryState {
   pendingQueryId: string | null;
   errorCode: string | null;
+  resultColumns: string[];
   findMatchCount: number | null;
   findTarget: { row: number; columnId: string; matchIndex: number; key: string } | null;
   distinct: Record<string, QueryDistinctState>;
+}
+
+interface CsvPreparationUiState {
+  documentId: string;
+  sessionId: string;
+  status: CsvPreparationStatus | null;
+  action: "starting" | "cancelling" | null;
+  requestError: string | null;
+  dismissed: boolean;
 }
 
 function createQueryUiState(documentId: string, sessionId: string): QueryUiState {
@@ -871,10 +975,20 @@ function createQueryUiState(documentId: string, sessionId: string): QueryUiState
     ...createDocumentQueryState(documentId, sessionId),
     pendingQueryId: null,
     errorCode: null,
+    resultColumns: [],
     findMatchCount: null,
     findTarget: null,
     distinct: {},
   };
+}
+
+function queryPageProjection(primary: readonly string[], fallback: readonly string[]): string[] {
+  const requested = primary.length > 0 ? primary : fallback;
+  const unique = [...new Set(requested.filter((column) => column.length > 0))];
+  if (unique.length === 0) {
+    throw new Error("The query result does not contain a readable column.");
+  }
+  return unique.slice(0, 64);
 }
 
 function compatibleQueryPlan(
@@ -1008,6 +1122,9 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   );
   const [csvProfileModes, setCsvProfileModes] = useState<Record<string, CsvProfileMode>>({});
   const [queryStates, setQueryStates] = useState<Record<string, QueryUiState>>({});
+  const [csvPreparationStates, setCsvPreparationStates] = useState<
+    Record<string, CsvPreparationUiState>
+  >({});
   const [queryTempUsage, setQueryTempUsage] = useState<QueryTempUsage | null>(null);
   const [queryTempLoading, setQueryTempLoading] = useState(false);
   const [queryTempError, setQueryTempError] = useState<string | null>(null);
@@ -1030,6 +1147,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   const cleanedOpenedIdentities = useRef(new Set<string>());
   const focusAfterClose = useRef(false);
   const tabStripRef = useRef<HTMLDivElement>(null);
+  const externalDragSession = useRef(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const csvProfileButtonRef = useRef<HTMLButtonElement>(null);
@@ -1038,8 +1156,12 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   appSettingsRef.current = appSettings;
   const csvProfileRequests = useRef(new Map<string, number>());
   const csvValidationPolls = useRef(new Map<string, number>());
+  const csvPreparationTokens = useRef(new Map<string, number>());
+  const csvPreparationTimers = useRef(new Map<string, number>());
+  const csvPreparationIdentities = useRef(new Map<string, string>());
   const csvDefaultsHandled = useRef(new Set<string>());
   const queryRequests = useRef(new Map<string, number>());
+  const findRequests = useRef(new Map<string, number>());
   const querySequence = useRef(0);
   const executeDocumentQueryRef = useRef<
     (document: ViewerDocument, plan: QueryPlan, skipPreviousCancel?: boolean) => void
@@ -1060,6 +1182,201 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       setDocuments((current) =>
         current.map((document) => (document.id === id ? update(document) : document)),
       );
+    },
+    [],
+  );
+
+  function applyDocumentOrder(nextIds: readonly string[]): void {
+    setDocuments((current) => {
+      const byId = new Map(current.map((document) => [document.id, document]));
+      const ordered = nextIds.flatMap((id) => {
+        const document = byId.get(id);
+        if (!document) return [];
+        byId.delete(id);
+        return [document];
+      });
+      return [...ordered, ...byId.values()];
+    });
+  }
+
+  const documentReorder = usePointerReorder({
+    ids: documents.map((document) => document.id),
+    containerRef: tabStripRef,
+    orientation: "horizontal",
+    onCommit: applyDocumentOrder,
+  });
+
+  function moveDocument(documentId: string, direction: -1 | 1): void {
+    applyDocumentOrder(
+      moveId(
+        documentsRef.current.map((document) => document.id),
+        documentId,
+        direction,
+      ),
+    );
+    window.requestAnimationFrame(() =>
+      document.getElementById(`document-tab-${documentId}`)?.focus(),
+    );
+  }
+
+  const clearCsvPreparationTask = useCallback((viewerDocumentId: string) => {
+    const timer = csvPreparationTimers.current.get(viewerDocumentId);
+    if (timer !== undefined) window.clearTimeout(timer);
+    csvPreparationTimers.current.delete(viewerDocumentId);
+    csvPreparationTokens.current.set(
+      viewerDocumentId,
+      (csvPreparationTokens.current.get(viewerDocumentId) ?? 0) + 1,
+    );
+  }, []);
+
+  const startCsvPreparation = useCallback(
+    (viewerDocumentId: string, documentId: string, sessionId: string) => {
+      clearCsvPreparationTask(viewerDocumentId);
+      const token = csvPreparationTokens.current.get(viewerDocumentId) ?? 0;
+      const identity = `${documentId}\u0000${sessionId}`;
+      csvPreparationIdentities.current.set(viewerDocumentId, identity);
+      setCsvPreparationStates((current) => ({
+        ...current,
+        [viewerDocumentId]: {
+          documentId,
+          sessionId,
+          status:
+            current[viewerDocumentId]?.sessionId === sessionId
+              ? current[viewerDocumentId].status
+              : null,
+          action: "starting",
+          requestError: null,
+          dismissed: false,
+        },
+      }));
+
+      const isCurrent = () => {
+        const document = documentsRef.current.find(
+          (candidate) => candidate.id === viewerDocumentId,
+        );
+        return (
+          csvPreparationTokens.current.get(viewerDocumentId) === token &&
+          csvPreparationIdentities.current.get(viewerDocumentId) === identity &&
+          document?.documentId === documentId &&
+          document.sessionId === sessionId
+        );
+      };
+
+      const fail = (error: unknown) => {
+        if (!isCurrent()) return;
+        setCsvPreparationStates((current) => ({
+          ...current,
+          [viewerDocumentId]: {
+            documentId,
+            sessionId,
+            status: current[viewerDocumentId]?.status ?? null,
+            action: null,
+            requestError:
+              error instanceof Error ? error.message : "CSV preparation status is unavailable.",
+            dismissed: false,
+          },
+        }));
+      };
+
+      const accept = (status: CsvPreparationStatus | null): boolean => {
+        if (
+          !isCurrent() ||
+          !status ||
+          status.documentId !== documentId ||
+          status.sessionId !== sessionId
+        )
+          return false;
+        setCsvPreparationStates((current) => ({
+          ...current,
+          [viewerDocumentId]: {
+            documentId,
+            sessionId,
+            status,
+            action: null,
+            requestError: null,
+            dismissed: false,
+          },
+        }));
+        return true;
+      };
+
+      const poll = () => {
+        if (!isCurrent()) return;
+        void backend.getCsvPreparationStatus(documentId, sessionId).then((status) => {
+          if (!accept(status)) return;
+          if (status?.state === "preparing") {
+            csvPreparationTimers.current.set(viewerDocumentId, window.setTimeout(poll, 750));
+          }
+        }, fail);
+      };
+
+      void backend.prepareCsvSession(documentId, sessionId).then((status) => {
+        if (!accept(status)) return;
+        if (status.state === "preparing") {
+          csvPreparationTimers.current.set(viewerDocumentId, window.setTimeout(poll, 750));
+        }
+      }, fail);
+    },
+    [backend, clearCsvPreparationTask],
+  );
+
+  const csvPreparationIdentityKey = documents
+    .filter(
+      (document) =>
+        document.status === "ready" &&
+        document.summary?.format === "csv" &&
+        document.documentId &&
+        document.sessionId,
+    )
+    .map((document) => `${document.id}\u0000${document.documentId}\u0000${document.sessionId}`)
+    .join("\u0001");
+
+  useEffect(() => {
+    const eligible = new Map(
+      documentsRef.current
+        .filter(
+          (document) =>
+            document.status === "ready" &&
+            document.summary?.format === "csv" &&
+            document.documentId &&
+            document.sessionId,
+        )
+        .map((document) => [document.id, `${document.documentId!}\u0000${document.sessionId!}`]),
+    );
+    for (const [viewerDocumentId, identity] of csvPreparationIdentities.current) {
+      if (eligible.get(viewerDocumentId) === identity) continue;
+      clearCsvPreparationTask(viewerDocumentId);
+      csvPreparationIdentities.current.delete(viewerDocumentId);
+    }
+    setCsvPreparationStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([viewerDocumentId, state]) =>
+            eligible.get(viewerDocumentId) === `${state.documentId}\u0000${state.sessionId}`,
+        ),
+      ),
+    );
+    for (const document of documentsRef.current) {
+      if (
+        document.status !== "ready" ||
+        document.summary?.format !== "csv" ||
+        !document.documentId ||
+        !document.sessionId
+      )
+        continue;
+      const identity = `${document.documentId}\u0000${document.sessionId}`;
+      if (csvPreparationIdentities.current.get(document.id) !== identity) {
+        startCsvPreparation(document.id, document.documentId, document.sessionId);
+      }
+    }
+  }, [clearCsvPreparationTask, csvPreparationIdentityKey, startCsvPreparation]);
+
+  useEffect(
+    () => () => {
+      for (const timer of csvPreparationTimers.current.values()) window.clearTimeout(timer);
+      csvPreparationTimers.current.clear();
+      csvPreparationTokens.current.clear();
+      csvPreparationIdentities.current.clear();
     },
     [],
   );
@@ -1488,19 +1805,27 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     void dragDropAdapter
       .onDragDropEvent((event: FileDragDropEvent) => {
         if (!active) return;
+        if (isInternalPointerReorderActive()) return;
         if (event.type === "enter") {
+          if (event.paths.length === 0) return;
+          externalDragSession.current = true;
           setDropTarget({ paths: event.paths });
         } else if (event.type === "over") {
-          setDropTarget((current) => current ?? { paths: [] });
+          return;
         } else if (event.type === "leave") {
+          externalDragSession.current = false;
           setDropTarget(null);
         } else {
+          const shouldOpen = event.paths.length > 0;
+          externalDragSession.current = false;
           setDropTarget(null);
-          void openPaths({
-            requestId: `frontend-dragDrop-${++pathRequestSequence.current}`,
-            origin: "dragDrop",
-            paths: event.paths,
-          });
+          if (shouldOpen) {
+            void openPaths({
+              requestId: `frontend-dragDrop-${++pathRequestSequence.current}`,
+              origin: "dragDrop",
+              paths: event.paths,
+            });
+          }
         }
       })
       .then(
@@ -1577,6 +1902,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
               queryId: query.queryId,
               offset,
               limit: document.page.limit,
+              columns: queryPageProjection(document.page.columns, query.resultColumns),
             })
           ).page
         : await backend.readPage({
@@ -2291,6 +2617,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           queryId,
           offset: 0,
           limit: document.page?.limit ?? 200,
+          columns: queryPageProjection(status.columns, []),
         });
         if (!queryResponseIsCurrent(document.id, token, identity)) return;
         updateDocument(document.id, (current) => ({
@@ -2309,6 +2636,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           progress: null,
           error: null,
           errorCode: null,
+          resultColumns: [...status.columns],
           findMatchCount: status.findMatchCount,
           findTarget: null,
           distinct: {},
@@ -2539,6 +2867,10 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     const fromResultOffset = state.findTarget?.row ?? document.page.offset;
     const fromMatchIndex = state.findTarget?.matchIndex ?? null;
     const token = queryRequests.current.get(document.id) ?? 0;
+    const findToken = nextRequest(findRequests, document.id);
+    const isCurrent = () =>
+      queryRequests.current.get(document.id) === token &&
+      findRequests.current.get(document.id) === findToken;
     void backend
       .findQueryMatch({
         documentId: state.documentId,
@@ -2550,7 +2882,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         wrap: true,
       })
       .then(async (response) => {
-        if (!response.match || queryRequests.current.get(document.id) !== token) return;
+        if (!response.match || !isCurrent()) return;
         const offset =
           Math.floor(response.match.rowOffset / document.page!.limit) * document.page!.limit;
         const pageResponse = await backend.readQueryPage({
@@ -2559,8 +2891,12 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           queryId: state.queryId!,
           offset,
           limit: document.page!.limit,
+          columns: queryPageProjection(
+            [response.match.columnId, ...document.page!.columns],
+            state.resultColumns,
+          ),
         });
-        if (queryRequests.current.get(document.id) !== token) return;
+        if (!isCurrent()) return;
         updateDocument(document.id, (current) => ({ ...current, page: pageResponse.page }));
         updateQueryState(document.id, (current) => ({
           ...current,
@@ -2574,7 +2910,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         }));
       })
       .catch((error: unknown) => {
-        if (queryRequests.current.get(document.id) !== token) return;
+        if (!isCurrent()) return;
         const normalized = toOpenFileError(error);
         updateQueryState(document.id, (current) => ({
           ...current,
@@ -2583,6 +2919,94 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           error: normalized.message,
         }));
       });
+  }
+
+  function cancelPreparedCsv(document: ViewerDocument): void {
+    if (!document.documentId || !document.sessionId) return;
+    const documentId = document.documentId;
+    const sessionId = document.sessionId;
+    clearCsvPreparationTask(document.id);
+    const token = csvPreparationTokens.current.get(document.id) ?? 0;
+    csvPreparationIdentities.current.set(document.id, `${documentId}\u0000${sessionId}`);
+    setCsvPreparationStates((current) => {
+      const state = current[document.id];
+      if (!state || state.documentId !== documentId || state.sessionId !== sessionId)
+        return current;
+      return { ...current, [document.id]: { ...state, action: "cancelling" } };
+    });
+    void backend.cancelCsvPreparation(documentId, sessionId).then(
+      (status) => {
+        const latest = documentsRef.current.find((candidate) => candidate.id === document.id);
+        if (
+          csvPreparationTokens.current.get(document.id) !== token ||
+          latest?.documentId !== documentId ||
+          latest.sessionId !== sessionId ||
+          (status && (status.documentId !== documentId || status.sessionId !== sessionId))
+        )
+          return;
+        setCsvPreparationStates((current) => {
+          const previous = current[document.id];
+          if (!previous || previous.sessionId !== sessionId) return current;
+          return {
+            ...current,
+            [document.id]: {
+              ...previous,
+              status:
+                status ??
+                ({
+                  documentId,
+                  sessionId,
+                  state: "cancelled",
+                  rowsScanned: previous.status?.rowsScanned ?? 0,
+                  totalRows: previous.status?.totalRows ?? null,
+                  sourceReadBytes: previous.status?.sourceReadBytes ?? 0,
+                  totalBytes: previous.status?.totalBytes ?? 0,
+                  cacheOutputBytes: previous.status?.cacheOutputBytes ?? 0,
+                  navigationFrontierRow: previous.status?.navigationFrontierRow ?? 0,
+                  elapsedMs: previous.status?.elapsedMs ?? 0,
+                  error: {
+                    code: "Cancelled",
+                    message: "CSV preparation was cancelled.",
+                  },
+                } satisfies CsvPreparationStatus),
+              action: null,
+              requestError: null,
+              dismissed: false,
+            },
+          };
+        });
+      },
+      (error: unknown) => {
+        if (csvPreparationTokens.current.get(document.id) !== token) return;
+        setCsvPreparationStates((current) => {
+          const previous = current[document.id];
+          if (!previous || previous.sessionId !== sessionId) return current;
+          return {
+            ...current,
+            [document.id]: {
+              ...previous,
+              action: null,
+              requestError:
+                error instanceof Error ? error.message : "CSV preparation cancellation failed.",
+            },
+          };
+        });
+      },
+    );
+  }
+
+  function retryPreparedCsv(document: ViewerDocument): void {
+    if (document.documentId && document.sessionId) {
+      startCsvPreparation(document.id, document.documentId, document.sessionId);
+    }
+  }
+
+  function dismissPreparedCsv(document: ViewerDocument): void {
+    setCsvPreparationStates((current) => {
+      const state = current[document.id];
+      if (!state || state.sessionId !== document.sessionId) return current;
+      return { ...current, [document.id]: { ...state, dismissed: true } };
+    });
   }
 
   async function cancelCsvScan(document: ViewerDocument) {
@@ -2645,6 +3069,8 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           : [closing];
       const closingIds = new Set(closingDocuments.map((document) => document.id));
       closingIds.forEach((documentId) => {
+        clearCsvPreparationTask(documentId);
+        csvPreparationIdentities.current.delete(documentId);
         csvDefaultsHandled.current.delete(documentId);
         csvValidationPolls.current.set(
           documentId,
@@ -2658,6 +3084,9 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
       );
       setQueryStates((current) =>
+        Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
+      );
+      setCsvPreparationStates((current) =>
         Object.fromEntries(Object.entries(current).filter(([id]) => !closingIds.has(id))),
       );
       setCsvProfileDialogDocumentId((current) =>
@@ -2697,7 +3126,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         void cleanup.catch((error) => setGlobalError(toOpenFileError(error)));
       }
     },
-    [activeDocumentId, backend, registerPathClose, resolveDeferredOpened],
+    [activeDocumentId, backend, clearCsvPreparationTask, registerPathClose, resolveDeferredOpened],
   );
 
   const switchDocument = useCallback(
@@ -2745,6 +3174,14 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   }, [activeDocumentId, documents.length]);
 
   function handleDocumentTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      const direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : null;
+      if (direction !== null) {
+        event.preventDefault();
+        moveDocument(documents[index].id, direction);
+      }
+      return;
+    }
     let next = index;
     if (event.key === "ArrowLeft") next = (index - 1 + documents.length) % documents.length;
     else if (event.key === "ArrowRight") next = (index + 1) % documents.length;
@@ -2920,13 +3357,21 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           {documents.map((document, index) => {
             const tabLabel = documentTabLabel(document, documents);
             return (
-              <div className="document-tab-shell" key={document.id}>
+              <div
+                className={`document-tab-shell${documentReorder.state.movingId === document.id ? " is-reordering" : ""}${documentReorder.state.targetId === document.id ? ` is-insert-${documentReorder.state.side}` : ""}`}
+                key={document.id}
+              >
                 <button
+                  {...documentReorder.getItemProps(document.id)}
                   aria-controls={`document-panel-${document.id}`}
                   aria-selected={activeDocumentId === document.id}
                   className="document-tab"
                   id={`document-tab-${document.id}`}
-                  onClick={() => setActiveDocumentId(document.id)}
+                  onClick={() => {
+                    if (!documentReorder.consumeSuppressedClick(document.id)) {
+                      setActiveDocumentId(document.id);
+                    }
+                  }}
                   onKeyDown={(event) => handleDocumentTabKey(event, index)}
                   role="tab"
                   tabIndex={activeDocumentId === document.id ? 0 : -1}
@@ -3154,6 +3599,14 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                     distinctValuesForColumn={(columnId) => distinctValuesState(document, columnId)}
                     documentId={document.documentId!}
                     findDataBoundary={backend.findDataBoundary}
+                    startCopy={backend.startCopy}
+                    getCopyStatus={backend.getCopyStatus}
+                    cancelCopy={backend.cancelCopy}
+                    getCopyHistory={backend.getCopyHistory}
+                    csvPreparation={csvPreparationStates[document.id] ?? null}
+                    onCancelCsvPreparation={() => cancelPreparedCsv(document)}
+                    onRetryCsvPreparation={() => retryPreparedCsv(document)}
+                    onDismissCsvPreparation={() => dismissPreparedCsv(document)}
                     isCancelling={document.isCancellingCsv}
                     isLoading={document.isPageLoading}
                     onCancel={() => void cancelCsvScan(document)}
@@ -3188,25 +3641,12 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                               queryId: query.queryId,
                               offset: request.offset,
                               limit: request.limit,
+                              columns: queryPageProjection(
+                                request.columns ?? [],
+                                query.resultColumns,
+                              ),
                             })
-                            .then((response) => {
-                              if (!request.columns) return response.page;
-                              const indexes = request.columns.map((column) =>
-                                response.page.columns.indexOf(column),
-                              );
-                              if (indexes.some((index) => index < 0)) {
-                                throw new Error(
-                                  "The query result no longer contains a selected column.",
-                                );
-                              }
-                              return {
-                                ...response.page,
-                                columns: [...request.columns],
-                                rows: response.page.rows.map((row) =>
-                                  indexes.map((index) => row[index]),
-                                ),
-                              };
-                            })
+                            .then((response) => response.page)
                         : backend.readPage({
                             ...request,
                             documentId: document.documentId!,

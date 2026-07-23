@@ -15,6 +15,7 @@ import {
   type CsvDefaultParsingMode,
   type DisplayFormats,
 } from "./model";
+import { ValueDisplayFormatsSection } from "./ValueDisplayFormatsSection";
 
 const GIB = 1024 * 1024 * 1024;
 const MIB = 1024 * 1024;
@@ -325,302 +326,310 @@ export function AppSettingsDialog({
                 </p>
               </div>
             </div>
-            <div className="display-format-grid">
-              <label>
-                Integer grouping
-                <select
-                  aria-label="Integer grouping"
-                  value={displayFormats.integer.grouping}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      integer: {
-                        grouping: event.target.value as DisplayFormats["integer"]["grouping"],
-                      },
-                    }))
-                  }
-                >
-                  <option value="none">None (1234567)</option>
-                  <option value="comma">Comma (1,234,567)</option>
-                  <option value="dot">Dot (1.234.567)</option>
-                </select>
-              </label>
-              <label>
-                Floating notation
-                <select
-                  aria-label="Floating notation"
-                  value={displayFormats.floatingPoint.notation}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      floatingPoint: {
-                        ...current.floatingPoint,
-                        notation: event.target.value as DisplayFormats["floatingPoint"]["notation"],
-                      },
-                    }))
-                  }
-                >
-                  <option value="general">General</option>
-                  <option value="fixed">Fixed</option>
-                  <option value="scientific">Scientific</option>
-                </select>
-              </label>
-              <label>
-                Float precision
-                <input
-                  aria-label="Float precision"
-                  max="17"
-                  min="1"
-                  type="number"
-                  value={displayFormats.floatingPoint.precision}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      floatingPoint: {
-                        ...current.floatingPoint,
-                        precision: Math.min(17, Math.max(1, Number(event.target.value) || 1)),
-                      },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Decimal scale
-                <select
-                  aria-label="Decimal scale mode"
-                  value={displayFormats.decimal.scale.mode}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      decimal: {
-                        ...current.decimal,
-                        scale:
-                          event.target.value === "preserve"
-                            ? { mode: "preserve" }
-                            : { mode: "fixed", digits: 2 },
-                      },
-                    }))
-                  }
-                >
-                  <option value="preserve">Preserve</option>
-                  <option value="fixed">Fixed</option>
-                </select>
-              </label>
-              {displayFormats.decimal.scale.mode === "fixed" && (
+            <ValueDisplayFormatsSection value={displayFormats} onChange={setDisplayFormats} />
+            <div hidden>
+              <div className="display-format-grid">
                 <label>
-                  Decimal digits
+                  Integer grouping
+                  <select
+                    aria-label="Integer grouping"
+                    value={displayFormats.integer.grouping}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        integer: {
+                          grouping: event.target.value as DisplayFormats["integer"]["grouping"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="none">None (1234567)</option>
+                    <option value="comma">Comma (1,234,567)</option>
+                    <option value="dot">Dot (1.234.567)</option>
+                  </select>
+                </label>
+                <label>
+                  Floating notation
+                  <select
+                    aria-label="Floating notation"
+                    value={displayFormats.floatingPoint.notation}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        floatingPoint: {
+                          ...current.floatingPoint,
+                          notation: event.target
+                            .value as DisplayFormats["floatingPoint"]["notation"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="general">General</option>
+                    <option value="fixed">Fixed</option>
+                    <option value="scientific">Scientific</option>
+                  </select>
+                </label>
+                <label>
+                  Float precision
                   <input
-                    aria-label="Decimal fixed digits"
-                    max="38"
-                    min="0"
+                    aria-label="Float precision"
+                    max="17"
+                    min="1"
                     type="number"
-                    value={displayFormats.decimal.scale.digits}
+                    value={displayFormats.floatingPoint.precision}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        floatingPoint: {
+                          ...current.floatingPoint,
+                          precision: Math.min(17, Math.max(1, Number(event.target.value) || 1)),
+                        },
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Decimal scale
+                  <select
+                    aria-label="Decimal scale mode"
+                    value={displayFormats.decimal.scale.mode}
                     onChange={(event) =>
                       setDisplayFormats((current) => ({
                         ...current,
                         decimal: {
                           ...current.decimal,
-                          scale: {
-                            mode: "fixed",
-                            digits: Math.min(38, Math.max(0, Number(event.target.value) || 0)),
-                          },
+                          scale:
+                            event.target.value === "preserve"
+                              ? { mode: "preserve" }
+                              : { mode: "fixed", digits: 2 },
                         },
                       }))
                     }
-                  />
+                  >
+                    <option value="preserve">Preserve</option>
+                    <option value="fixed">Fixed</option>
+                  </select>
                 </label>
-              )}
-              <label>
-                Decimal grouping
-                <select
-                  aria-label="Decimal grouping"
-                  value={displayFormats.decimal.grouping}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      decimal: {
-                        ...current.decimal,
-                        grouping: event.target.value as DisplayFormats["decimal"]["grouping"],
-                      },
-                    }))
-                  }
-                >
-                  <option value="none">None</option>
-                  <option value="comma">Comma</option>
-                  <option value="dot">Dot</option>
-                </select>
-              </label>
-              <label>
-                Date
-                <select
-                  aria-label="Date display format"
-                  value={displayFormats.date.format}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      date: { format: event.target.value as DisplayFormats["date"]["format"] },
-                    }))
-                  }
-                >
-                  {(["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY", "MM-DD-YYYY"] as const).map(
-                    (format) => (
-                      <option key={format} value={format}>
-                        {format}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <label>
-                Timestamp fraction
-                <select
-                  aria-label="Timestamp fractional digits mode"
-                  value={displayFormats.timestamp.fractionalDigits.mode}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      timestamp: {
-                        fractionalDigits:
-                          event.target.value === "preserve"
-                            ? { mode: "preserve" }
-                            : { mode: "fixed", digits: 9 },
-                      },
-                    }))
-                  }
-                >
-                  <option value="preserve">Preserve</option>
-                  <option value="fixed">Fixed</option>
-                </select>
-              </label>
-              {displayFormats.timestamp.fractionalDigits.mode === "fixed" && (
+                {displayFormats.decimal.scale.mode === "fixed" && (
+                  <label>
+                    Decimal digits
+                    <input
+                      aria-label="Decimal fixed digits"
+                      max="38"
+                      min="0"
+                      type="number"
+                      value={displayFormats.decimal.scale.digits}
+                      onChange={(event) =>
+                        setDisplayFormats((current) => ({
+                          ...current,
+                          decimal: {
+                            ...current.decimal,
+                            scale: {
+                              mode: "fixed",
+                              digits: Math.min(38, Math.max(0, Number(event.target.value) || 0)),
+                            },
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                )}
                 <label>
-                  Timestamp digits
-                  <input
-                    aria-label="Timestamp fractional digits"
-                    max="9"
-                    min="0"
-                    type="number"
-                    value={displayFormats.timestamp.fractionalDigits.digits}
+                  Decimal grouping
+                  <select
+                    aria-label="Decimal grouping"
+                    value={displayFormats.decimal.grouping}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        decimal: {
+                          ...current.decimal,
+                          grouping: event.target.value as DisplayFormats["decimal"]["grouping"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="comma">Comma</option>
+                    <option value="dot">Dot</option>
+                  </select>
+                </label>
+                <label>
+                  Date
+                  <select
+                    aria-label="Date display format"
+                    value={displayFormats.date.format}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        date: { format: event.target.value as DisplayFormats["date"]["format"] },
+                      }))
+                    }
+                  >
+                    {(["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY", "MM-DD-YYYY"] as const).map(
+                      (format) => (
+                        <option key={format} value={format}>
+                          {format}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Timestamp fraction
+                  <select
+                    aria-label="Timestamp fractional digits mode"
+                    value={displayFormats.timestamp.fractionalDigits.mode}
                     onChange={(event) =>
                       setDisplayFormats((current) => ({
                         ...current,
                         timestamp: {
-                          fractionalDigits: {
-                            mode: "fixed",
-                            digits: Math.min(9, Math.max(0, Number(event.target.value) || 0)),
+                          ...current.timestamp,
+                          fractionalDigits:
+                            event.target.value === "preserve"
+                              ? { mode: "preserve" }
+                              : { mode: "fixed", digits: 9 },
+                        },
+                      }))
+                    }
+                  >
+                    <option value="preserve">Preserve</option>
+                    <option value="fixed">Fixed</option>
+                  </select>
+                </label>
+                {displayFormats.timestamp.fractionalDigits.mode === "fixed" && (
+                  <label>
+                    Timestamp digits
+                    <input
+                      aria-label="Timestamp fractional digits"
+                      max="9"
+                      min="0"
+                      type="number"
+                      value={displayFormats.timestamp.fractionalDigits.digits}
+                      onChange={(event) =>
+                        setDisplayFormats((current) => ({
+                          ...current,
+                          timestamp: {
+                            ...current.timestamp,
+                            fractionalDigits: {
+                              mode: "fixed",
+                              digits: Math.min(9, Math.max(0, Number(event.target.value) || 0)),
+                            },
                           },
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+                <label>
+                  Boolean
+                  <select
+                    aria-label="Boolean display format"
+                    value={displayFormats.boolean.representation}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        boolean: {
+                          representation: event.target
+                            .value as DisplayFormats["boolean"]["representation"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="lowercase">true / false</option>
+                    <option value="uppercase">TRUE / FALSE</option>
+                    <option value="numeric">1 / 0</option>
+                  </select>
+                </label>
+                <label>
+                  Binary
+                  <select
+                    aria-label="Binary display encoding"
+                    value={displayFormats.binary.encoding}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        binary: {
+                          ...current.binary,
+                          encoding: event.target.value as DisplayFormats["binary"]["encoding"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="hex">Hex</option>
+                    <option value="base64">Base64</option>
+                  </select>
+                </label>
+                <label>
+                  Binary preview bytes
+                  <input
+                    aria-label="Binary preview bytes"
+                    max="256"
+                    min="1"
+                    type="number"
+                    value={displayFormats.binary.previewBytes}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        binary: {
+                          ...current.binary,
+                          previewBytes: Math.min(256, Math.max(1, Number(event.target.value) || 1)),
                         },
                       }))
                     }
                   />
                 </label>
-              )}
-              <label>
-                Boolean
-                <select
-                  aria-label="Boolean display format"
-                  value={displayFormats.boolean.representation}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      boolean: {
-                        representation: event.target
-                          .value as DisplayFormats["boolean"]["representation"],
-                      },
-                    }))
-                  }
-                >
-                  <option value="lowercase">true / false</option>
-                  <option value="uppercase">TRUE / FALSE</option>
-                  <option value="numeric">1 / 0</option>
-                </select>
-              </label>
-              <label>
-                Binary
-                <select
-                  aria-label="Binary display encoding"
-                  value={displayFormats.binary.encoding}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      binary: {
-                        ...current.binary,
-                        encoding: event.target.value as DisplayFormats["binary"]["encoding"],
-                      },
-                    }))
-                  }
-                >
-                  <option value="hex">Hex</option>
-                  <option value="base64">Base64</option>
-                </select>
-              </label>
-              <label>
-                Binary preview bytes
-                <input
-                  aria-label="Binary preview bytes"
-                  max="256"
-                  min="1"
-                  type="number"
-                  value={displayFormats.binary.previewBytes}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      binary: {
-                        ...current.binary,
-                        previewBytes: Math.min(256, Math.max(1, Number(event.target.value) || 1)),
-                      },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Nested values
-                <select
-                  aria-label="Nested value display format"
-                  value={displayFormats.nested.format}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      nested: { format: event.target.value as DisplayFormats["nested"]["format"] },
-                    }))
-                  }
-                >
-                  <option value="compact">Compact</option>
-                  <option value="pretty">Pretty</option>
-                </select>
-              </label>
+                <label>
+                  Nested values
+                  <select
+                    aria-label="Nested value display format"
+                    value={displayFormats.nested.format}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        nested: {
+                          format: event.target.value as DisplayFormats["nested"]["format"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="compact">Compact</option>
+                    <option value="pretty">Pretty</option>
+                  </select>
+                </label>
+              </div>
+              <div className="display-format-checks">
+                <label>
+                  <input
+                    checked={displayFormats.string.renderLineBreaks}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        string: { ...current.string, renderLineBreaks: event.target.checked },
+                      }))
+                    }
+                    type="checkbox"
+                  />{" "}
+                  Render string line breaks (maximum 2 visible lines)
+                </label>
+                <label>
+                  <input
+                    checked={displayFormats.string.wrapLongLines}
+                    onChange={(event) =>
+                      setDisplayFormats((current) => ({
+                        ...current,
+                        string: { ...current.string, wrapLongLines: event.target.checked },
+                      }))
+                    }
+                    type="checkbox"
+                  />{" "}
+                  Wrap long strings
+                </label>
+              </div>
+              <p className="settings-field-description">
+                Timestamp example: 2025-12-18 01:23:34.111111111 (timezone hidden)
+              </p>
             </div>
-            <div className="display-format-checks">
-              <label>
-                <input
-                  checked={displayFormats.string.renderLineBreaks}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      string: { ...current.string, renderLineBreaks: event.target.checked },
-                    }))
-                  }
-                  type="checkbox"
-                />{" "}
-                Render string line breaks (maximum 2 visible lines)
-              </label>
-              <label>
-                <input
-                  checked={displayFormats.string.wrapLongLines}
-                  onChange={(event) =>
-                    setDisplayFormats((current) => ({
-                      ...current,
-                      string: { ...current.string, wrapLongLines: event.target.checked },
-                    }))
-                  }
-                  type="checkbox"
-                />{" "}
-                Wrap long strings
-              </label>
-            </div>
-            <p className="settings-field-description">
-              Timestamp example: 2025-12-18 01:23:34.111111111 (timezone hidden)
-            </p>
           </section>
 
           <section aria-labelledby="storage-heading" className="settings-section">

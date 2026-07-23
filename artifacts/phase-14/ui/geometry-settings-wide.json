@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "project": "desktop-wide",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "typography": {
+    "title": "16px",
+    "section": "13px",
+    "type": "12px",
+    "preview": "11px",
+    "bodyScrollWidth": 1440,
+    "bodyClientWidth": 1440
+  }
+}

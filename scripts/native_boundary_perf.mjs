@@ -33,9 +33,21 @@ function workingSetBytes(pid) {
   return value;
 }
 
+const localAppData = path.join(path.dirname(output), "native-boundary-localappdata");
+await mkdir(localAppData, { recursive: true });
 const app = spawn(executable, ["--file", fixture], {
   cwd: root,
-  windowsHide: false,
+  env: {
+    ...process.env,
+    LOCALAPPDATA: localAppData,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: [
+      process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS,
+      "--remote-debugging-port=9333",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  },
+  windowsHide: true,
   stdio: "ignore",
 });
 

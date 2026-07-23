@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "phase": 12,
+  "result": "PASS_BROWSER",
+  "command": "npm run test:e2e -- e2e/phase12.spec.ts",
+  "projects": [
+    {
+      "project": "desktop-wide",
+      "viewport": { "width": 1440, "height": 900 },
+      "finalRow": {
+        "cellTop": 764,
+        "cellBottom": 812,
+        "cellHeight": 48,
+        "gridTop": 212,
+        "gridBottom": 830,
+        "gridContentBottom": 830,
+        "bottomClearance": 18,
+        "clientHeight": 618,
+        "scrollHeight": 9600054,
+        "scrollTop": 9599436
+      },
+      "tabReadCount": { "before20RoundTrips": 2, "after20RoundTrips": 2 },
+      "screenshots": [
+        "find-wide.png",
+        "multisort-wide.png",
+        "column-reorder-wide.png",
+        "copy-failure-history-wide.png",
+        "query-loading-wide.png",
+        "tab-restore-wide.png",
+        "last-row-wide.png"
+      ]
+    },
+    {
+      "project": "desktop-compact",
+      "viewport": { "width": 1024, "height": 768 },
+      "finalRow": {
+        "cellTop": 632,
+        "cellBottom": 680,
+        "cellHeight": 48,
+        "gridTop": 212,
+        "gridBottom": 698,
+        "gridContentBottom": 698,
+        "bottomClearance": 18,
+        "clientHeight": 486,
+        "scrollHeight": 9600054,
+        "scrollTop": 9599568
+      },
+      "tabReadCount": { "before20RoundTrips": 2, "after20RoundTrips": 2 },
+      "screenshots": [
+        "find-compact.png",
+        "multisort-compact.png",
+        "column-reorder-compact.png",
+        "copy-failure-history-compact.png",
+        "query-loading-compact.png",
+        "tab-restore-compact.png",
+        "last-row-compact.png"
+      ]
+    },
+    {
+      "project": "desktop-minimum",
+      "viewport": { "width": 800, "height": 600 },
+      "finalRow": {
+        "cellTop": 464,
+        "cellBottom": 512,
+        "cellHeight": 48,
+        "gridTop": 212,
+        "gridBottom": 530,
+        "gridContentBottom": 530,
+        "bottomClearance": 18,
+        "clientHeight": 318,
+        "scrollHeight": 9600054,
+        "scrollTop": 9599736
+      },
+      "tabReadCount": { "before20RoundTrips": 2, "after20RoundTrips": 2 },
+      "screenshots": [
+        "find-minimum.png",
+        "multisort-minimum.png",
+        "column-reorder-minimum.png",
+        "copy-failure-history-minimum.png",
+        "query-loading-minimum.png",
+        "tab-restore-minimum.png",
+        "last-row-minimum.png"
+      ]
+    }
+  ],
+  "assertions": {
+    "finalRowFullyVisible": true,
+    "finalRowBottomEquation": "cellBottom = gridContentBottom - bottomClearance",
+    "pageOverflow": false,
+    "multiSortApplyHitTest": true,
+    "tabRoundTripExtraPageReads": 0
+  },
+  "nativeStatus": "PASS",
+  "nativeEvidence": [
+    {
+      "scale": "100%",
+      "result": "PASS",
+      "file": "../native-results.json",
+      "screenshot": "native-desktop.png"
+    },
+    {
+      "scale": "150%",
+      "result": "PASS",
+      "file": "../native-results-150dpi.json",
+      "screenshot": "native-desktop-150dpi.png"
+    }
+  ]
+}

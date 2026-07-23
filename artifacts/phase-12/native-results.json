@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "overall": "PASS",
+  "startedAtUtc": "2026-07-21T22:20:16.783Z",
+  "finishedAtUtc": "2026-07-21T22:21:00.371Z",
+  "execution": {
+    "executable": "src-tauri/target/release/data-viewer.exe",
+    "buildFlavor": "release",
+    "browserMock": false,
+    "nativeRustIpc": true,
+    "url": "http://tauri.localhost/",
+    "title": "Data Viewer",
+    "devicePixelRatio": 1,
+    "cdpPort": 9333
+  },
+  "fixtures": {
+    "manifest": "artifacts/phase-12/fixture-manifest.json",
+    "reference": "artifacts/phase-12/reference-pages.json",
+    "low": ".tmp/phase12-query/query-low-5850000-15c.parquet",
+    "high": ".tmp/phase12-query/query-high-5850000-15c.parquet",
+    "h5": ".tmp/phase12-h5/valid-wide-copy.h5"
+  },
+  "checks": [
+    {
+      "id": "NATIVE12-PREFLIGHT",
+      "status": "PASS",
+      "summary": "manifest hash·size와 low/high/H5 실제 파일을 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE12-RUNTIME",
+      "status": "PASS",
+      "summary": "browser mock이 아닌 Tauri URL, Rust invoke와 WebView2 CDP를 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE12-LOW",
+      "status": "PASS",
+      "summary": "low-cardinality 정렬의 first/986803/last identity와 모든 Ctrl/Ctrl+Alt 방향, PageUp/Down을 확인했습니다.",
+      "details": {
+        "cardinality": "low",
+        "queryId": "frontend-query-1784672421180-1",
+        "sourceRowIds": {
+          "first": 0,
+          "reported986803": 3459093,
+          "last": 5849983
+        },
+        "elapsedMs": 2675.2333,
+        "navigation": {
+          "ctrlRightColumn": 3,
+          "pageDownRow": 8,
+          "timings": {
+            "Control+ArrowRight": 68.89879999999994,
+            "Control+ArrowLeft": 64.21950000000015,
+            "Control+ArrowDown": 63.30450000000019,
+            "Control+ArrowUp": 63.25430000000051,
+            "Control+Alt+ArrowRight": 73.89639999999963,
+            "Control+Alt+ArrowLeft": 81.98320000000058,
+            "Control+Alt+ArrowDown": 75.40490000000045,
+            "Control+Alt+ArrowUp": 59.45979999999963
+          },
+          "finalGeometry": {
+            "cellTop": 608,
+            "cellBottom": 656,
+            "cellHeight": 48,
+            "gridTop": 212,
+            "gridBottom": 690,
+            "gridContentBottom": 675,
+            "bottomClearance": 18,
+            "clientHeight": 463,
+            "scrollHeight": 9600054,
+            "scrollTop": 9599592,
+            "focused": true
+          }
+        }
+      }
+    },
+    {
+      "id": "NATIVE12-HIGH",
+      "status": "PASS",
+      "summary": "high-cardinality 정렬의 first/986803/last source identity를 실제 query page IPC로 확인했습니다.",
+      "details": {
+        "cardinality": "high",
+        "queryId": "frontend-query-1784672423829-2",
+        "sourceRowIds": {
+          "first": 3107820,
+          "reported986803": 452992,
+          "last": 4358590
+        },
+        "elapsedMs": 3309.8460999999998,
+        "navigation": null
+      }
+    },
+    {
+      "id": "NATIVE12-FIND-COPY",
+      "status": "PASS",
+      "summary": "명시적 Find로 986803행에 이동하고 query-aware 5.85M×1 raw copy와 Windows clipboard를 확인했습니다.",
+      "details": {
+        "queryId": "frontend-query-1784672427648-3",
+        "copyRequestProbeObserved": false,
+        "middleMatch": {
+          "logicalRow": 986803,
+          "sourceRowId": 3459093
+        },
+        "clipboard": {
+          "characters": 51538888,
+          "rows": 5850000,
+          "firstLine": "0",
+          "lastLine": "5849983",
+          "firstColumns": 1,
+          "lastColumns": 1,
+          "ipcProbeObserved": false
+        },
+        "geometry": {
+          "cellTop": 608,
+          "cellBottom": 656,
+          "cellHeight": 48,
+          "gridTop": 212,
+          "gridBottom": 690,
+          "gridContentBottom": 675,
+          "bottomClearance": 18,
+          "clientHeight": 463,
+          "scrollHeight": 9600054,
+          "scrollTop": 9599592,
+          "focused": true
+        }
+      }
+    },
+    {
+      "id": "NATIVE12-H5-COPY",
+      "status": "PASS",
+      "summary": "64열보다 넓은 H5 전체 선택을 backend copy하고 clipboard 행·열 및 마지막 행 geometry를 확인했습니다.",
+      "details": {
+        "rows": 4,
+        "columns": 257,
+        "clipboard": {
+          "characters": 5532,
+          "rows": 4,
+          "firstLine": "0\t0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\t23\t24\t25\t26\t27\t28\t29\t30\t31\t32\t33\t34\t35\t36\t37\t38\t39\t40\t41\t42\t43\t44\t45\t46\t47\t48\t49\t50\t51\t52\t53\t54\t55\t56\t57\t58\t59\t60\t61\t62\t63\t64\t65\t66\t67\t68\t69\t70\t71\t72\t73\t74\t75\t76\t77\t78\t79\t80\t81\t82\t83\t84\t85\t86\t87\t88\t89\t90\t91\t92\t93\t94\t95\t96\t97\t98\t99\t100\t101\t102\t103\t104\t105\t106\t107\t108\t109\t110\t111\t112\t113\t114\t115\t116\t117\t118\t119\t120\t121\t122\t123\t124\t125\t126\t127\t128\t129\t130\t131\t132\t133\t134\t135\t136\t137\t138\t139\t140\t141\t142\t143\t144\t145\t146\t147\t148\t149\t150\t151\t152\t153\t154\t155\t156\t157\t158\t159\t160\t161\t162\t163\t164\t165\t166\t167\t168\t169\t170\t171\t172\t173\t174\t175\t176\t177\t178\t179\t180\t181\t182\t183\t184\t185\t186\t187\t188\t189\t190\t191\t192\t193\t194\t195\t196\t197\t198\t199\t200\t201\t202\t203\t204\t205\t206\t207\t208\t209\t210\t211\t212\t213\t214\t215\t216\t217\t218\t219\t220\t221\t222\t223\t224\t225\t226\t227\t228\t229\t230\t231\t232\t233\t234\t235\t236\t237\t238\t239\t240\t241\t242\t243\t244\t245\t246\t247\t248\t249\t250\t251\t252\t253\t254\t255",
+          "lastLine": "3\t30000\t30001\t30002\t30003\t30004\t30005\t30006\t30007\t30008\t30009\t30010\t30011\t30012\t30013\t30014\t30015\t30016\t30017\t30018\t30019\t30020\t30021\t30022\t30023\t30024\t30025\t30026\t30027\t30028\t30029\t30030\t30031\t30032\t30033\t30034\t30035\t30036\t30037\t30038\t30039\t30040\t30041\t30042\t30043\t30044\t30045\t30046\t30047\t30048\t30049\t30050\t30051\t30052\t30053\t30054\t30055\t30056\t30057\t30058\t30059\t30060\t30061\t30062\t30063\t30064\t30065\t30066\t30067\t30068\t30069\t30070\t30071\t30072\t30073\t30074\t30075\t30076\t30077\t30078\t30079\t30080\t30081\t30082\t30083\t30084\t30085\t30086\t30087\t30088\t30089\t30090\t30091\t30092\t30093\t30094\t30095\t30096\t30097\t30098\t30099\t30100\t30101\t30102\t30103\t30104\t30105\t30106\t30107\t30108\t30109\t30110\t30111\t30112\t30113\t30114\t30115\t30116\t30117\t30118\t30119\t30120\t30121\t30122\t30123\t30124\t30125\t30126\t30127\t30128\t30129\t30130\t30131\t30132\t30133\t30134\t30135\t30136\t30137\t30138\t30139\t30140\t30141\t30142\t30143\t30144\t30145\t30146\t30147\t30148\t30149\t30150\t30151\t30152\t30153\t30154\t30155\t30156\t30157\t30158\t30159\t30160\t30161\t30162\t30163\t30164\t30165\t30166\t30167\t30168\t30169\t30170\t30171\t30172\t30173\t30174\t30175\t30176\t30177\t30178\t30179\t30180\t30181\t30182\t30183\t30184\t30185\t30186\t30187\t30188\t30189\t30190\t30191\t30192\t30193\t30194\t30195\t30196\t30197\t30198\t30199\t30200\t30201\t30202\t30203\t30204\t30205\t30206\t30207\t30208\t30209\t30210\t30211\t30212\t30213\t30214\t30215\t30216\t30217\t30218\t30219\t30220\t30221\t30222\t30223\t30224\t30225\t30226\t30227\t30228\t30229\t30230\t30231\t30232\t30233\t30234\t30235\t30236\t30237\t30238\t30239\t30240\t30241\t30242\t30243\t30244\t30245\t30246\t30247\t30248\t30249\t30250\t30251\t30252\t30253\t30254\t30255",
+          "firstColumns": 257,
+          "lastColumns": 257,
+          "ipcProbeObserved": false
+        },
+        "geometry": {
+          "cellTop": 354,
+          "cellBottom": 402,
+          "cellHeight": 48,
+          "gridTop": 174,
+          "gridBottom": 690,
+          "gridContentBottom": 675,
+          "bottomClearance": 18,
+          "clientHeight": 501,
+          "scrollHeight": 501,
+          "scrollTop": 0,
+          "focused": true
+        },
+        "copyRequestProbeObserved": false
+      }
+    },
+    {
+      "id": "NATIVE12-TAB-RESTORE",
+      "status": "PASS",
+      "summary": "20회 tab 왕복 동안 blank/blur/busy frame이 없었습니다. 로드 후 invoke hook 제한으로 page IPC 횟수는 browser E2E 증거를 사용합니다.",
+      "details": {
+        "iterations": 20,
+        "pageIpcDelta": null,
+        "ipcProbeObserved": false,
+        "sampledTransitions": 40
+      }
+    }
+  ],
+  "ipcCounts": {},
+  "artifacts": [
+    "artifacts/phase-12/native-results.json",
+    "artifacts/phase-12/ui/native-desktop.png",
+    "artifacts/phase-12/ui/native-smoke.md"
+  ],
+  "failure": null
+}

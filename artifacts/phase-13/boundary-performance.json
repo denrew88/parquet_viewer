@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "source": "rust-large-parquet.json",
+  "rows": 5850000,
+  "scenario": "active=true filtered result, row_id desc/group_id asc/category asc, optional_value Down from logical row 0",
+  "cases": [
+    {
+      "fixtureId": "boundary-5850000-low",
+      "fixtureSha256": "76f63843ec145047fff0596a5f7cdf9fca777dea2f319b27ceec22632b7f0def",
+      "resultRows": 2925000,
+      "queryElapsedMs": 1063.4141,
+      "expectedBoundaryTarget": 60,
+      "coldBoundaryMs": 9.9046,
+      "warmBoundaryMs": [0.0105, 0.004, 0.0032, 0.003, 0.0029],
+      "warmP95Ms": 0.0105,
+      "noTransitionTarget": 2924999,
+      "noTransitionColdMs": 0.0027,
+      "correctness": "PASS"
+    },
+    {
+      "fixtureId": "boundary-5850000-high",
+      "fixtureSha256": "30fc7b291f7c936311e74dbb785e3005ebb0d4d432f5795fad269b31de9e44ba",
+      "resultRows": 2925000,
+      "queryElapsedMs": 1674.9759,
+      "expectedBoundaryTarget": 60,
+      "coldBoundaryMs": 9.9971,
+      "warmBoundaryMs": [0.0096, 0.0032, 0.0029, 0.0027, 0.0028],
+      "warmP95Ms": 0.0096,
+      "noTransitionTarget": 2924999,
+      "noTransitionColdMs": 0.0024,
+      "correctness": "PASS"
+    }
+  ],
+  "measuredGates": {
+    "coldBoundaryMaximumMs": 2000,
+    "warmBoundaryP95MaximumMs": 250,
+    "status": "PASS"
+  },
+  "unmeasuredGates": {
+    "BNDPERF-001": "BLOCKED: non-empty fixed-width full scan이 아니라 near transition 시나리오",
+    "BNDPERF-003": "BLOCKED: long-string byte-cap fixture 미측정",
+    "BNDPERF-004": "BLOCKED: filtered Ctrl+Left/Right 20 random rows 미측정",
+    "BNDPERF-005": "BLOCKED: no-boundary scan 중 cancel 미측정"
+  },
+  "status": "PARTIAL"
+}

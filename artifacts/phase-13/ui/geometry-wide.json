@@ -1,0 +1,21 @@
+{
+  "result": "PASS",
+  "project": "desktop-wide",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "finalRow": {
+    "cellTop": 764,
+    "cellBottom": 812,
+    "cellHeight": 48,
+    "gridTop": 212,
+    "gridBottom": 830,
+    "gridContentBottom": 830,
+    "bottomClearance": 18,
+    "clientHeight": 618,
+    "scrollHeight": 9600054,
+    "mountedRows": 20,
+    "mountedCells": 220
+  }
+}

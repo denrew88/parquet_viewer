@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "source": "rust-large-csv.json",
+  "fixture": {
+    "id": "csv-5850000-low",
+    "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0"
+  },
+  "directCsv": {
+    "pageOffsets": [0, 986803, 5849800],
+    "pageLatencyMs": [1.0544, 330.4695, 1783.4368],
+    "pageP95Ms": 1783.4368
+  },
+  "duckDbOnDiskPrepared": {
+    "prepareElapsedMs": 151500.2361,
+    "preparedPageOffsets": [0, 1, 986803, 2925000, 5849800],
+    "preparedPageLatencyMs": [7.6482, 3.7304, 5.4346, 4.744, 4.7032],
+    "preparedPageP95Ms": 7.6482,
+    "pageP95SpeedupVersusRecordedDirect": 233.18386025470045,
+    "sampledPeakRssBytes": 676880384,
+    "tempHighWaterBytes": 459288586,
+    "cleanup": "PASS"
+  },
+  "parity": {
+    "firstRandomLastPages": "PASS",
+    "filteredSortedQuery": "PASS",
+    "sourceAndQueryBoundary": "PASS"
+  },
+  "unmeasured": {
+    "alternativePreparedCandidate": null,
+    "directFullBuildEquivalent": null,
+    "reason": "DuckDB on-disk 외 별도 prepared 후보는 구현·측정하지 않았다."
+  },
+  "status": "PARTIAL",
+  "decision": "DuckDB on-disk prepared 경로의 measured page/query/copy 성능과 정확성은 통과했으나 CSVPERF-011의 복수 후보 비교는 BLOCKED다."
+}

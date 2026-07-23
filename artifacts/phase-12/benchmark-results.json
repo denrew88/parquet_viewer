@@ -1,0 +1,4018 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-21T21:56:29.452427+00:00",
+  "status": "PASS",
+  "reason": null,
+  "fixtureManifest": "artifacts/phase-12/fixture-manifest.json",
+  "reference": "artifacts/phase-12/reference-pages.json",
+  "fixtureAudit": "artifacts/phase-12/fixture-audit.json",
+  "fixtures": [
+    {
+      "id": "query-low-5850000-rows-15-columns",
+      "cardinality": "low",
+      "path": ".tmp/phase12-query/query-low-5850000-15c.parquet",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroups": 59,
+      "bytes": 7800536,
+      "sha256": "b9d7cc1b0d0f7277e7474401790109a3ad23e3183cb3fd2829708d5c4212229b"
+    },
+    {
+      "id": "query-high-5850000-rows-15-columns",
+      "cardinality": "high",
+      "path": ".tmp/phase12-query/query-high-5850000-15c.parquet",
+      "rows": 5850000,
+      "columns": 15,
+      "rowGroups": 59,
+      "bytes": 560292380,
+      "sha256": "17d0d2153e500cc32f52ccf48d017130f3eae37286ea69e48d98c550b2507d09"
+    }
+  ],
+  "machine": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "logicalCpuCount": 8,
+    "storage": {
+      "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-bench\\temp",
+      "capacityBytes": 491993952256,
+      "freeBytes": 134012485632
+    }
+  },
+  "runner": {
+    "workingDirectory": ".",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "phase12_release",
+      "--",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "testFilter": "phase12_release",
+    "environment": {
+      "PHASE12_FIXTURE_MANIFEST": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\phase-12\\fixture-manifest.json",
+      "PHASE12_REFERENCE": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\phase-12\\reference-pages.json",
+      "PHASE12_RAW_RESULTS": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-bench\\raw-results.json",
+      "PHASE12_TEMP_ROOT": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase12-bench\\temp"
+    },
+    "exitCode": 0,
+    "stdoutTail": "\nrunning 1 test\ntest query::engine::tests::phase12_release_benchmark_evidence ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 202 filtered out; finished in 166.13s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "stderrTail": "    Finished `release` profile [optimized] target(s) in 0.68s\n     Running unittests src\\lib.rs (src-tauri\\target\\release\\deps\\data_viewer_lib-0d2a6b71052bbf0c.exe)\n     Running unittests src\\main.rs (src-tauri\\target\\release\\deps\\data_viewer-38325243c7afd3e1.exe)\n"
+  },
+  "protocol": {
+    "duckDbThreads": "record actual value for every run",
+    "coldRuns": 5,
+    "coldDefinition": "new process/connection/result/temp and empty application cache; OS file cache is observed, not forcibly purged",
+    "warmupRunsBeforeWarm": 1,
+    "warmRuns": 5,
+    "warmDefinition": "same fixture and OS cache, but a newly created result index/temp lease per run",
+    "statistics": [
+      "p50",
+      "p95 nearest-rank",
+      "max"
+    ],
+    "rssSamplingIntervalMsMaximum": 50,
+    "requiredResources": [
+      "peakRssBytes",
+      "tempHighWaterBytes"
+    ],
+    "requiredCounters": [
+      "identityRows",
+      "requestedColumns",
+      "sourceReadsBeforeIdentityLimit",
+      "selectedRowGroups",
+      "decodedRows",
+      "decodedColumns",
+      "pageValueIpcCalls",
+      "frontendValueBatchIpcCalls"
+    ]
+  },
+  "cases": [
+    {
+      "id": "index-low-group-id-asc",
+      "fixtureId": "query-low-5850000-rows-15-columns",
+      "operation": "prepareIndex",
+      "plan": {
+        "filters": [],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "index-low-selective-filter-3-sort",
+      "fixtureId": "query-low-5850000-rows-15-columns",
+      "operation": "prepareIndexAndFirstPage",
+      "plan": {
+        "filters": [
+          "active = true",
+          "optional_value IS NOT NULL",
+          "amount >= 10"
+        ],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "event_time DESC NULLS LAST",
+          "label ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "index-low-nonselective-filter-3-sort",
+      "fixtureId": "query-low-5850000-rows-15-columns",
+      "operation": "prepareIndexAndFirstPage",
+      "plan": {
+        "filters": [
+          "row_id >= 0"
+        ],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "event_time DESC NULLS LAST",
+          "label ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "prepared-pages-low",
+      "fixtureId": "query-low-5850000-rows-15-columns",
+      "operation": "readPreparedPages",
+      "referenceLabels": [
+        "first",
+        "middle",
+        "reported-986803",
+        "last",
+        "eof",
+        "seed-00..19"
+      ]
+    },
+    {
+      "id": "index-high-group-id-asc",
+      "fixtureId": "query-high-5850000-rows-15-columns",
+      "operation": "prepareIndex",
+      "plan": {
+        "filters": [],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "index-high-selective-filter-3-sort",
+      "fixtureId": "query-high-5850000-rows-15-columns",
+      "operation": "prepareIndexAndFirstPage",
+      "plan": {
+        "filters": [
+          "active = true",
+          "optional_value IS NOT NULL",
+          "amount >= 10"
+        ],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "event_time DESC NULLS LAST",
+          "label ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "index-high-nonselective-filter-3-sort",
+      "fixtureId": "query-high-5850000-rows-15-columns",
+      "operation": "prepareIndexAndFirstPage",
+      "plan": {
+        "filters": [
+          "row_id >= 0"
+        ],
+        "sort": [
+          "group_id ASC NULLS LAST",
+          "event_time DESC NULLS LAST",
+          "label ASC NULLS LAST",
+          "row_id ASC"
+        ]
+      }
+    },
+    {
+      "id": "prepared-pages-high",
+      "fixtureId": "query-high-5850000-rows-15-columns",
+      "operation": "readPreparedPages",
+      "referenceLabels": [
+        "first",
+        "middle",
+        "reported-986803",
+        "last",
+        "eof",
+        "seed-00..19"
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1039.676,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 189026304,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 939.5018,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 186920960,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 940.1511,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 186904576,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 940.9857,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 186691584,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 964.6931,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 188645376,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 939.198,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 188964864,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 939.9613,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 185978880,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 940.7387,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 186368000,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 938.6927,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 187756544,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 939.1701,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 188858368,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1482.862,
+      "pageDurationsMs": [
+        34.8735
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 271044608,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1513.3027000000002,
+      "pageDurationsMs": [
+        41.6139
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 271224832,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1493.6653,
+      "pageDurationsMs": [
+        44.9149
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 271167488,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 3,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1477.6321,
+      "pageDurationsMs": [
+        31.6397
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270958592,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1487.9622000000002,
+      "pageDurationsMs": [
+        41.3035
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270868480,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1484.9775,
+      "pageDurationsMs": [
+        37.7638
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 271306752,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1490.7714,
+      "pageDurationsMs": [
+        44.5286
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270974976,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 2,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1478.1994,
+      "pageDurationsMs": [
+        29.4004
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270815232,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1509.8349,
+      "pageDurationsMs": [
+        39.3796
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270970880,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 21,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1504.2077,
+      "pageDurationsMs": [
+        31.897300000000005
+      ],
+      "pageIdentityChecksum": 119950336,
+      "peakRssBytes": 270929920,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2605358,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2603.4483,
+      "pageDurationsMs": [
+        33.923700000000004
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512335872,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2621.9378,
+      "pageDurationsMs": [
+        31.3577
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512442368,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2734.3579,
+      "pageDurationsMs": [
+        41.8003
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512385024,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2636.3208999999997,
+      "pageDurationsMs": [
+        42.964099999999995
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512659456,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2624.114,
+      "pageDurationsMs": [
+        31.641
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512225280,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2503.4229,
+      "pageDurationsMs": [
+        37.3331
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512303104,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2633.6547,
+      "pageDurationsMs": [
+        42.6473
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512630784,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2660.8788,
+      "pageDurationsMs": [
+        70.48559999999999
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512450560,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2645.3701,
+      "pageDurationsMs": [
+        56.6292
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512299008,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 22,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2644.0719,
+      "pageDurationsMs": [
+        56.9455
+      ],
+      "pageIdentityChecksum": 118258688,
+      "peakRssBytes": 512528384,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 111.5653,
+      "pageDurationsMs": [
+        6.5978,
+        7.115200000000001,
+        5.1909,
+        2.4952,
+        0.8111,
+        3.0146,
+        4.502199999999999,
+        4.4401,
+        5.515199999999999,
+        5.66,
+        5.5896,
+        4.7635000000000005,
+        3.9629,
+        3.2163,
+        3.1700999999999997,
+        3.3295999999999997,
+        4.6806,
+        4.168200000000001,
+        3.3156000000000003,
+        4.359100000000001,
+        4.9878,
+        3.2083,
+        5.3576,
+        4.4276,
+        4.0498
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186466304,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 120.3102,
+      "pageDurationsMs": [
+        16.0112,
+        10.7423,
+        7.484400000000001,
+        3.0425,
+        1.0156,
+        3.5814000000000004,
+        3.5984,
+        3.4388,
+        4.2572,
+        4.7166999999999994,
+        5.3083,
+        3.7627,
+        3.3461,
+        3.4189,
+        2.8352999999999997,
+        3.3148,
+        3.8461,
+        3.985,
+        4.5519,
+        3.5467,
+        4.2546,
+        3.5344,
+        4.6165,
+        4.4685999999999995,
+        3.9236
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186929152,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 106.9455,
+      "pageDurationsMs": [
+        5.7459,
+        5.0794999999999995,
+        4.0907,
+        2.1089,
+        0.8486,
+        3.9412,
+        4.4872000000000005,
+        4.6846,
+        5.8047,
+        6.2584,
+        5.6304,
+        4.0162,
+        4.2206,
+        3.8258,
+        2.96,
+        4.1129,
+        3.6392,
+        3.9815,
+        3.8363,
+        4.3345,
+        4.4764,
+        3.4264,
+        5.4265,
+        4.7462,
+        3.8113
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186994688,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 105.7663,
+      "pageDurationsMs": [
+        5.3698,
+        4.3756,
+        3.5029000000000003,
+        1.9575,
+        0.7527,
+        3.7257,
+        3.7996,
+        4.3152,
+        4.8466000000000005,
+        5.6581,
+        5.5332,
+        4.0418,
+        4.4257,
+        3.8534,
+        2.9084,
+        3.6941,
+        3.9652,
+        3.9063,
+        4.6088,
+        4.5739,
+        4.9582999999999995,
+        4.6658,
+        5.3692,
+        5.4046,
+        4.207599999999999
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186593280,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 123.5744,
+      "pageDurationsMs": [
+        5.5926,
+        5.157,
+        4.9397,
+        2.6606,
+        1.2591,
+        4.8022,
+        6.6052,
+        6.030200000000001,
+        6.4962,
+        7.418100000000001,
+        7.9419,
+        5.8928,
+        5.891900000000001,
+        3.7623,
+        3.9793,
+        3.7044,
+        3.6432,
+        4.4995,
+        4.3512,
+        4.5437,
+        4.9927,
+        3.362,
+        5.172000000000001,
+        4.4674,
+        4.5226
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186810368,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 131.9261,
+      "pageDurationsMs": [
+        6.201,
+        5.6758,
+        5.1450000000000005,
+        2.8233,
+        1.4742,
+        4.4376,
+        5.7122,
+        7.517099999999999,
+        8.0057,
+        7.1047,
+        7.1926000000000005,
+        4.9333,
+        5.601,
+        4.946,
+        3.8207,
+        4.4646,
+        4.8888,
+        5.0139,
+        4.1125,
+        4.822500000000001,
+        5.2268,
+        4.1615,
+        6.4047,
+        6.2653,
+        4.6858
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 187080704,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 110.5114,
+      "pageDurationsMs": [
+        5.6233,
+        4.173900000000001,
+        4.0587,
+        2.464,
+        0.9748,
+        3.1796,
+        3.9716,
+        3.6162,
+        6.157100000000001,
+        4.9016,
+        5.7741,
+        4.1082,
+        4.3029,
+        3.6872,
+        7.468,
+        4.2594,
+        4.0062,
+        4.6509,
+        3.4290000000000003,
+        4.5278,
+        4.587199999999999,
+        3.6802,
+        5.244000000000001,
+        4.4510000000000005,
+        4.7726
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 187269120,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 115.3051,
+      "pageDurationsMs": [
+        6.9193,
+        6.092700000000001,
+        5.7747,
+        2.897,
+        0.8924,
+        3.6798,
+        4.8454,
+        5.3487,
+        5.9345,
+        7.039700000000001,
+        6.5436000000000005,
+        4.2118,
+        4.2219,
+        3.6365,
+        2.726,
+        3.7763,
+        3.9685,
+        4.327100000000001,
+        4.1227,
+        4.0527999999999995,
+        5.2074,
+        3.7745,
+        5.045100000000001,
+        4.9685,
+        3.5079
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 186454016,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 106.1922,
+      "pageDurationsMs": [
+        4.6895,
+        5.0735,
+        3.8935,
+        2.0214,
+        0.7303000000000001,
+        2.7905,
+        4.286,
+        3.749,
+        4.6375,
+        5.6371,
+        5.9611,
+        4.1154,
+        3.7856,
+        3.7197,
+        3.3714999999999997,
+        3.4451,
+        3.225,
+        4.8165,
+        3.3595,
+        4.4802,
+        5.3481,
+        5.3136,
+        6.5806,
+        5.0228,
+        3.9965
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 187875328,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 19,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 105.4637,
+      "pageDurationsMs": [
+        4.5119,
+        4.0135,
+        4.000100000000001,
+        2.6426000000000003,
+        0.7496,
+        2.9202,
+        3.9676,
+        4.3884,
+        5.3201,
+        5.9347,
+        6.0790999999999995,
+        4.2863,
+        4.5791,
+        3.2961,
+        3.7407,
+        4.4735000000000005,
+        3.7552,
+        4.5358,
+        3.7646,
+        4.9847,
+        5.3462,
+        3.3151,
+        5.4324,
+        4.3509,
+        3.12
+      ],
+      "pageIdentityChecksum": 15925659690,
+      "peakRssBytes": 185458688,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1041.7826,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 243752960,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1064.3294,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 243724288,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1042.2591000000002,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 241999872,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1043.0511,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 244736000,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1039.8341,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 242184192,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1040.1914000000002,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 245219328,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1041.7948,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 241336320,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1040.4009999999998,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 244838400,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1041.5067,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 244146176,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 0,
+        "decodedRows": 0,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 0,
+        "pageValueIpcCalls": 0,
+        "requestedColumns": 0,
+        "selectedRowGroups": 0,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1041.0318,
+      "pageDurationsMs": [],
+      "pageIdentityChecksum": 0,
+      "peakRssBytes": 242667520,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1635.9908,
+      "pageDurationsMs": [
+        86.1889
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 402624512,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1664.9153,
+      "pageDurationsMs": [
+        89.9504
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 402472960,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1651.8153,
+      "pageDurationsMs": [
+        79.53970000000001
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 403582976,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 3,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1685.1764,
+      "pageDurationsMs": [
+        110.5593
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 402677760,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1628.0081,
+      "pageDurationsMs": [
+        80.8075
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 402800640,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 5,
+      "tempHighWaterBytes": 8,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1765.4122000000002,
+      "pageDurationsMs": [
+        89.78949999999999
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 403030016,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1641.8082,
+      "pageDurationsMs": [
+        93.0202
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 402980864,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1632.3158,
+      "pageDurationsMs": [
+        81.5411
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 403853312,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1637.4042,
+      "pageDurationsMs": [
+        88.6555
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 403030016,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 57,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1637.7944,
+      "pageDurationsMs": [
+        85.7403
+      ],
+      "pageIdentityChecksum": 602339718,
+      "peakRssBytes": 403042304,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 2894845,
+      "sample": 5,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2466.6342,
+      "pageDurationsMs": [
+        81.312
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640020480,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2498.9775999999997,
+      "pageDurationsMs": [
+        111.4073
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640380928,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2483.7698,
+      "pageDurationsMs": [
+        98.9321
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 639934464,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 8,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2480.0011,
+      "pageDurationsMs": [
+        93.1492
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640540672,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2495.7186,
+      "pageDurationsMs": [
+        109.635
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640548864,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2492.0931,
+      "pageDurationsMs": [
+        104.5259
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640471040,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2485.7857,
+      "pageDurationsMs": [
+        97.9079
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640335872,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2505.4927,
+      "pageDurationsMs": [
+        119.1516
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640393216,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2500.0135,
+      "pageDurationsMs": [
+        110.3197
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640712704,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 200,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 1,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2598.1081,
+      "pageDurationsMs": [
+        107.6943
+      ],
+      "pageIdentityChecksum": 577322605,
+      "peakRssBytes": 640184320,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1891.0681,
+      "pageDurationsMs": [
+        86.8581,
+        80.8122,
+        82.1503,
+        82.52329999999999,
+        1.1956,
+        80.7211,
+        80.8219,
+        77.0974,
+        77.0187,
+        80.0295,
+        77.0087,
+        80.6995,
+        74.744,
+        74.8216,
+        77.9349,
+        79.52430000000001,
+        77.9498,
+        78.5494,
+        76.979,
+        78.99040000000001,
+        76.7683,
+        74.2206,
+        77.3904,
+        76.03949999999999,
+        78.3947
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 244973568,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1972.9935,
+      "pageDurationsMs": [
+        109.5074,
+        81.5239,
+        80.63470000000001,
+        81.2864,
+        1.2323,
+        79.8939,
+        83.74199999999999,
+        80.68939999999999,
+        81.16579999999999,
+        83.46520000000001,
+        83.53389999999999,
+        79.9276,
+        79.4471,
+        77.4509,
+        79.13430000000001,
+        84.2034,
+        79.01429999999999,
+        82.48010000000001,
+        82.8279,
+        82.4707,
+        79.0252,
+        79.0301,
+        77.4053,
+        78.7241,
+        82.01859999999999
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 245415936,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1917.3725,
+      "pageDurationsMs": [
+        105.016,
+        83.501,
+        78.65690000000001,
+        82.6925,
+        1.4435,
+        84.22590000000001,
+        80.9636,
+        78.2441,
+        80.32839999999999,
+        81.9409,
+        78.9838,
+        76.2159,
+        77.0975,
+        78.4974,
+        81.37469999999999,
+        78.7962,
+        74.5868,
+        74.57260000000001,
+        80.6957,
+        77.0106,
+        73.5779,
+        73.29769999999999,
+        79.6148,
+        78.0467,
+        75.12679999999999
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 241201152,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1909.8786,
+      "pageDurationsMs": [
+        83.355,
+        81.20429999999999,
+        83.8015,
+        84.8841,
+        1.0953,
+        83.1723,
+        80.7054,
+        79.78649999999999,
+        78.3037,
+        79.2383,
+        76.6568,
+        78.4915,
+        77.485,
+        82.7065,
+        79.8842,
+        81.2458,
+        72.74849999999999,
+        79.9537,
+        80.3248,
+        74.9228,
+        73.5701,
+        77.33760000000001,
+        77.70100000000001,
+        75.05199999999999,
+        83.35969999999999
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 243920896,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 9,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1962.5135,
+      "pageDurationsMs": [
+        84.3352,
+        80.0268,
+        77.443,
+        83.2016,
+        1.2463000000000002,
+        84.6798,
+        84.5456,
+        81.0731,
+        80.1149,
+        83.2483,
+        80.30900000000001,
+        80.85050000000001,
+        81.8523,
+        86.26989999999999,
+        86.0378,
+        83.0877,
+        80.3678,
+        82.4668,
+        82.1695,
+        79.3898,
+        78.8995,
+        77.6481,
+        77.2992,
+        83.6107,
+        79.5106
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 243216384,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 10,
+      "temperature": "cold"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 2163.8151,
+      "pageDurationsMs": [
+        101.6043,
+        86.1781,
+        86.8242,
+        85.2284,
+        1.2993,
+        92.2075,
+        95.6994,
+        89.5558,
+        84.321,
+        87.143,
+        84.11580000000001,
+        82.7577,
+        81.0984,
+        80.7548,
+        82.82159999999999,
+        103.0548,
+        117.4655,
+        92.9952,
+        88.35260000000001,
+        87.1962,
+        88.7671,
+        88.9462,
+        93.089,
+        88.9122,
+        90.6005
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 245075968,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 1,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1954.7661,
+      "pageDurationsMs": [
+        116.7484,
+        77.8566,
+        80.6818,
+        81.4816,
+        1.0094,
+        82.3319,
+        83.38940000000001,
+        78.826,
+        81.3995,
+        82.3638,
+        80.2745,
+        78.72959999999999,
+        76.9056,
+        79.514,
+        82.6665,
+        76.4447,
+        73.1774,
+        80.84389999999999,
+        82.80210000000001,
+        79.1872,
+        80.1124,
+        76.7482,
+        81.2641,
+        79.3403,
+        76.8331
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 243671040,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 2,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1966.4917,
+      "pageDurationsMs": [
+        96.2715,
+        84.2031,
+        87.3248,
+        85.206,
+        1.4327,
+        82.2725,
+        82.36930000000001,
+        85.3924,
+        80.3949,
+        85.6088,
+        83.1271,
+        85.2587,
+        76.8357,
+        77.2336,
+        81.004,
+        81.0882,
+        76.4725,
+        80.17739999999999,
+        78.784,
+        76.8659,
+        79.0402,
+        84.19980000000001,
+        77.65469999999999,
+        77.0001,
+        78.80470000000001
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 243810304,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 3,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1932.1155,
+      "pageDurationsMs": [
+        122.3815,
+        77.0264,
+        75.80040000000001,
+        76.60459999999999,
+        1.1613,
+        81.229,
+        84.1997,
+        75.96600000000001,
+        76.41340000000001,
+        82.6221,
+        80.7441,
+        80.00450000000001,
+        82.6453,
+        77.8071,
+        79.5741,
+        76.0137,
+        73.7119,
+        79.4768,
+        82.6413,
+        81.7961,
+        76.4816,
+        75.62299999999999,
+        76.5016,
+        73.4983,
+        77.341
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 241831936,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 4,
+      "tempHighWaterBytes": 10,
+      "temperature": "warm"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "counterScope": {
+        "identityAndProjection": "QueryResult page trace after the bounded physical-rowid slice",
+        "ipc": "backend read_page calls made by this release harness; it does not request frontend value batches",
+        "selectedRowGroupsAndDecodedValues": "Rust sparse Parquet provider reads after identity limiting; DuckDB materialization is represented by its physical plan and resultRows"
+      },
+      "counters": {
+        "decodedColumns": 1,
+        "decodedRows": 4800,
+        "frontendValueBatchIpcCalls": 0,
+        "identityRows": 200,
+        "pageValueIpcCalls": 25,
+        "requestedColumns": 1,
+        "selectedRowGroups": 59,
+        "sourceReadsBeforeIdentityLimit": 0
+      },
+      "duckDbThreads": 4,
+      "durationMs": 1957.9693,
+      "pageDurationsMs": [
+        103.5494,
+        82.27890000000001,
+        88.0396,
+        82.6245,
+        1.0790000000000002,
+        81.5033,
+        84.966,
+        78.0296,
+        79.0639,
+        84.5807,
+        80.1877,
+        80.05969999999999,
+        79.4136,
+        85.06869999999999,
+        77.88109999999999,
+        82.215,
+        75.0621,
+        78.23349999999999,
+        77.9926,
+        77.8388,
+        78.2394,
+        77.6366,
+        79.3974,
+        80.2317,
+        77.001
+      ],
+      "pageIdentityChecksum": 13840400963,
+      "peakRssBytes": 242896896,
+      "resourceMeasurement": {
+        "peakRss": "Windows K32GetProcessMemoryInfo PeakWorkingSetSize",
+        "samplingIntervalMs": 25,
+        "tempHighWater": "QueryTempManager process_bytes sampled every 25 ms"
+      },
+      "resultRows": 5850000,
+      "sample": 5,
+      "tempHighWaterBytes": 9,
+      "temperature": "warm"
+    }
+  ],
+  "summary": [
+    {
+      "caseId": "index-high-group-id-asc",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1042.2591000000002,
+        "p95": 1064.3294,
+        "max": 1064.3294
+      },
+      "peakRssBytes": 244736000,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": null
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1041.0318,
+        "p95": 1041.7948,
+        "max": 1041.7948
+      },
+      "peakRssBytes": 245219328,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": null
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 2483.7698,
+        "p95": 2498.9775999999997,
+        "max": 2498.9775999999997
+      },
+      "peakRssBytes": 640548864,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 98.9321,
+        "p95": 111.4073,
+        "max": 111.4073
+      }
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 2500.0135,
+        "p95": 2598.1081,
+        "max": 2598.1081
+      },
+      "peakRssBytes": 640712704,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 107.6943,
+        "p95": 119.1516,
+        "max": 119.1516
+      }
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1651.8153,
+        "p95": 1685.1764,
+        "max": 1685.1764
+      },
+      "peakRssBytes": 403582976,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 86.1889,
+        "p95": 110.5593,
+        "max": 110.5593
+      }
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1637.7944,
+        "p95": 1765.4122000000002,
+        "max": 1765.4122000000002
+      },
+      "peakRssBytes": 403853312,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 88.6555,
+        "p95": 93.0202,
+        "max": 93.0202
+      }
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 940.9857,
+        "p95": 1039.676,
+        "max": 1039.676
+      },
+      "peakRssBytes": 189026304,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": null
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 939.198,
+        "p95": 940.7387,
+        "max": 940.7387
+      },
+      "peakRssBytes": 188964864,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": null
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 2624.114,
+        "p95": 2734.3579,
+        "max": 2734.3579
+      },
+      "peakRssBytes": 512659456,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 33.923700000000004,
+        "p95": 42.964099999999995,
+        "max": 42.964099999999995
+      }
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 2644.0719,
+        "p95": 2660.8788,
+        "max": 2660.8788
+      },
+      "peakRssBytes": 512630784,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 56.6292,
+        "p95": 70.48559999999999,
+        "max": 70.48559999999999
+      }
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1487.9622000000002,
+        "p95": 1513.3027000000002,
+        "max": 1513.3027000000002
+      },
+      "peakRssBytes": 271224832,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 41.3035,
+        "p95": 44.9149,
+        "max": 44.9149
+      }
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1490.7714,
+        "p95": 1509.8349,
+        "max": 1509.8349
+      },
+      "peakRssBytes": 271306752,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 5,
+        "p50": 37.7638,
+        "p95": 44.5286,
+        "max": 44.5286
+      }
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1917.3725,
+        "p95": 1972.9935,
+        "max": 1972.9935
+      },
+      "peakRssBytes": 245415936,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 125,
+        "p50": 79.8842,
+        "p95": 84.6798,
+        "max": 109.5074
+      }
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 1957.9693,
+        "p95": 2163.8151,
+        "max": 2163.8151
+      },
+      "peakRssBytes": 245075968,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 125,
+        "p50": 80.7548,
+        "p95": 96.2715,
+        "max": 122.3815
+      }
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "temperature": "cold",
+      "runs": 5,
+      "durationMs": {
+        "p50": 111.5653,
+        "p95": 123.5744,
+        "max": 123.5744
+      },
+      "peakRssBytes": 186994688,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 125,
+        "p50": 4.3345,
+        "p95": 6.6052,
+        "max": 16.0112
+      }
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "temperature": "warm",
+      "runs": 5,
+      "durationMs": {
+        "p50": 110.5114,
+        "p95": 131.9261,
+        "max": 131.9261
+      },
+      "peakRssBytes": 187875328,
+      "tempHighWaterBytes": 10,
+      "pageDurationMs": {
+        "samples": 125,
+        "p50": 4.4376,
+        "p95": 6.9193,
+        "max": 8.0057
+      }
+    }
+  ],
+  "budgets": {
+    "caseDurationP95Ms": {
+      "index-low-group-id-asc": 1500.0,
+      "index-high-group-id-asc": 2000.0,
+      "index-low-selective-filter-3-sort": 2500.0,
+      "index-high-selective-filter-3-sort": 2500.0,
+      "index-low-nonselective-filter-3-sort": 4000.0,
+      "index-high-nonselective-filter-3-sort": 4000.0
+    },
+    "pageDurationP95Ms": {
+      "prepared-pages-low": 250.0,
+      "prepared-pages-high": 1000.0
+    },
+    "peakRssBytes": 1610612736,
+    "tempHighWaterBytes": 10737418240
+  },
+  "judgements": [
+    {
+      "caseId": "index-high-group-id-asc",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 244736000,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1064.3294,
+          "maximum": 2000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-high-group-id-asc",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 245219328,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1041.7948,
+          "maximum": 2000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 640548864,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 2498.9775999999997,
+          "maximum": 4000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-high-nonselective-filter-3-sort",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 640712704,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 2598.1081,
+          "maximum": 4000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 403582976,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1685.1764,
+          "maximum": 2500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-high-selective-filter-3-sort",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 403853312,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1765.4122000000002,
+          "maximum": 2500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 189026304,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1039.676,
+          "maximum": 1500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-group-id-asc",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 188964864,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 940.7387,
+          "maximum": 1500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 512659456,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 2734.3579,
+          "maximum": 4000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-nonselective-filter-3-sort",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 512630784,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 2660.8788,
+          "maximum": 4000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 271224832,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1513.3027000000002,
+          "maximum": 2500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "index-low-selective-filter-3-sort",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 271306752,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "durationP95": {
+          "actual": 1509.8349,
+          "maximum": 2500.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 245415936,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "pageDurationP95": {
+          "actual": 84.6798,
+          "maximum": 1000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "prepared-pages-high",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 245075968,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "pageDurationP95": {
+          "actual": 96.2715,
+          "maximum": 1000.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "temperature": "cold",
+      "checks": {
+        "peakRss": {
+          "actual": 186994688,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "pageDurationP95": {
+          "actual": 6.6052,
+          "maximum": 250.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "caseId": "prepared-pages-low",
+      "temperature": "warm",
+      "checks": {
+        "peakRss": {
+          "actual": 187875328,
+          "maximum": 1610612736,
+          "pass": true
+        },
+        "tempHighWater": {
+          "actual": 10,
+          "maximum": 10737418240,
+          "pass": true
+        },
+        "pageDurationP95": {
+          "actual": 6.9193,
+          "maximum": 250.0,
+          "pass": true
+        }
+      },
+      "result": "PASS"
+    }
+  ],
+  "measurementStatus": "MEASURED"
+}

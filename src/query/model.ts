@@ -1,5 +1,7 @@
+import type { DurationUnit } from "../backend";
+
 export type QueryScalarType =
-  "text" | "number" | "decimal" | "date" | "timestamp" | "boolean" | "other";
+  "text" | "number" | "decimal" | "date" | "timestamp" | "duration" | "boolean" | "other";
 
 export type FilterOperator =
   | "equals"
@@ -104,6 +106,17 @@ const operatorsByType: Record<QueryScalarType, FilterOperator[]> = {
     "oneOf",
     ...commonOperators,
   ],
+  duration: [
+    "equals",
+    "notEquals",
+    "greaterThan",
+    "greaterThanOrEqual",
+    "lessThan",
+    "lessThanOrEqual",
+    "between",
+    "oneOf",
+    ...commonOperators,
+  ],
   boolean: ["isTrue", "isFalse", "oneOf", ...commonOperators],
   other: commonOperators,
 };
@@ -126,7 +139,60 @@ export function requiredFilterValueCount(operator: FilterOperator): 0 | 1 | 2 {
   return operator === "between" ? 2 : 1;
 }
 
-export function validateFilter(filter: QueryFilter): string | null {
+const I64_MIN = -(1n << 63n);
+const I64_MAX = (1n << 63n) - 1n;
+const durationUnitNanoseconds: Record<DurationUnit, bigint> = {
+  s: 1_000_000_000n,
+  ms: 1_000_000n,
+  us: 1_000n,
+  ns: 1n,
+};
+
+function inI64(value: bigint): boolean {
+  return value >= I64_MIN && value <= I64_MAX;
+}
+
+export function isValidDurationLiteral(value: string, targetUnit?: DurationUnit): boolean {
+  const suffixed = /^([+-]?\d+)(ms|us|ns|s)$/.exec(value);
+  if (suffixed) {
+    try {
+      const count = BigInt(suffixed[1]);
+      if (!inI64(count)) return false;
+      if (!targetUnit) return true;
+      const nanoseconds = count * durationUnitNanoseconds[suffixed[2] as DurationUnit];
+      const divisor = durationUnitNanoseconds[targetUnit];
+      return nanoseconds % divisor === 0n && inI64(nanoseconds / divisor);
+    } catch {
+      return false;
+    }
+  }
+
+  const clock = /^([+-]?)(?:(\d+)d )?(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?$/.exec(value);
+  if (!clock) return false;
+  const hours = Number(clock[3]);
+  const minutes = Number(clock[4]);
+  const seconds = Number(clock[5]);
+  if (hours > 23 || minutes > 59 || seconds > 59) return false;
+  try {
+    const days = BigInt(clock[2] ?? "0");
+    const fraction = clock[6] ?? "";
+    const fractionNanoseconds = BigInt(fraction.padEnd(9, "0") || "0");
+    let nanoseconds =
+      (((days * 24n + BigInt(hours)) * 60n + BigInt(minutes)) * 60n + BigInt(seconds)) *
+        1_000_000_000n +
+      fractionNanoseconds;
+    if (clock[1] === "-") nanoseconds = -nanoseconds;
+    const units = targetUnit ? [targetUnit] : (["s", "ms", "us", "ns"] as const);
+    return units.some((unit) => {
+      const divisor = durationUnitNanoseconds[unit];
+      return nanoseconds % divisor === 0n && inI64(nanoseconds / divisor);
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function validateFilter(filter: QueryFilter, durationUnit?: DurationUnit): string | null {
   if (!filter.id.trim()) return "Filter id is required.";
   if (!filter.columnId.trim()) return "Column is required.";
   if (!operatorsByType[filter.scalarType].includes(filter.operator)) {
@@ -167,6 +233,10 @@ export function validateFilter(filter: QueryFilter): string | null {
         Number.isNaN(Date.parse(value)),
     );
     if (invalid !== undefined) return `“${invalid}” is not a valid timestamp.`;
+  }
+  if (filter.scalarType === "duration") {
+    const invalid = filter.values.find((value) => !isValidDurationLiteral(value, durationUnit));
+    if (invalid !== undefined) return `“${invalid}” is not a valid duration.`;
   }
   if (
     filter.scalarType === "boolean" &&
@@ -213,6 +283,29 @@ export function toggleSort(plan: QueryPlan, columnId: string, keepExisting: bool
   const sort = plan.sort.filter((candidate) => candidate.columnId !== columnId);
   if (next) sort.push(next);
   return { ...plan, sort };
+}
+
+export function setSort(plan: QueryPlan, sort: readonly QuerySort[]): QueryPlan {
+  const seen = new Set<string>();
+  const normalized = sort.filter((entry) => {
+    if (!entry.columnId.trim() || seen.has(entry.columnId)) return false;
+    seen.add(entry.columnId);
+    return true;
+  });
+  return { ...plan, sort: normalized.map((entry) => ({ ...entry, nullsLast: true })) };
+}
+
+export function moveSort(
+  sort: readonly QuerySort[],
+  columnId: string,
+  direction: -1 | 1,
+): QuerySort[] {
+  const index = sort.findIndex((entry) => entry.columnId === columnId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= sort.length) return [...sort];
+  const next = [...sort];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 export function resultKey(sessionId: string, queryId: string | null): string {

@@ -1,0 +1,83 @@
+{
+  "assertions": {
+    "activeQueriesZero": true,
+    "activeTasksZero": true,
+    "handlesNearWarmBaseline": true,
+    "queryTempGrowthZero": true,
+    "rssGrowthNotSustained": true
+  },
+  "baseline": {
+    "handleCount": 138,
+    "processTempBytes": 10,
+    "workingSetBytes": 17346560
+  },
+  "checkpoints": [
+    {
+      "cycle": 10,
+      "handleCount": 138,
+      "workingSetBytes": 20262912
+    },
+    {
+      "cycle": 20,
+      "handleCount": 138,
+      "workingSetBytes": 21311488
+    },
+    {
+      "cycle": 30,
+      "handleCount": 138,
+      "workingSetBytes": 24838144
+    },
+    {
+      "cycle": 40,
+      "handleCount": 138,
+      "workingSetBytes": 25493504
+    },
+    {
+      "cycle": 50,
+      "handleCount": 138,
+      "workingSetBytes": 25796608
+    },
+    {
+      "cycle": 60,
+      "handleCount": 138,
+      "workingSetBytes": 26120192
+    },
+    {
+      "cycle": 70,
+      "handleCount": 138,
+      "workingSetBytes": 25759744
+    },
+    {
+      "cycle": 80,
+      "handleCount": 138,
+      "workingSetBytes": 24014848
+    },
+    {
+      "cycle": 90,
+      "handleCount": 138,
+      "workingSetBytes": 25948160
+    },
+    {
+      "cycle": 100,
+      "handleCount": 138,
+      "workingSetBytes": 26869760
+    }
+  ],
+  "cycles": 100,
+  "final": {
+    "activeQueries": 0,
+    "activeTasks": 0,
+    "handleCount": 138,
+    "handleDelta": 0,
+    "processTempBytes": 10,
+    "processTempGrowthBytes": 0,
+    "retainedResults": 0,
+    "retainedStatuses": 0,
+    "workingSetBytes": 26869760,
+    "workingSetGrowthAfterCycle50Bytes": 1073152
+  },
+  "pagesRead": 200,
+  "queriesExecuted": 201,
+  "schemaVersion": 1,
+  "status": "PASS"
+}

@@ -67,25 +67,22 @@ test("changes copy presets without copying and saves the major custom copy contr
   await expect(page.getByRole("button", { name: "Copy selection" })).toContainText("Copy (CUSTOM)");
 });
 
-test("runs global find and filter, cycles sort, and applies a column filter popover", async ({
-  page,
-}) => {
+test("runs explicit find, cycles sort, and applies a column filter popover", async ({ page }) => {
   await page.goto("/");
   await openMockFile(page, "parquet", "typed-row-groups.parquet");
 
-  const search = page.getByRole("searchbox", { name: "Search data" });
-  await page.getByRole("button", { name: "Find" }).click();
+  await page.keyboard.press("Control+f");
+  const search = page.getByRole("searchbox", { name: "Find data" });
+  await expect(search).toBeFocused();
   await search.fill("9007199254740993");
+  await expect(page.getByText(/2 matches/)).toHaveCount(0);
+  await search.press("Enter");
   await expect(page.getByText(/2 matches/)).toBeVisible();
   await page.getByRole("button", { name: "Next match" }).click();
   await page.getByRole("button", { name: "Previous match" }).click();
-
-  await page.getByRole("button", { name: "Filter", exact: true }).click();
-  await search.fill("1234567890");
-  await expect(page.getByRole("grid", { name: "Data preview" })).toBeVisible();
-  const queryTools = page.getByLabel("Query tools");
-  await expect(queryTools.getByText(/Query queued|Scanning/)).toBeVisible();
-  await expect(queryTools.getByText(/Query queued|Scanning/)).toHaveCount(0);
+  await search.press("Escape");
+  await expect(search).toBeHidden();
+  await expect(page.getByRole("button", { name: "Filter", exact: true })).toHaveCount(0);
 
   const filterButton = page.getByRole("button", { name: "Filter id", exact: true });
   await filterButton.click();
@@ -169,7 +166,7 @@ test("validates application settings and temporary-storage controls", async ({ p
   const grid = page.getByRole("grid", { name: "Data preview" });
   await grid.press("Control+A");
   await page.getByRole("button", { name: "Copy selection" }).click();
-  await expect(page.locator(".copy-status")).toHaveText(
-    "Selection exceeds the configured 1,000-cell clipboard limit.",
+  await expect(page.locator(".copy-status")).toContainText(
+    "failed during preparing (selectionLimit): The selection exceeds the configured 1000-cell copy limit.",
   );
 });

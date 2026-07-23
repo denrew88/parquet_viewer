@@ -1,0 +1,39 @@
+{
+  "result": "PASS",
+  "project": "desktop-minimum",
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "source": {
+    "rowId": {
+      "x": 56,
+      "y": 212,
+      "width": 180,
+      "height": 36
+    },
+    "category": {
+      "x": 236,
+      "y": 212,
+      "width": 180,
+      "height": 36
+    }
+  },
+  "preview": {
+    "rowId": {
+      "x": 236,
+      "y": 212,
+      "width": 180,
+      "height": 36
+    }
+  },
+  "restored": {
+    "category": {
+      "x": 236,
+      "y": 212,
+      "width": 180,
+      "height": 36
+    }
+  },
+  "pageReadsDuringDrag": 0
+}

@@ -96,6 +96,37 @@ afterEach(() => {
 });
 
 describe("CsvProfileDialog", () => {
+  it("shows Duration source unit and input format only for Duration columns", () => {
+    render(<CsvProfileDialog {...props({ columns: columns(1) })} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select column_000" }));
+    expect(
+      screen.queryByRole("combobox", { name: "Duration source unit for selected columns" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Type for selected columns" }), {
+      target: { value: "Duration" },
+    });
+    const unit = screen.getByRole("combobox", {
+      name: "Duration source unit for selected columns",
+    });
+    const inputFormat = screen.getByRole("combobox", {
+      name: "Duration input format for selected columns",
+    });
+    expect(unit).toHaveValue("ns");
+    expect(inputFormat).toHaveValue("daysClock");
+    fireEvent.change(unit, { target: { value: "ms" } });
+    fireEvent.change(inputFormat, { target: { value: "rawInteger" } });
+    expect(unit).toHaveValue("ms");
+    expect(inputFormat).toHaveValue("rawInteger");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Type for selected columns" }), {
+      target: { value: "Text" },
+    });
+    expect(
+      screen.queryByRole("combobox", { name: "Duration source unit for selected columns" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("toggles a selected column off when its checkbox is clicked again", () => {
     render(<CsvProfileDialog {...props({ columns: columns(2) })} />);
     const checkbox = screen.getByRole("checkbox", { name: "Select column_000" });

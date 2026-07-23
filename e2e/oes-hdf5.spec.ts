@@ -29,7 +29,7 @@ test("opens a projected OES matrix and reaches the final wavelength without quer
   await expect(grid).toHaveAttribute("data-selection-left", "64");
   await expect(grid).toHaveAttribute("data-selection-right", "64");
   await page.getByRole("button", { name: "Copy selection" }).click();
-  await expect(page.locator(".copy-status")).toHaveText("Copied 1 rows.");
+  await expect(page.locator(".copy-status")).toContainText("completed: 1 rows copied");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("63");
 
   await grid.press("Control+Shift+ArrowLeft");
@@ -69,14 +69,21 @@ test("opens a projected OES matrix and reaches the final wavelength without quer
       return {
         cellTop: cellRect.top,
         cellBottom: cellRect.bottom,
+        cellHeight: cellRect.height,
         gridTop: gridRect.top,
         gridBottom: gridRect.bottom,
+        gridContentBottom: gridRect.top + (gridElement as HTMLElement).clientHeight,
+        bottomClearance: Number((gridElement as HTMLElement).dataset.bottomClearance),
       };
     },
     await grid.elementHandle(),
   );
   expect(bottomGeometry.cellTop).toBeGreaterThanOrEqual(bottomGeometry.gridTop + 36);
-  expect(bottomGeometry.cellBottom).toBeLessThanOrEqual(bottomGeometry.gridBottom + 1);
+  expect(bottomGeometry.cellHeight).toBe(48);
+  expect(bottomGeometry.cellBottom).toBeLessThanOrEqual(
+    bottomGeometry.gridContentBottom - bottomGeometry.bottomClearance + 1,
+  );
+  expect(bottomGeometry.gridContentBottom).toBeLessThanOrEqual(bottomGeometry.gridBottom);
   await expect(grid).toBeFocused();
 
   await grid.press("Control+Alt+ArrowUp");
@@ -94,7 +101,7 @@ test("opens a projected OES matrix and reaches the final wavelength without quer
   await expect(grid).toHaveAttribute("data-selection-top", "0");
   await expect(grid).toHaveAttribute("data-selection-bottom", "479");
   await page.getByRole("button", { name: "Copy selection" }).click();
-  await expect(page.locator(".copy-status")).toHaveText("Copied 480 rows.");
+  await expect(page.locator(".copy-status")).toContainText("completed: 480 rows copied");
 
   const copiedRows = (await page.evaluate(() => navigator.clipboard.readText()))
     .split(/\r?\n/)

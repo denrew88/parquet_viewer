@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useMemo, useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -7,14 +7,20 @@ import type {
   FileSummary,
   FindBoundaryRequest,
   FindBoundaryResponse,
+  CopyOperationStatus,
   ReadPageRequest,
+  StartCopyRequest,
 } from "./backend";
-import { VirtualDataGrid, type VirtualDataGridProps } from "./VirtualDataGrid";
+import {
+  VirtualDataGrid as ProductionVirtualDataGrid,
+  type VirtualDataGridProps,
+} from "./VirtualDataGrid";
 import {
   GRID_COLUMN_OVERSCAN,
   GRID_MAX_COLUMN_WIDTH,
   GRID_MAX_SEGMENT_ROWS,
   GRID_MIN_COLUMN_WIDTH,
+  GRID_ROW_HEIGHT,
   GRID_ROW_OVERSCAN,
   autoFitColumnWidth,
   segmentStartForRow,
@@ -27,6 +33,7 @@ import {
 import { COPY_PRESETS } from "./copy/presets";
 import { EMPTY_QUERY_PLAN, type QueryPlan } from "./query/model";
 import type { DistinctValuesState } from "./query/ColumnFilterPopover";
+import { DEFAULT_COPY_LIMITS, DEFAULT_DISPLAY_FORMATS } from "./settings/model";
 
 const columns = Array.from({ length: 120 }, (_, index) => `column_${index}`);
 
@@ -254,6 +261,66 @@ function makeNavigationPage(
   };
 }
 
+function completedCopy(request: StartCopyRequest): CopyOperationStatus {
+  const totalRows = request.selection.rowEndExclusive - request.selection.rowStart;
+  return {
+    ...request,
+    startedAt: "2026-07-21T12:00:00.000Z",
+    state: "complete",
+    stage: "complete",
+    progress: {
+      rowsProcessed: totalRows,
+      totalRows,
+      cellsProcessed: totalRows * request.selection.columnIds.length,
+      bytesSerialized: 32,
+    },
+    failure: null,
+  };
+}
+
+function copyOperationHarness() {
+  const startCopy = vi.fn<NonNullable<VirtualDataGridProps["startCopy"]>>(async (request) =>
+    completedCopy(request),
+  );
+  return {
+    startCopy,
+    getCopyStatus: vi.fn<NonNullable<VirtualDataGridProps["getCopyStatus"]>>(async () => {
+      throw new Error("A completed copy must not be polled.");
+    }),
+    cancelCopyOperation: vi.fn<NonNullable<VirtualDataGridProps["cancelCopyOperation"]>>(
+      async () => {
+        throw new Error("A completed copy cannot be cancelled.");
+      },
+    ),
+    getCopyHistory: vi.fn<NonNullable<VirtualDataGridProps["getCopyHistory"]>>(async () => ({
+      current: null,
+      previous: [],
+    })),
+  } satisfies Partial<VirtualDataGridProps>;
+}
+
+type TestVirtualDataGridProps = Omit<
+  VirtualDataGridProps,
+  "documentId" | "startCopy" | "getCopyStatus" | "cancelCopyOperation" | "getCopyHistory"
+> &
+  Partial<
+    Pick<
+      VirtualDataGridProps,
+      "documentId" | "startCopy" | "getCopyStatus" | "cancelCopyOperation" | "getCopyHistory"
+    >
+  >;
+
+function VirtualDataGrid(props: TestVirtualDataGridProps) {
+  const copyOperations = useMemo(copyOperationHarness, []);
+  return (
+    <ProductionVirtualDataGrid
+      documentId={props.documentId ?? "test-document"}
+      {...copyOperations}
+      {...props}
+    />
+  );
+}
+
 function renderGrid(
   readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
   writeClipboardText = vi.fn(async () => undefined),
@@ -261,6 +328,7 @@ function renderGrid(
   pageValue = makePage(),
   extraProps: Partial<VirtualDataGridProps> = {},
 ) {
+  const copyOperations = copyOperationHarness();
   const rendered = render(
     <div style={{ width: 1024, height: 600 }}>
       <VirtualDataGrid
@@ -271,6 +339,7 @@ function renderGrid(
         readPage={readPage}
         summary={summaryValue}
         writeClipboardText={writeClipboardText}
+        {...copyOperations}
         {...extraProps}
       />
     </div>,
@@ -279,6 +348,7 @@ function renderGrid(
     grid: screen.getByRole("grid", { name: "Data preview" }),
     readPage,
     writeClipboardText,
+    ...copyOperations,
     rerenderSummary(nextSummary: FileSummary) {
       rendered.rerender(
         <div style={{ width: 1024, height: 600 }}>
@@ -290,7 +360,26 @@ function renderGrid(
             readPage={readPage}
             summary={nextSummary}
             writeClipboardText={writeClipboardText}
+            {...copyOperations}
             {...extraProps}
+          />
+        </div>,
+      );
+    },
+    rerenderProps(nextProps: Partial<VirtualDataGridProps>) {
+      rendered.rerender(
+        <div style={{ width: 1024, height: 600 }}>
+          <VirtualDataGrid
+            isLoading={false}
+            onPageChange={vi.fn()}
+            onReadError={vi.fn()}
+            page={pageValue}
+            readPage={readPage}
+            summary={summaryValue}
+            writeClipboardText={writeClipboardText}
+            {...copyOperations}
+            {...extraProps}
+            {...nextProps}
           />
         </div>,
       );
@@ -348,7 +437,6 @@ describe("VirtualDataGrid", () => {
     const readPage = vi.fn(async (request: ReadPageRequest) =>
       makeOesPage(request.offset, request.columns),
     );
-    const writeClipboardText = vi.fn(async () => undefined);
     render(
       <StrictMode>
         <div style={{ width: 1024, height: 600 }}>
@@ -359,7 +447,6 @@ describe("VirtualDataGrid", () => {
             page={makeOesPage()}
             readPage={readPage}
             summary={oesSummary}
-            writeClipboardText={writeClipboardText}
           />
         </div>
       </StrictMode>,
@@ -381,8 +468,6 @@ describe("VirtualDataGrid", () => {
       }),
     );
     expect(grid).toHaveAttribute("data-active-column", "64");
-    fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith("0:64"));
   });
 
   it.each([65, 129])(
@@ -395,6 +480,7 @@ describe("VirtualDataGrid", () => {
       const writeClipboardText = vi.fn(async (text: string) => {
         void text;
       });
+      const copyOperations = copyOperationHarness();
       render(
         <div style={{ width: 1024, height: 600 }}>
           <VirtualDataGrid
@@ -405,6 +491,7 @@ describe("VirtualDataGrid", () => {
             readPage={readPage}
             summary={fixture.fixtureSummary}
             writeClipboardText={writeClipboardText}
+            {...copyOperations}
           />
         </div>,
       );
@@ -412,23 +499,21 @@ describe("VirtualDataGrid", () => {
       fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
       fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
 
-      await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
-      expect(readPage).toHaveBeenCalledTimes(Math.ceil(columnCount / 64));
-      for (const [request] of readPage.mock.calls) {
-        expect(request.columns!.length).toBeLessThanOrEqual(64);
-      }
-      const copied = writeClipboardText.mock.calls[0]![0];
-      const lines = copied.split("\r\n");
-      expect(lines).toHaveLength(2);
-      expect(lines[0].split("\t")).toHaveLength(columnCount);
-      expect(lines[0]).toMatch(new RegExp(`^R0C0\\t.*R0C${columnCount - 1}$`));
-      expect(lines[1]).toMatch(new RegExp(`^R1C0\\t.*R1C${columnCount - 1}$`));
+      await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+      expect(copyOperations.startCopy.mock.calls[0]![0].selection).toEqual({
+        rowStart: 0,
+        rowEndExclusive: 2,
+        columnIds: fixture.columnNames,
+      });
+      expect(readPage).not.toHaveBeenCalled();
+      expect(writeClipboardText).not.toHaveBeenCalled();
     },
   );
 
   it("uses configured cell and byte limits without a partial clipboard write", async () => {
     const fixture = makeWideCopyFixture(2);
     const writeClipboardText = vi.fn(async () => undefined);
+    const copyOperations = copyOperationHarness();
     const rendered = render(
       <div style={{ width: 1024, height: 600 }}>
         <VirtualDataGrid
@@ -442,13 +527,15 @@ describe("VirtualDataGrid", () => {
           )}
           summary={fixture.fixtureSummary}
           writeClipboardText={writeClipboardText}
+          {...copyOperations}
         />
       </div>,
     );
     const grid = screen.getByRole("grid", { name: "Data preview" });
     fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
-    expect(screen.getByRole("status")).toHaveTextContent("configured 1-cell");
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+    expect(copyOperations.startCopy.mock.calls[0]![0]).toMatchObject({ maxCells: 1 });
     expect(writeClipboardText).not.toHaveBeenCalled();
 
     rendered.rerender(
@@ -464,20 +551,38 @@ describe("VirtualDataGrid", () => {
           )}
           summary={fixture.fixtureSummary}
           writeClipboardText={writeClipboardText}
+          {...copyOperations}
         />
       </div>,
     );
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("5-byte"));
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(2));
+    expect(copyOperations.startCopy.mock.calls[1]![0]).toMatchObject({ maxBytes: 5 });
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
-  it("rejects a mismatched projection response without writing the clipboard", async () => {
+  it("shows the backend stage and reason for a typed copy failure", async () => {
     const fixture = makeWideCopyFixture(65);
     const writeClipboardText = vi.fn(async () => undefined);
     const readPage = vi.fn(async (request: ReadPageRequest) => ({
       ...fixture.pageFor(request.offset, request.columns),
       columns: ["wrong-column"],
+    }));
+    const copyOperations = copyOperationHarness();
+    let failedStatus: CopyOperationStatus | null = null;
+    copyOperations.startCopy.mockImplementation(async (request) => {
+      failedStatus = {
+        ...completedCopy(request),
+        state: "failed",
+        stage: "sourceRead",
+        progress: { rowsProcessed: 0, totalRows: 2, cellsProcessed: 0, bytesSerialized: 0 },
+        failure: { reason: "sourceRead", message: "The source page became unavailable." },
+      };
+      return failedStatus;
+    });
+    copyOperations.getCopyHistory.mockImplementation(async () => ({
+      current: failedStatus,
+      previous: [],
     }));
     render(
       <div style={{ width: 1024, height: 600 }}>
@@ -489,6 +594,7 @@ describe("VirtualDataGrid", () => {
           readPage={readPage}
           summary={fixture.fixtureSummary}
           writeClipboardText={writeClipboardText}
+          {...copyOperations}
         />
       </div>,
     );
@@ -497,18 +603,31 @@ describe("VirtualDataGrid", () => {
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent("did not match the requested range"),
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "failed during sourceRead (sourceRead): The source page became unavailable.",
+      ),
     );
+    expect(readPage).not.toHaveBeenCalled();
     expect(writeClipboardText).not.toHaveBeenCalled();
+    const historyTrigger = await screen.findByRole("button", { name: "Copy history" });
+    fireEvent.click(historyTrigger);
+    expect(screen.getByRole("list", { name: "Copy history" })).toHaveTextContent(
+      "sourceRead: The source page became unavailable.",
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("list", { name: "Copy history" })).not.toBeInTheDocument();
+    expect(historyTrigger).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 
-  it("rejects a short projection response when the selected row count is known", async () => {
+  it("passes byte limits atomically to the backend operation", async () => {
     const fixture = makeWideCopyFixture(65);
     const writeClipboardText = vi.fn(async () => undefined);
     const readPage = vi.fn(async (request: ReadPageRequest) => {
       const response = fixture.pageFor(request.offset, request.columns);
       return { ...response, rows: response.rows.slice(0, 1) };
     });
+    const copyOperations = copyOperationHarness();
     render(
       <div style={{ width: 1024, height: 600 }}>
         <VirtualDataGrid
@@ -519,6 +638,7 @@ describe("VirtualDataGrid", () => {
           readPage={readPage}
           summary={fixture.fixtureSummary}
           writeClipboardText={writeClipboardText}
+          {...copyOperations}
         />
       </div>,
     );
@@ -526,9 +646,12 @@ describe("VirtualDataGrid", () => {
     fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
 
-    await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent("did not match the requested range"),
-    );
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+    expect(copyOperations.startCopy.mock.calls[0]![0]).toMatchObject({
+      maxCells: DEFAULT_COPY_LIMITS.maxCells,
+      maxBytes: DEFAULT_COPY_LIMITS.maxBytes,
+    });
+    expect(readPage).not.toHaveBeenCalled();
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
@@ -758,10 +881,12 @@ describe("VirtualDataGrid", () => {
     fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true, altKey: true });
     fireEvent.keyDown(grid, { key: "ArrowUp", ctrlKey: true, shiftKey: true });
 
-    await waitFor(() => expect(grid).toHaveAttribute("data-active-row", "0"));
-    expect(resolver).toHaveBeenCalledWith(expect.objectContaining({ row: 1, direction: "up" }));
-    expect(grid).toHaveAttribute("data-selection-top", "0");
-    expect(grid).toHaveAttribute("data-selection-bottom", "1");
+    await waitFor(() => {
+      expect(resolver).toHaveBeenCalledWith(expect.objectContaining({ row: 1, direction: "up" }));
+      expect(grid).toHaveAttribute("data-active-row", "0");
+      expect(grid).toHaveAttribute("data-selection-top", "0");
+      expect(grid).toHaveAttribute("data-selection-bottom", "1");
+    });
   });
 
   it("NAV-RPC-005 cancels on selection and discards late response", async () => {
@@ -874,7 +999,7 @@ describe("VirtualDataGrid", () => {
     expect(compatiblePageFor(cachedPages, propPage, 600, ["column_0"])).toBe(cachedPages[2]);
   });
 
-  it("cycles stable multi-column sorts and exposes their priorities", () => {
+  it("treats Shift+header as the same single-column sort cycle", () => {
     render(<QueryGridHarness />);
 
     fireEvent.click(screen.getByRole("button", { name: "Sort column_0: not sorted" }));
@@ -888,26 +1013,240 @@ describe("VirtualDataGrid", () => {
     });
     expect(screen.getAllByLabelText(/Sort priority/).map((item) => item.textContent)).toEqual([
       "1",
-      "2",
     ]);
+    expect(
+      screen.queryByRole("button", { name: /Sort column_0: ascending/ }),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Sort column_0: ascending, priority 1" }), {
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_1: ascending, priority 1" }), {
       shiftKey: true,
     });
     expect(
-      screen.getByRole("button", { name: "Sort column_0: descending, priority 2" }),
+      screen.getByRole("button", { name: "Sort column_1: descending, priority 1" }),
     ).toBeInTheDocument();
     expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").sort).toEqual([
-      { columnId: "column_1", direction: "ascending", nullsLast: true },
-      { columnId: "column_0", direction: "descending", nullsLast: true },
+      { columnId: "column_1", direction: "descending", nullsLast: true },
     ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Sort column_0: descending, priority 2" }), {
+    fireEvent.click(screen.getByRole("button", { name: "Sort column_1: descending, priority 1" }), {
       shiftKey: true,
     });
-    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").sort).toEqual([
-      { columnId: "column_1", direction: "ascending", nullsLast: true },
-    ]);
+    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").sort).toEqual([]);
+  });
+
+  it("reorders columns by stable ID with Alt+Shift+Arrow", () => {
+    const { grid } = renderGrid();
+    fireEvent.keyDown(within(grid).getByRole("columnheader", { name: "column_1" }), {
+      altKey: true,
+      shiftKey: true,
+      key: "ArrowLeft",
+    });
+
+    const headers = within(grid)
+      .getAllByRole("columnheader")
+      .map((header) => header.getAttribute("aria-label"))
+      .filter((label): label is string => Boolean(label?.startsWith("column_")));
+    expect(headers.slice(0, 2)).toEqual(["column_1", "column_0"]);
+    fireEvent.click(within(grid).getByText("R0C1"));
+    expect(grid).toHaveAttribute("data-active-column", "0");
+  });
+
+  it("keeps new sort choices in immutable source schema order after column reorder", () => {
+    render(<QueryGridHarness />);
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.keyDown(within(grid).getByRole("columnheader", { name: "column_1" }), {
+      altKey: true,
+      shiftKey: true,
+      key: "ArrowLeft",
+    });
+    expect(
+      within(grid)
+        .getAllByRole("columnheader")
+        .map((header) => header.getAttribute("aria-label"))
+        .filter((label): label is string => Boolean(label?.startsWith("column_")))
+        .slice(0, 2),
+    ).toEqual(["column_1", "column_0"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sorts (0)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add level" }));
+    const listbox = screen.getByRole("listbox", { name: "Columns for sort priority 1" });
+    expect(
+      within(listbox)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["column_0", "column_1", "column_2", "column_3"]);
+  });
+
+  it("restores source column order while preserving the active column identity", () => {
+    const { grid } = renderGrid();
+    fireEvent.keyDown(within(grid).getByRole("columnheader", { name: "column_1" }), {
+      altKey: true,
+      shiftKey: true,
+      key: "ArrowLeft",
+    });
+    fireEvent.click(within(grid).getByText("R0C1"));
+    const restore = screen.getByRole("button", { name: "Restore source column order" });
+    expect(restore).toBeEnabled();
+    fireEvent.click(restore);
+    const headers = within(grid)
+      .getAllByRole("columnheader")
+      .map((header) => header.getAttribute("aria-label"))
+      .filter((label): label is string => Boolean(label?.startsWith("column_")));
+    expect(headers.slice(0, 2)).toEqual(["column_0", "column_1"]);
+    expect(grid).toHaveAttribute("data-active-column", "1");
+    expect(restore).toBeDisabled();
+  });
+
+  it("lifts the mounted column into a non-interactive strip during pointer reorder", () => {
+    const { grid, readPage } = renderGrid();
+    readPage.mockClear();
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, right: 1024, top: 0, bottom: 600, width: 1024, height: 600 }) as DOMRect;
+    const source = within(grid).getByRole("columnheader", { name: "column_1" });
+    Object.assign(source, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => false),
+      releasePointerCapture: vi.fn(),
+    });
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        clientX,
+        clientY: 18,
+      });
+      Object.defineProperties(event, {
+        isPrimary: { value: true },
+        pointerId: { value: 7 },
+      });
+      return event;
+    };
+    fireEvent(source, pointerEvent("pointerdown", 120));
+    fireEvent(source, pointerEvent("pointermove", 150));
+    const overlay = screen.getByTestId("column-drag-overlay");
+    expect(overlay).toHaveAttribute("aria-hidden", "true");
+    expect(overlay).toHaveTextContent("column_1");
+    const liftedCells = Array.from(overlay.querySelectorAll<HTMLElement>(".virtual-grid__cell"));
+    expect(liftedCells.length).toBeGreaterThan(1);
+    expect(liftedCells.length).toBeLessThanOrEqual(Number(grid.dataset.mountedRows));
+    expect(liftedCells[0]).toHaveStyle({ height: `${GRID_ROW_HEIGHT}px`, top: "36px" });
+    expect(Number.parseFloat(liftedCells[1]!.style.top)).toBe(
+      Number.parseFloat(liftedCells[0]!.style.top) + GRID_ROW_HEIGHT,
+    );
+    expect(source).toHaveClass("is-reordering");
+    expect(source.className).not.toContain("is-insert-");
+    expect(screen.getByRole("button", { name: "Restore source column order" })).toBeDisabled();
+    expect(readPage).not.toHaveBeenCalled();
+    fireEvent(source, pointerEvent("pointercancel", 150));
+    expect(screen.queryByTestId("column-drag-overlay")).not.toBeInTheDocument();
+  });
+
+  it("freezes projection reads during drag and resumes the latest projection after drop", async () => {
+    const readPage = vi.fn(async (request: ReadPageRequest) =>
+      makeOesPage(request.offset, request.columns),
+    );
+    const { grid } = renderGrid(readPage, undefined, oesSummary, makeOesPage());
+    await waitFor(() =>
+      expect(within(grid).getByRole("columnheader", { name: "400" })).toBeInTheDocument(),
+    );
+    readPage.mockClear();
+    const source = within(grid).getByRole("columnheader", { name: "400" });
+    Object.assign(source, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => false),
+      releasePointerCapture: vi.fn(),
+    });
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        clientX,
+        clientY: 18,
+      });
+      Object.defineProperties(event, {
+        isPrimary: { value: true },
+        pointerId: { value: 17 },
+      });
+      return event;
+    };
+    fireEvent(source, pointerEvent("pointerdown", 120));
+    fireEvent(source, pointerEvent("pointermove", 160));
+    grid.scrollLeft = 20_000;
+    fireEvent.scroll(grid);
+    fireEvent.keyDown(grid, { key: "End" });
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    expect(readPage).not.toHaveBeenCalled();
+
+    fireEvent(window, pointerEvent("pointerup", 160));
+    expect(screen.queryByTestId("column-drag-overlay")).not.toBeInTheDocument();
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(1));
+    expect(readPage.mock.calls[0]?.[0].columns).toContain("463");
+  });
+
+  it("locks every vertical wheel delta during column drag and retains horizontal edge scroll", async () => {
+    const { grid } = renderGrid();
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 1024 });
+    Object.defineProperty(grid, "scrollWidth", { configurable: true, value: 20_000 });
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, right: 1024, top: 0, bottom: 600, width: 1024, height: 600 }) as DOMRect;
+    const source = within(grid).getByRole("columnheader", { name: "column_1" });
+    Object.assign(source, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => false),
+      releasePointerCapture: vi.fn(),
+    });
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        clientX,
+        clientY: 18,
+      });
+      Object.defineProperties(event, {
+        isPrimary: { value: true },
+        pointerId: { value: 19 },
+      });
+      return event;
+    };
+    fireEvent(source, pointerEvent("pointerdown", 120));
+    fireEvent(source, pointerEvent("pointermove", 1010));
+    const beforeTop = grid.scrollTop;
+    const diagonalWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 120,
+      deltaY: 1,
+    });
+    fireEvent(grid, diagonalWheel);
+    expect(diagonalWheel.defaultPrevented).toBe(true);
+    expect(grid.scrollTop).toBe(beforeTop);
+    await waitFor(() => expect(grid.scrollLeft).toBeGreaterThan(0));
+    fireEvent(source, pointerEvent("pointercancel", 1010));
+  });
+
+  it("pauses page requests while its document tab is inactive", async () => {
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid } = renderGrid(readPage, undefined, summary, makePage(), { active: false });
+    Object.defineProperty(grid, "scrollTop", { configurable: true, writable: true, value: 4_000 });
+    fireEvent.scroll(grid);
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
+  it("does not restart adjacent prefetch when a cached tab becomes active", async () => {
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const cachedPage = {
+      ...makePage(),
+      limit: 10,
+      rows: makePage().rows.slice(0, 10),
+      hasMore: true,
+    };
+    const rendered = renderGrid(readPage, undefined, summary, cachedPage, { active: false });
+
+    rendered.rerenderProps({ active: true });
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    expect(readPage).not.toHaveBeenCalled();
   });
 
   it("builds one OR filter from multiple distinct values", async () => {
@@ -1018,7 +1357,14 @@ describe("VirtualDataGrid", () => {
     expect(screen.getByText("119 / 120 columns")).toBeInTheDocument();
     expect(within(grid).getByText("R0C0")).toBeInTheDocument();
 
-    fireEvent.click(within(chooser).getByRole("button", { name: "Show all" }));
+    if (!screen.queryByRole("dialog", { name: "Column chooser" })) {
+      fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    }
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Column chooser" })).getByRole("button", {
+        name: "Show all",
+      }),
+    );
     expect(screen.getByText("120 / 120 columns")).toBeInTheDocument();
   });
 
@@ -1068,6 +1414,7 @@ describe("VirtualDataGrid", () => {
     timestampPage.rows[0][0] = {
       kind: "timestamp",
       display: "2025-12-18 10:23:34.111111111",
+      sourceDisplay: "1766021014111111111",
       rawDisplay: "1766021014111111111 [unit=ns, timezone=Asia/Seoul]",
       state: "valid",
     };
@@ -1082,6 +1429,83 @@ describe("VirtualDataGrid", () => {
         "1766021014111111111 [unit=ns, timezone=Asia/Seoul]",
       ),
     );
+  });
+
+  it("reformats an open inspector when display settings change", () => {
+    const timestampPage = makePage();
+    timestampPage.rows[0][0] = {
+      kind: "timestamp",
+      display: "2025-12-18T10:23:34.111111111+09:00",
+      sourceDisplay: "1766021014111111111",
+      unit: "ns",
+      timezone: "+09:00",
+      rawDisplay: "1766021014111111111 [unit=ns, timezone=+09:00]",
+      state: "valid",
+    };
+    const { grid, rerenderProps } = renderGrid(undefined, undefined, summary, timestampPage);
+    fireEvent.doubleClick(
+      grid.querySelector<HTMLElement>('[data-grid-row="0"][data-grid-column="0"]')!,
+    );
+    const inspector = screen.getByRole("dialog", { name: "Full cell value" });
+    expect(within(inspector).getAllByText("2025-12-18 10:23:34.111111111")).not.toHaveLength(0);
+    rerenderProps({
+      displayFormats: {
+        ...DEFAULT_DISPLAY_FORMATS,
+        timestamp: {
+          ...DEFAULT_DISPLAY_FORMATS.timestamp,
+          dateTimeSeparator: "t",
+          timezoneSuffix: "offset",
+        },
+      },
+    });
+    expect(within(inspector).getAllByText("2025-12-18T10:23:34.111111111+09:00")).not.toHaveLength(
+      0,
+    );
+  });
+
+  it("does not commit a late single-cell copy after its grid becomes inactive", async () => {
+    let resolveValue!: (value: DataValue) => void;
+    const readCellValue = vi.fn(
+      () =>
+        new Promise<DataValue>((resolve) => {
+          resolveValue = resolve;
+        }),
+    );
+    const writeClipboardText = vi.fn(async () => undefined);
+    const timestampPage = makePage();
+    timestampPage.rows[0][0] = {
+      kind: "timestamp",
+      display: "2025-12-18T10:23:34Z",
+      sourceDisplay: "1",
+      unit: "ns",
+      timezone: "UTC",
+      rawDisplay: "1 [unit=ns, timezone=UTC]",
+      state: "valid",
+    };
+    const { grid, rerenderProps } = renderGrid(
+      undefined,
+      writeClipboardText,
+      summary,
+      timestampPage,
+      { readCellValue },
+    );
+    fireEvent.doubleClick(
+      grid.querySelector<HTMLElement>('[data-grid-row="0"][data-grid-column="0"]')!,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw value" }));
+    rerenderProps({ active: false });
+    resolveValue({
+      kind: "timestamp",
+      display: "2025-12-18T10:23:34Z",
+      sourceDisplay: "1",
+      unit: "ns",
+      timezone: "UTC",
+      rawDisplay: "1 [unit=ns, timezone=UTC]",
+      state: "valid",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("loads an explicit full binary value only when the inspector opens", async () => {
@@ -1202,22 +1626,85 @@ describe("VirtualDataGrid", () => {
     expect(grid).toHaveAttribute("data-active-column", "0");
   });
 
+  it("closes copy options on scroll and resize", () => {
+    renderGrid();
+    const trigger = screen.getByRole("button", { name: "Copy options" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Copy options" })).toBeInTheDocument();
+    fireEvent.scroll(window);
+    expect(screen.queryByRole("menu", { name: "Copy options" })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Copy options" })).toBeInTheDocument();
+    fireEvent.resize(window);
+    expect(screen.queryByRole("menu", { name: "Copy options" })).not.toBeInTheDocument();
+  });
+
   it("copies the logical selection once as exact TSV", async () => {
     const writeClipboardText = vi.fn(async () => undefined);
-    const { grid } = renderGrid(undefined, writeClipboardText);
+    const { grid, startCopy } = renderGrid(undefined, writeClipboardText);
     fireEvent.click(within(grid).getByText("R0C0"));
     fireEvent.click(within(grid).getByText("R2C1"), { shiftKey: true });
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
 
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
-    expect(writeClipboardText).toHaveBeenCalledWith("R0C0\tR0C1\r\nR1C0\tR1C1\r\nR2C0\tR2C1");
-    expect(screen.getByRole("status")).toHaveTextContent("Copied 3 rows");
+    await waitFor(() => expect(startCopy).toHaveBeenCalledTimes(1));
+    expect(startCopy.mock.calls[0]![0]).toMatchObject({
+      selection: { rowStart: 0, rowEndExclusive: 3, columnIds: ["column_0", "column_1"] },
+      options: { delimiter: "\t", includeHeaders: false, representation: "display" },
+    });
+    expect(writeClipboardText).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("3 rows copied");
+  });
+
+  it("warns above the Excel worksheet row limit without truncating the copy selection", async () => {
+    const totalRows = 1_048_577;
+    const largeSummary: FileSummary = {
+      ...summary,
+      rowCount: totalRows,
+      rowCountStatus: { ...summary.rowCountStatus, rowsScanned: totalRows },
+      columnCount: 1,
+      columns: summary.columns.slice(0, 1),
+    };
+    const largePage: DataPage = {
+      ...makePage(),
+      totalRows,
+      hasMore: true,
+      columns: ["column_0"],
+      rows: Array.from({ length: 200 }, (_, row) => [{ kind: "string", display: `R${row}C0` }]),
+    };
+    const copyOperations = copyOperationHarness();
+    render(
+      <div style={{ width: 1024, height: 600 }}>
+        <VirtualDataGrid
+          copyOptions={COPY_PRESETS.excel}
+          isLoading={false}
+          onPageChange={vi.fn()}
+          onReadError={vi.fn()}
+          page={largePage}
+          readPage={vi.fn(async () => largePage)}
+          summary={largeSummary}
+          {...copyOperations}
+        />
+      </div>,
+    );
+
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+    expect(screen.getByText(/Excel limit:/)).toHaveTextContent(
+      "Excel limit: 1,048,577 rows exceed 1,048,576; copy is not truncated.",
+    );
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+    expect(copyOperations.startCopy.mock.calls[0]![0].selection).toMatchObject({
+      rowStart: 0,
+      rowEndExclusive: totalRows,
+    });
   });
 
   it("uses the active copy preset for shortcuts and opens copy settings", async () => {
     const writeClipboardText = vi.fn(async () => undefined);
     const onOpenCopySettings = vi.fn();
     const onCopyPresetChange = vi.fn();
+    const copyOperations = copyOperationHarness();
     render(
       <div style={{ width: 1024, height: 600 }}>
         <VirtualDataGrid
@@ -1231,6 +1718,7 @@ describe("VirtualDataGrid", () => {
           readPage={vi.fn(async (request: ReadPageRequest) => makePage(request.offset))}
           summary={summary}
           writeClipboardText={writeClipboardText}
+          {...copyOperations}
         />
       </div>,
     );
@@ -1239,8 +1727,12 @@ describe("VirtualDataGrid", () => {
     fireEvent.click(within(grid).getByText("R0C1"), { shiftKey: true });
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
 
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
-    expect(writeClipboardText).toHaveBeenCalledWith("column_0,column_1\r\nR0C0,R0C1");
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+    expect(copyOperations.startCopy.mock.calls[0]![0].options).toMatchObject({
+      delimiter: ",",
+      includeHeaders: true,
+    });
+    expect(writeClipboardText).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Copy options" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
     expect(onOpenCopySettings).toHaveBeenCalledTimes(1);
@@ -1254,7 +1746,7 @@ describe("VirtualDataGrid", () => {
     );
     fireEvent.click(screen.getByRole("menuitemradio", { name: "TSV" }));
     expect(onCopyPresetChange).toHaveBeenCalledWith("tsv");
-    expect(writeClipboardText).toHaveBeenCalledTimes(1);
+    expect(copyOperations.startCopy).toHaveBeenCalledTimes(1);
 
     fireEvent.click(options);
     fireEvent.keyDown(screen.getByRole("menu", { name: "Copy options" }), { key: "End" });
@@ -1264,16 +1756,8 @@ describe("VirtualDataGrid", () => {
   });
 
   it("CPY-009 keeps an immutable preset snapshot for an in-flight copy", async () => {
-    let releaseFirstWrite: (() => void) | undefined;
-    const writeClipboardText = vi
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<void>((resolve) => {
-            releaseFirstWrite = resolve;
-          }),
-      )
-      .mockResolvedValue(undefined);
+    const writeClipboardText = vi.fn(async () => undefined);
+    const copyOperations = copyOperationHarness();
     const props = {
       isLoading: false,
       onPageChange: vi.fn(),
@@ -1282,6 +1766,7 @@ describe("VirtualDataGrid", () => {
       readPage: vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
       summary,
       writeClipboardText,
+      ...copyOperations,
     };
     const rendered = render(
       <div style={{ width: 1024, height: 600 }}>
@@ -1292,23 +1777,25 @@ describe("VirtualDataGrid", () => {
     fireEvent.click(within(grid).getByText("R0C0"));
     fireEvent.click(within(grid).getByText("R0C1"), { shiftKey: true });
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledWith("R0C0\tR0C1"));
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
+    const firstSnapshot = structuredClone(copyOperations.startCopy.mock.calls[0]![0]);
 
     rendered.rerender(
       <div style={{ width: 1024, height: 600 }}>
         <VirtualDataGrid {...props} copyOptions={COPY_PRESETS.csv} />
       </div>,
     );
-    releaseFirstWrite?.();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 rows"));
     fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(2));
-    expect(writeClipboardText).toHaveBeenLastCalledWith("R0C0,R0C1");
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(2));
+    expect(firstSnapshot.options.delimiter).toBe("\t");
+    expect(copyOperations.startCopy.mock.calls[0]![0]).toEqual(firstSnapshot);
+    expect(copyOperations.startCopy.mock.calls[1]![0].options.delimiter).toBe(",");
+    expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("preserves an in-range selection on right click and exposes accessible cell actions", async () => {
     const writeClipboardText = vi.fn(async () => undefined);
-    const { grid } = renderGrid(undefined, writeClipboardText);
+    const { grid, startCopy } = renderGrid(undefined, writeClipboardText);
     fireEvent.click(within(grid).getByText("R0C0"));
     fireEvent.click(within(grid).getByText("R2C1"), { shiftKey: true });
     fireEvent.contextMenu(within(grid).getByText("R1C1"), { clientX: 100, clientY: 120 });
@@ -1319,10 +1806,12 @@ describe("VirtualDataGrid", () => {
     expect(within(menu).getByRole("menuitem", { name: /Copy Ctrl\+C/ })).toHaveFocus();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy with column headers" }));
 
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
-    expect(writeClipboardText).toHaveBeenCalledWith(
-      "column_0\tcolumn_1\r\nR0C0\tR0C1\r\nR1C0\tR1C1\r\nR2C0\tR2C1",
-    );
+    await waitFor(() => expect(startCopy).toHaveBeenCalledTimes(1));
+    expect(startCopy.mock.calls[0]![0]).toMatchObject({
+      selection: { rowStart: 0, rowEndExclusive: 3, columnIds: ["column_0", "column_1"] },
+      options: { includeHeaders: true },
+    });
+    expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("selects an out-of-range context target and supports keyboard menu invocation", async () => {
@@ -1341,85 +1830,112 @@ describe("VirtualDataGrid", () => {
   });
 
   it("cancels a chunked copy without a partial clipboard write", async () => {
-    let release: ((page: DataPage) => void) | undefined;
-    const readPage = vi.fn(
-      (request: ReadPageRequest) =>
-        new Promise<DataPage>((resolve) => {
-          void request;
-          release = resolve;
-        }),
-    );
+    const copyOperations = copyOperationHarness();
+    copyOperations.startCopy.mockImplementation(async (request) => ({
+      ...completedCopy(request),
+      state: "running",
+      stage: "sourceRead",
+    }));
+    copyOperations.getCopyStatus.mockImplementation(async (request) => ({
+      ...completedCopy(copyOperations.startCopy.mock.calls[0]![0]),
+      ...request,
+      state: "running",
+      stage: "sourceRead",
+    }));
+    copyOperations.cancelCopyOperation.mockImplementation(async (request) => ({
+      ...completedCopy(copyOperations.startCopy.mock.calls[0]![0]),
+      ...request,
+      state: "cancelled",
+      stage: "sourceRead",
+      failure: { reason: "cancelled", message: "Cancelled by user." },
+    }));
     const writeClipboardText = vi.fn(async () => undefined);
-    const { grid } = renderGrid(readPage, writeClipboardText);
+    const { grid } = renderGrid(undefined, writeClipboardText, summary, makePage(), copyOperations);
     fireEvent.click(within(grid).getByRole("columnheader", { name: "column_0" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
-    await waitFor(() => expect(readPage).toHaveBeenCalled());
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "Cancel copy" }));
-    release?.(makePage(200));
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copy cancelled"));
+    await waitFor(() => expect(copyOperations.cancelCopyOperation).toHaveBeenCalledTimes(1));
+    expect(copyOperations.cancelCopyOperation.mock.calls[0]![0].operationId).toBe(
+      copyOperations.startCopy.mock.calls[0]![0].operationId,
+    );
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("cancelled"));
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("disables cancellation after the atomic clipboard commit starts", async () => {
-    let finishWrite: (() => void) | undefined;
-    const writeClipboardText = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishWrite = resolve;
-        }),
-    );
-    const { grid } = renderGrid(undefined, writeClipboardText);
+    const copyOperations = copyOperationHarness();
+    copyOperations.startCopy.mockImplementation(async (request) => ({
+      ...completedCopy(request),
+      state: "committing",
+      stage: "clipboardWrite",
+    }));
+    copyOperations.getCopyStatus.mockImplementation(async () => ({
+      ...completedCopy(copyOperations.startCopy.mock.calls[0]![0]),
+      state: "committing",
+      stage: "clipboardWrite",
+    }));
+    const writeClipboardText = vi.fn(async () => undefined);
+    const { grid } = renderGrid(undefined, writeClipboardText, summary, makePage(), copyOperations);
     fireEvent.click(within(grid).getByText("R0C0"));
     fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
 
-    await waitFor(() => expect(writeClipboardText).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "Cancel copy" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finishing copy" })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Writing clipboard");
-
-    finishWrite?.();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 rows"));
+    expect(screen.getByRole("status")).toHaveTextContent("committing / clipboardWrite");
+    expect(copyOperations.cancelCopyOperation).not.toHaveBeenCalled();
+    expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
   it("discards a pending copy when its grid unmounts", async () => {
-    let release: ((page: DataPage) => void) | undefined;
-    const readPage = vi.fn(
-      () =>
-        new Promise<DataPage>((resolve) => {
-          release = resolve;
-        }),
+    let release: ((status: CopyOperationStatus) => void) | undefined;
+    const copyOperations = copyOperationHarness();
+    copyOperations.startCopy.mockImplementation(
+      () => new Promise<CopyOperationStatus>((resolve) => (release = resolve)),
     );
     const writeClipboardText = vi.fn(async () => undefined);
-    const { grid, unmount } = renderGrid(readPage, writeClipboardText);
+    const { grid, unmount } = renderGrid(
+      undefined,
+      writeClipboardText,
+      summary,
+      makePage(),
+      copyOperations,
+    );
     fireEvent.click(within(grid).getByRole("columnheader", { name: "column_0" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
-    await waitFor(() => expect(readPage).toHaveBeenCalled());
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
 
     unmount();
-    release?.(makePage(200));
+    release?.(completedCopy(copyOperations.startCopy.mock.calls[0]![0]));
     await Promise.resolve();
 
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 
-  it("resets selection and pending copy when the query result key changes", async () => {
-    let release: ((page: DataPage) => void) | undefined;
-    const readPage = vi.fn(
-      () =>
-        new Promise<DataPage>((resolve) => {
-          release = resolve;
-        }),
-    );
+  it("preserves and collapses the logical active cell while cancelling pending copy", async () => {
+    const copyOperations = copyOperationHarness();
+    copyOperations.startCopy.mockImplementation(async (request) => ({
+      ...completedCopy(request),
+      state: "running",
+      stage: "sourceRead",
+    }));
+    copyOperations.getCopyStatus.mockImplementation(async () => ({
+      ...completedCopy(copyOperations.startCopy.mock.calls[0]![0]),
+      state: "running",
+      stage: "sourceRead",
+    }));
     const writeClipboardText = vi.fn(async () => undefined);
     const props = {
       isLoading: false,
       onPageChange: vi.fn(),
       onReadError: vi.fn(),
       page: makePage(),
-      readPage,
+      readPage: vi.fn(async (request: ReadPageRequest) => makePage(request.offset)),
       summary,
       writeClipboardText,
+      ...copyOperations,
     };
     const rendered = render(
       <div style={{ width: 1024, height: 600 }}>
@@ -1434,21 +1950,22 @@ describe("VirtualDataGrid", () => {
     expect(grid).toHaveAttribute("data-selection-top", "3");
     fireEvent.click(within(grid).getByRole("columnheader", { name: "column_0" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy selection" }));
-    await waitFor(() => expect(readPage).toHaveBeenCalled());
+    await waitFor(() => expect(copyOperations.startCopy).toHaveBeenCalledTimes(1));
 
     rendered.rerender(
       <div style={{ width: 1024, height: 600 }}>
         <VirtualDataGrid {...props} resultKey="wide-session:query-2" />
       </div>,
     );
-    expect(grid).toHaveAttribute("data-selection-top", "0");
+    expect(grid).toHaveAttribute("data-selection-top", "10239");
+    expect(grid).toHaveAttribute("data-selection-bottom", "10239");
     expect(grid).toHaveAttribute("data-selection-left", "0");
+    expect(grid).toHaveAttribute("data-selection-kind", "cell");
     expect(screen.getByRole("separator", { name: "Resize column_0" })).toHaveAttribute(
       "aria-valuenow",
       String(GRID_MAX_COLUMN_WIDTH),
     );
-    release?.(makePage(200));
-    await Promise.resolve();
+    expect(copyOperations.cancelCopyOperation).not.toHaveBeenCalled();
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
 });

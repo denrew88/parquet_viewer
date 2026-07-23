@@ -4,6 +4,8 @@ use crate::domain::{
     ValueKind,
 };
 
+use super::{duration_unit_name, parse_csv_duration};
+
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const SUPPORTED_DATE_FORMATS: &[&str] = &["YYYY-MM-DD", "YYYY/MM/DD", "DD-MM-YYYY"];
 const SUPPORTED_TIMESTAMP_FORMATS: &[&str] = &[
@@ -174,6 +176,11 @@ fn convert_value_with_display(
             options.timezone_offset_minutes,
         )
         .map(|value| (ValueKind::Timestamp, value)),
+        CsvTargetType::Duration => options
+            .duration_unit
+            .zip(options.duration_input_format)
+            .and_then(|(unit, input_format)| parse_csv_duration(value, unit, input_format))
+            .map(|value| (ValueKind::Duration, value.to_string())),
     };
 
     converted.map_or_else(
@@ -194,7 +201,15 @@ fn convert_value_with_display(
             } else {
                 normalized.clone()
             };
-            DataValue::converted(kind, display, raw).with_source(normalized)
+            let converted = DataValue::converted(kind, display, raw).with_source(normalized);
+            if kind == ValueKind::Duration {
+                converted.with_temporal_metadata(
+                    duration_unit_name(options.duration_unit.expect("validated duration unit")),
+                    None,
+                )
+            } else {
+                converted
+            }
         },
     )
 }
@@ -357,6 +372,19 @@ fn infer_column(source_index: usize, source_name: String, values: &[&str]) -> Cs
 }
 
 fn validate_column_options(column: &CsvColumnProfile) -> Result<(), DataError> {
+    let has_duration_options =
+        column.duration_unit.is_some() || column.duration_input_format.is_some();
+    if column.target_type == CsvTargetType::Duration {
+        if column.duration_unit.is_none() || column.duration_input_format.is_none() {
+            return Err(DataError::invalid_request(
+                "Duration columns require both a source unit and input format.",
+            ));
+        }
+    } else if has_duration_options {
+        return Err(DataError::invalid_request(
+            "Duration options are only valid for Duration columns.",
+        ));
+    }
     single_character(&column.decimal_separator, "decimal separator")?;
     column
         .thousand_separator
@@ -669,6 +697,7 @@ fn value_kind(target: CsvTargetType) -> ValueKind {
         CsvTargetType::Decimal => ValueKind::Decimal,
         CsvTargetType::Date => ValueKind::Date,
         CsvTargetType::Timestamp => ValueKind::Timestamp,
+        CsvTargetType::Duration => ValueKind::Duration,
         CsvTargetType::Skip => ValueKind::Unsupported,
     }
 }
@@ -922,6 +951,27 @@ mod tests {
         assert_eq!(
             convert_value("?", CsvTargetType::Boolean, &boolean).state,
             DataValueState::Null
+        );
+    }
+
+    #[test]
+    fn dur_csv_profile_requires_both_options_and_preserves_exact_count_and_unit() {
+        let mut duration =
+            CsvColumnProfile::new(0, String::from("elapsed"), CsvTargetType::Duration);
+        assert!(validate_column_options(&duration).is_err());
+        duration.duration_unit = Some(crate::domain::DurationUnit::Ms);
+        duration.duration_input_format = Some(crate::domain::CsvDurationInputFormat::DaysClock);
+        assert!(validate_column_options(&duration).is_ok());
+
+        let value = convert_value("-1d 00:00:00.001", CsvTargetType::Duration, &duration);
+        assert_eq!(value.kind, ValueKind::Duration);
+        assert_eq!(value.display.as_deref(), Some("-86400001"));
+        assert_eq!(value.source_display.as_deref(), Some("-86400001"));
+        assert_eq!(value.raw_display.as_deref(), Some("-1d 00:00:00.001"));
+        assert_eq!(value.unit.as_deref(), Some("ms"));
+        assert_eq!(
+            convert_value("00:00:00.000001", CsvTargetType::Duration, &duration).state,
+            DataValueState::Invalid
         );
     }
 }

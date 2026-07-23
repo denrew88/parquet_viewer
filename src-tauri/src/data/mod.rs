@@ -1,6 +1,8 @@
 mod boundary;
+mod cell_state_bitmap;
 mod csv_profile;
 mod csv_source;
+mod duration;
 mod oes_hdf5_source;
 mod parquet_source;
 mod registry;
@@ -18,6 +20,9 @@ mod phase3_tests;
 
 pub(crate) use boundary::find_boundary as resolve_boundary;
 pub(crate) use boundary::validate_request as validate_boundary_request;
+pub(crate) use duration::{
+    duration_unit_from_logical_type, duration_unit_name, parse_csv_duration, parse_query_duration,
+};
 #[cfg(test)]
 pub use parquet_source::ParquetSource;
 pub use registry::builtin_format_registry;
@@ -28,6 +33,7 @@ pub(crate) use source::{
 };
 pub use source::{
     CsvHeaderConfigurable, CsvProfileConfigurable, CsvQuerySpec, CsvValidationProgress, DataSource,
-    FormatHandler, QueryExactValues, QueryInputProvider, QueryPrepareContext, QuerySourceSpec,
-    TabularSource,
+    FormatHandler, QueryExactValues, QueryInputProvider, QueryPreparationMetrics,
+    QueryPrepareContext, QuerySourceSpec, TabularSource,
 };
+pub(crate) use value_format::format_data_value_display;

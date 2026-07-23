@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "phase": 12,
+  "status": "PASS_WITH_SEPARATE_NATIVE_EVIDENCE",
+  "reason": "The browser mock passed all 12 Phase 12 E2E cases in three viewports; separate release evidence passed WebView2 at 100% and 150% scale, real Rust IPC, release performance, and Windows clipboard checks.",
+  "spec": "e2e/phase12.spec.ts",
+  "command": "npm run test:e2e -- e2e/phase12.spec.ts",
+  "result": "12 passed",
+  "viewports": ["desktop-wide", "desktop-compact", "desktop-minimum"],
+  "mappings": [
+    {
+      "testIds": ["QUX-003", "QUX-004", "QUX-005"],
+      "result": "PASS_BROWSER",
+      "scenario": "explicit Find without the global match-only Filter mode",
+      "assertions": [
+        "typing backend calls = 0",
+        "Enter/Search commits exactly once",
+        "Ctrl+F focus, Escape surface, and previous/next controls use the committed query"
+      ],
+      "evidence": [
+        "ui/find-wide.png",
+        "ui/find-compact.png",
+        "ui/find-minimum.png",
+        "ui/interaction-results.md"
+      ]
+    },
+    {
+      "testIds": ["QUX-006", "QUX-007", "RACE-009", "UI12-003"],
+      "result": "PASS_BROWSER",
+      "scenario": "logical focus preservation after query commit",
+      "assertions": [
+        "logical row and column are preserved",
+        "range collapses to one active cell",
+        "navigation target is mounted and visible before the shortcut settles"
+      ],
+      "evidence": ["ui/geometry-results.json", "ui/interaction-results.md"]
+    },
+    {
+      "testIds": ["QUX-008", "RACE-006", "RACE-008", "UI12-009"],
+      "result": "PASS_BROWSER",
+      "scenario": "file-tab reorder, pending switch, and 20 cache-valid round trips",
+      "assertions": [
+        "pending page never overwrites the other document",
+        "20 round trips add zero page reads",
+        "file-tab menu reorder retains the active document"
+      ],
+      "evidence": [
+        "ui/tab-restore-wide.png",
+        "ui/tab-restore-compact.png",
+        "ui/tab-restore-minimum.png",
+        "ui/tab-reads-wide.json",
+        "ui/tab-reads-compact.json",
+        "ui/tab-reads-minimum.json",
+        "ui/interaction-results.md"
+      ]
+    },
+    {
+      "testIds": ["QUX-009"],
+      "result": "PASS_BROWSER",
+      "scenario": "column-header menu reorder",
+      "assertions": [
+        "visible column ID order changes",
+        "selection remaps to logical IDs",
+        "copy snapshot follows the reordered visible columns"
+      ],
+      "evidence": [
+        "ui/column-reorder-wide.png",
+        "ui/column-reorder-compact.png",
+        "ui/column-reorder-minimum.png",
+        "ui/geometry-results.json"
+      ]
+    },
+    {
+      "testIds": ["QUX-010"],
+      "result": "PASS_BROWSER",
+      "scenario": "staged multi-sort panel and Shift-header plan",
+      "assertions": [
+        "direction and priority edits make zero backend calls before Apply",
+        "Apply commits exactly once",
+        "priority badges and dialog controls are reachable in all viewports"
+      ],
+      "evidence": [
+        "ui/multisort-wide.png",
+        "ui/multisort-compact.png",
+        "ui/multisort-minimum.png",
+        "ui/interaction-results.md"
+      ]
+    },
+    {
+      "testIds": ["RACE-005", "RACE-006", "UI12-001", "UI12-002", "UI12-004", "UI12-005"],
+      "result": "PASS_BROWSER_PARTIAL",
+      "scenario": "foreground loading and stale-page disposal",
+      "assertions": [
+        "controlled in-flight read exposes aria-busy and Loading page",
+        "loading reaches a terminal populated state",
+        "stale page does not cross document identity",
+        "all three viewport interactions pass"
+      ],
+      "limitations": [
+        "typed page-error and 15-second timeout/retry screens were not forced in this browser run"
+      ],
+      "evidence": [
+        "ui/query-loading-wide.png",
+        "ui/query-loading-compact.png",
+        "ui/query-loading-minimum.png",
+        "ui/geometry-results.json",
+        "ui/interaction-results.md"
+      ]
+    },
+    {
+      "testIds": ["NAV12-007", "NAV12-008", "NAV12-009", "NAV12-010"],
+      "result": "PASS_BROWSER_PARTIAL",
+      "scenario": "query-aware keyboard navigation",
+      "assertions": [
+        "Ctrl and Ctrl+Alt each issue one boundary request",
+        "Shift preserves anchor and selection rect",
+        "PageUp/PageDown returns to a fully visible final-row target",
+        "sorted query coordinates remain logical"
+      ],
+      "limitations": ["native WebView2 IPC count and release latency remain unverified"],
+      "evidence": ["ui/last-row-wide.png", "ui/geometry-results.json", "ui/interaction-results.md"]
+    },
+    {
+      "testIds": ["COPY12-001", "COPY12-002", "COPY12-003"],
+      "result": "PASS_BROWSER_PARTIAL",
+      "scenario": "query-aware copy selection snapshot",
+      "assertions": [
+        "copy carries the committed query ID",
+        "logical row range is preserved",
+        "only visible reordered columns are sent in visible order"
+      ],
+      "limitations": [
+        "the browser mock validates the request snapshot, not a full 5.85M backend serialization hash"
+      ],
+      "evidence": ["ui/column-reorder-wide.png", "ui/interaction-results.md"]
+    },
+    {
+      "testIds": ["COPY12-009", "COPY12-010", "UI12-008"],
+      "result": "PASS_BROWSER_PARTIAL",
+      "scenario": "copy current/history and typed failure display",
+      "assertions": [
+        "Retry creates a distinct operation ID",
+        "current and previous attempts are both visible",
+        "selectionLimit and preparing stage are shown",
+        "history remains inside all three viewports"
+      ],
+      "limitations": ["only selectionLimit was forced; the complete typed error taxonomy is not covered"],
+      "evidence": [
+        "ui/copy-failure-history-wide.png",
+        "ui/copy-failure-history-compact.png",
+        "ui/copy-failure-history-minimum.png",
+        "ui/interaction-results.md"
+      ]
+    },
+    {
+      "testIds": ["UI12-007"],
+      "result": "PASS_BROWSER",
+      "scenario": "complete final-row geometry",
+      "assertions": [
+        "cell height is 48px",
+        "cellBottom equals gridContentBottom minus the 18px bottom clearance",
+        "the final row is fully visible in all browser viewports"
+      ],
+      "evidence": [
+        "ui/last-row-wide.png",
+        "ui/last-row-compact.png",
+        "ui/last-row-minimum.png",
+        "ui/geometry-results.json"
+      ]
+    }
+  ],
+  "nativeOnly": [
+    {
+      "item": "UI12-006 actual WebView2 IPC/focus/resource parity",
+      "result": "PASS_NATIVE",
+      "evidence": "native-results.json"
+    },
+    {
+      "item": "UI12-007 100% and 150% DPI native scrollbar geometry",
+      "result": "PASS_NATIVE",
+      "evidence": ["native-results.json", "native-results-150dpi.json"]
+    },
+    {
+      "item": "COPY12-012 Windows clipboard and Excel warning",
+      "result": "PASS_WINDOWS_CLIPBOARD",
+      "limitation": "Actual Excel-process paste remains an external environment check.",
+      "evidence": "native-results.json"
+    },
+    {
+      "item": "H5-007 product static Blosc/Zstd runtime",
+      "result": "PASS_NATIVE",
+      "evidence": ["h5-matrix-results.json", "native-results.json"]
+    }
+  ]
+}

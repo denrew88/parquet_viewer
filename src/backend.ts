@@ -18,6 +18,7 @@ export type DataValueKind =
   | "decimal"
   | "date"
   | "timestamp"
+  | "duration"
   | "list"
   | "struct"
   | "map"
@@ -33,6 +34,7 @@ const dataValueKinds: readonly DataValueKind[] = [
   "decimal",
   "date",
   "timestamp",
+  "duration",
   "list",
   "struct",
   "map",
@@ -68,9 +70,12 @@ export type CsvTargetType =
   | "decimal"
   | "date"
   | "timestamp"
+  | "duration"
   | "skip";
 export type CsvConversionFailurePolicy = "preserveInvalid" | "fail" | "asNull";
 export type CsvTimezonePolicy = "preserve" | "assumeUtc" | "fixedOffset";
+export type DurationUnit = "s" | "ms" | "us" | "ns";
+export type CsvDurationInputFormat = "rawInteger" | "daysClock";
 
 export interface CsvColumnProfileWire {
   sourceIndex: number;
@@ -85,6 +90,8 @@ export interface CsvColumnProfileWire {
   temporalFormats: string[];
   timezonePolicy: CsvTimezonePolicy;
   timezoneOffsetMinutes: number | null;
+  durationUnit: DurationUnit | null;
+  durationInputFormat: CsvDurationInputFormat | null;
   failurePolicy: CsvConversionFailurePolicy;
 }
 
@@ -137,6 +144,22 @@ export interface CsvProfileValidationRequest extends CsvProfilePreviewRequest {
 }
 
 export type CsvValidationState = "queued" | "running" | "complete" | "cancelled" | "failed";
+
+export type CsvPreparationState = "preparing" | "ready" | "cancelled" | "failed";
+
+export interface CsvPreparationStatus {
+  documentId: string;
+  sessionId: string;
+  state: CsvPreparationState;
+  rowsScanned: number;
+  totalRows: number | null;
+  sourceReadBytes: number;
+  totalBytes: number;
+  cacheOutputBytes: number;
+  navigationFrontierRow: number;
+  elapsedMs: number;
+  error: { code: string; message: string } | null;
+}
 
 export interface CsvValidationStatusWire {
   taskId: string;
@@ -194,6 +217,7 @@ export interface ReadQueryPageRequest {
   queryId: string;
   offset: number;
   limit: number;
+  columns: string[];
 }
 
 export interface ReadQueryPageResponse {
@@ -201,6 +225,82 @@ export interface ReadQueryPageResponse {
   sessionId: string;
   queryId: string;
   page: DataPage;
+}
+
+export type CopyRepresentation = "display" | "rawCanonical";
+export type CopyOperationState =
+  "queued" | "running" | "cancelling" | "committing" | "complete" | "cancelled" | "failed";
+export type CopyOperationStage =
+  "preparing" | "sourceRead" | "serialize" | "clipboardWrite" | "complete";
+export type CopyFailureReason =
+  | "selectionLimit"
+  | "byteLimit"
+  | "sourceRead"
+  | "queryStale"
+  | "cancelled"
+  | "serialize"
+  | "clipboardWrite";
+
+export interface CopyOptionsSnapshotWire {
+  delimiter: string;
+  includeHeaders: boolean;
+  quoteMode: "minimal" | "always" | "none";
+  quoteCharacter: string;
+  escapeMode: "double" | "backslash";
+  lineEnding: "crlf" | "lf";
+  nullRepresentation: string;
+  emptyStringRepresentation: "empty" | "quoted-empty";
+  booleanRepresentation: "lowercase" | "uppercase" | "numeric";
+  dateTimeRepresentation:
+    { mode: "display" } | { mode: "iso8601" } | { mode: "custom"; format: string };
+  representation: CopyRepresentation;
+}
+
+export interface CopySelectionSnapshotWire {
+  rowStart: number;
+  rowEndExclusive: number;
+  columnIds: string[];
+}
+
+export interface StartCopyRequest {
+  operationId: string;
+  documentId: string;
+  sessionId: string;
+  queryId: string | null;
+  selection: CopySelectionSnapshotWire;
+  options: CopyOptionsSnapshotWire;
+  maxCells: number;
+  maxBytes: number;
+}
+
+export interface CopyOperationIdentity {
+  operationId: string;
+  documentId: string;
+  sessionId: string;
+}
+
+export interface CopyOperationStatus {
+  operationId: string;
+  startedAt: string;
+  documentId: string;
+  sessionId: string;
+  queryId: string | null;
+  selection: CopySelectionSnapshotWire;
+  options: CopyOptionsSnapshotWire;
+  state: CopyOperationState;
+  stage: CopyOperationStage;
+  progress: {
+    rowsProcessed: number;
+    totalRows: number;
+    cellsProcessed: number;
+    bytesSerialized: number;
+  };
+  failure: { reason: CopyFailureReason; message: string } | null;
+}
+
+export interface CopyOperationHistory {
+  current: CopyOperationStatus | null;
+  previous: CopyOperationStatus[];
 }
 
 export interface DistinctValuesRequest {
@@ -529,6 +629,12 @@ export interface BackendAdapter {
     taskId: string,
   ): Promise<CsvValidationStatusWire>;
   applyCsvProfile(request: ApplyCsvProfileRequest): Promise<DocumentSummaryResponse>;
+  prepareCsvSession(documentId: string, sessionId: string): Promise<CsvPreparationStatus>;
+  getCsvPreparationStatus(
+    documentId: string,
+    sessionId: string,
+  ): Promise<CsvPreparationStatus | null>;
+  cancelCsvPreparation(documentId: string, sessionId: string): Promise<CsvPreparationStatus | null>;
   executeQuery(request: ExecuteQueryRequest): Promise<QueryStatusResponse>;
   getQueryStatus(
     documentId: string,
@@ -537,6 +643,10 @@ export interface BackendAdapter {
     taskId: string,
   ): Promise<QueryStatusResponse>;
   readQueryPage(request: ReadQueryPageRequest): Promise<ReadQueryPageResponse>;
+  startCopy(request: StartCopyRequest): Promise<CopyOperationStatus>;
+  getCopyStatus(request: CopyOperationIdentity): Promise<CopyOperationStatus>;
+  cancelCopy(request: CopyOperationIdentity): Promise<CopyOperationStatus>;
+  getCopyHistory(documentId: string, sessionId: string): Promise<CopyOperationHistory>;
   listDistinctValues(request: DistinctValuesRequest): Promise<DistinctValuesResponse>;
   findQueryMatch(request: FindQueryMatchRequest): Promise<FindQueryMatchResponse>;
   cancelQuery(
@@ -607,6 +717,7 @@ const csvTargetTypes: readonly CsvTargetType[] = [
   "decimal",
   "date",
   "timestamp",
+  "duration",
   "skip",
 ];
 const csvFailurePolicies: readonly CsvConversionFailurePolicy[] = [
@@ -615,6 +726,8 @@ const csvFailurePolicies: readonly CsvConversionFailurePolicy[] = [
   "asNull",
 ];
 const csvTimezonePolicies: readonly CsvTimezonePolicy[] = ["preserve", "assumeUtc", "fixedOffset"];
+const durationUnits: readonly DurationUnit[] = ["s", "ms", "us", "ns"];
+const csvDurationInputFormats: readonly CsvDurationInputFormat[] = ["rawInteger", "daysClock"];
 const csvValidationStates: readonly CsvValidationState[] = [
   "queued",
   "running",
@@ -649,6 +762,8 @@ function parseCsvColumnProfile(value: unknown, expectedIndex: number): CsvColumn
       "temporalFormats",
       "timezonePolicy",
       "timezoneOffsetMinutes",
+      "durationUnit",
+      "durationInputFormat",
       "failurePolicy",
     ]) ||
     item.sourceIndex !== expectedIndex ||
@@ -676,6 +791,10 @@ function parseCsvColumnProfile(value: unknown, expectedIndex: number): CsvColumn
         timezoneOffset < -1_439 ||
         timezoneOffset > 1_439)) ||
     (item.timezonePolicy === "fixedOffset" ? timezoneOffset === null : timezoneOffset !== null) ||
+    (item.targetType === "duration"
+      ? !durationUnits.includes(item.durationUnit as DurationUnit) ||
+        !csvDurationInputFormats.includes(item.durationInputFormat as CsvDurationInputFormat)
+      : item.durationUnit !== null || item.durationInputFormat !== null) ||
     !csvFailurePolicies.includes(item.failurePolicy as CsvConversionFailurePolicy)
   ) {
     throw new DataViewerError("InvalidResponse", "The backend returned an invalid CSV profile.");
@@ -693,6 +812,8 @@ function parseCsvColumnProfile(value: unknown, expectedIndex: number): CsvColumn
     temporalFormats,
     timezonePolicy: item.timezonePolicy as CsvTimezonePolicy,
     timezoneOffsetMinutes: timezoneOffset as number | null,
+    durationUnit: item.durationUnit as DurationUnit | null,
+    durationInputFormat: item.durationInputFormat as CsvDurationInputFormat | null,
     failurePolicy: item.failurePolicy as CsvConversionFailurePolicy,
   };
 }
@@ -953,6 +1074,70 @@ export function parseCsvValidationStatus(value: unknown): CsvValidationStatusWir
   };
 }
 
+export function parseCsvPreparationStatus(value: unknown): CsvPreparationStatus {
+  const item = record(value);
+  const errorRecord = record(item?.error);
+  const error =
+    item?.error === null
+      ? null
+      : errorRecord &&
+          exactObjectKeys(errorRecord, ["code", "message"]) &&
+          isNonEmptyString(errorRecord.code) &&
+          isNonEmptyString(errorRecord.message)
+        ? { code: errorRecord.code, message: errorRecord.message }
+        : undefined;
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "documentId",
+      "sessionId",
+      "state",
+      "rowsScanned",
+      "totalRows",
+      "sourceReadBytes",
+      "totalBytes",
+      "cacheOutputBytes",
+      "navigationFrontierRow",
+      "elapsedMs",
+      "error",
+    ]) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    !(["preparing", "ready", "cancelled", "failed"] as const).includes(
+      item.state as CsvPreparationState,
+    ) ||
+    !isNonNegativeInteger(item.rowsScanned) ||
+    (item.totalRows !== null && !isNonNegativeInteger(item.totalRows)) ||
+    (isNonNegativeInteger(item.totalRows) && item.rowsScanned > item.totalRows) ||
+    !isNonNegativeInteger(item.sourceReadBytes) ||
+    !isNonNegativeInteger(item.totalBytes) ||
+    !isNonNegativeInteger(item.cacheOutputBytes) ||
+    !isNonNegativeInteger(item.navigationFrontierRow) ||
+    item.navigationFrontierRow > item.rowsScanned ||
+    !isNonNegativeInteger(item.elapsedMs) ||
+    error === undefined ||
+    (item.state === "failed" ? error === null : error !== null)
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned an invalid CSV preparation status.",
+    );
+  }
+  return {
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    state: item.state as CsvPreparationState,
+    rowsScanned: item.rowsScanned,
+    totalRows: item.totalRows as number | null,
+    sourceReadBytes: item.sourceReadBytes,
+    totalBytes: item.totalBytes,
+    cacheOutputBytes: item.cacheOutputBytes,
+    navigationFrontierRow: item.navigationFrontierRow,
+    elapsedMs: item.elapsedMs,
+    error,
+  };
+}
+
 function validatedCsvPreviewRequest(request: CsvProfilePreviewRequest): CsvProfilePreviewRequest {
   const profile = parseCsvParsingProfile(request.profile);
   if (
@@ -983,6 +1168,7 @@ const queryScalarTypes = [
   "decimal",
   "date",
   "timestamp",
+  "duration",
   "boolean",
   "other",
 ] as const;
@@ -1218,6 +1404,217 @@ export function parseReadQueryPageResponse(value: unknown): ReadQueryPageRespons
     sessionId: item.sessionId,
     queryId: item.queryId,
     page: parseDataPage({ ...page, sessionId: item.sessionId }),
+  };
+}
+
+const copyOperationStates: readonly CopyOperationState[] = [
+  "queued",
+  "running",
+  "cancelling",
+  "committing",
+  "complete",
+  "cancelled",
+  "failed",
+];
+const copyOperationStages: readonly CopyOperationStage[] = [
+  "preparing",
+  "sourceRead",
+  "serialize",
+  "clipboardWrite",
+  "complete",
+];
+const copyFailureReasons: readonly CopyFailureReason[] = [
+  "selectionLimit",
+  "byteLimit",
+  "sourceRead",
+  "queryStale",
+  "cancelled",
+  "serialize",
+  "clipboardWrite",
+];
+
+function parseCopySelection(value: unknown): CopySelectionSnapshotWire {
+  const item = record(value);
+  const columnIds = stringArray(item?.columnIds);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["rowStart", "rowEndExclusive", "columnIds"]) ||
+    !isNonNegativeInteger(item.rowStart) ||
+    !isNonNegativeInteger(item.rowEndExclusive) ||
+    item.rowStart >= item.rowEndExclusive ||
+    !columnIds ||
+    columnIds.length < 1 ||
+    columnIds.length > 16_384 ||
+    columnIds.some((column) => !isNonEmptyString(column)) ||
+    !hasUniqueValues(columnIds)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The copy selection snapshot is invalid.");
+  }
+  return {
+    rowStart: item.rowStart,
+    rowEndExclusive: item.rowEndExclusive,
+    columnIds: [...columnIds],
+  };
+}
+
+function parseCopyOptions(value: unknown): CopyOptionsSnapshotWire {
+  const item = record(value);
+  const dateTime = record(item?.dateTimeRepresentation);
+  const dateMode = dateTime?.mode;
+  const validDateTime =
+    dateTime &&
+    (dateMode === "display" || dateMode === "iso8601"
+      ? exactObjectKeys(dateTime, ["mode"])
+      : dateMode === "custom" &&
+        exactObjectKeys(dateTime, ["mode", "format"]) &&
+        isNonEmptyString(dateTime.format) &&
+        dateTime.format.length <= 256);
+  const oneSafeCharacter = (candidate: unknown) =>
+    typeof candidate === "string" &&
+    [...candidate].length === 1 &&
+    candidate !== "\r" &&
+    candidate !== "\n" &&
+    candidate !== "\0";
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "delimiter",
+      "includeHeaders",
+      "quoteMode",
+      "quoteCharacter",
+      "escapeMode",
+      "lineEnding",
+      "nullRepresentation",
+      "emptyStringRepresentation",
+      "booleanRepresentation",
+      "dateTimeRepresentation",
+      "representation",
+    ]) ||
+    !oneSafeCharacter(item.delimiter) ||
+    !oneSafeCharacter(item.quoteCharacter) ||
+    item.delimiter === item.quoteCharacter ||
+    typeof item.includeHeaders !== "boolean" ||
+    !["minimal", "always", "none"].includes(item.quoteMode as string) ||
+    !["double", "backslash"].includes(item.escapeMode as string) ||
+    !["crlf", "lf"].includes(item.lineEnding as string) ||
+    typeof item.nullRepresentation !== "string" ||
+    item.nullRepresentation.includes(item.delimiter as string) ||
+    /[\r\n\0]/u.test(item.nullRepresentation) ||
+    !["empty", "quoted-empty"].includes(item.emptyStringRepresentation as string) ||
+    !["lowercase", "uppercase", "numeric"].includes(item.booleanRepresentation as string) ||
+    !validDateTime ||
+    (item.representation !== "display" && item.representation !== "rawCanonical")
+  ) {
+    throw new DataViewerError("InvalidResponse", "The copy formatting snapshot is invalid.");
+  }
+  return {
+    delimiter: item.delimiter as string,
+    includeHeaders: item.includeHeaders as boolean,
+    quoteMode: item.quoteMode as CopyOptionsSnapshotWire["quoteMode"],
+    quoteCharacter: item.quoteCharacter as string,
+    escapeMode: item.escapeMode as CopyOptionsSnapshotWire["escapeMode"],
+    lineEnding: item.lineEnding as CopyOptionsSnapshotWire["lineEnding"],
+    nullRepresentation: item.nullRepresentation,
+    emptyStringRepresentation:
+      item.emptyStringRepresentation as CopyOptionsSnapshotWire["emptyStringRepresentation"],
+    booleanRepresentation:
+      item.booleanRepresentation as CopyOptionsSnapshotWire["booleanRepresentation"],
+    dateTimeRepresentation:
+      dateTime as unknown as CopyOptionsSnapshotWire["dateTimeRepresentation"],
+    representation: item.representation,
+  };
+}
+
+export function parseCopyOperationStatus(value: unknown): CopyOperationStatus {
+  const item = record(value);
+  const progress = record(item?.progress);
+  const failureItem = item?.failure === null ? null : record(item?.failure);
+  const failure =
+    item?.failure === null
+      ? null
+      : failureItem &&
+          exactObjectKeys(failureItem, ["reason", "message"]) &&
+          copyFailureReasons.includes(failureItem.reason as CopyFailureReason) &&
+          isNonEmptyString(failureItem.message)
+        ? {
+            reason: failureItem.reason as CopyFailureReason,
+            message: failureItem.message,
+          }
+        : undefined;
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "operationId",
+      "startedAt",
+      "documentId",
+      "sessionId",
+      "queryId",
+      "selection",
+      "options",
+      "state",
+      "stage",
+      "progress",
+      "failure",
+    ]) ||
+    !isNonEmptyString(item.operationId) ||
+    !isNonEmptyString(item.startedAt) ||
+    Number.isNaN(Date.parse(item.startedAt)) ||
+    !isNonEmptyString(item.documentId) ||
+    !isNonEmptyString(item.sessionId) ||
+    (item.queryId !== null && !isNonEmptyString(item.queryId)) ||
+    !copyOperationStates.includes(item.state as CopyOperationState) ||
+    !copyOperationStages.includes(item.stage as CopyOperationStage) ||
+    !progress ||
+    !exactObjectKeys(progress, [
+      "rowsProcessed",
+      "totalRows",
+      "cellsProcessed",
+      "bytesSerialized",
+    ]) ||
+    !isNonNegativeInteger(progress.rowsProcessed) ||
+    !isNonNegativeInteger(progress.totalRows) ||
+    progress.rowsProcessed > progress.totalRows ||
+    !isNonNegativeInteger(progress.cellsProcessed) ||
+    !isNonNegativeInteger(progress.bytesSerialized) ||
+    failure === undefined ||
+    (item.state === "failed" || item.state === "cancelled" ? failure === null : failure !== null)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The copy operation status is invalid.");
+  }
+  return {
+    operationId: item.operationId,
+    startedAt: item.startedAt,
+    documentId: item.documentId,
+    sessionId: item.sessionId,
+    queryId: item.queryId as string | null,
+    selection: parseCopySelection(item.selection),
+    options: parseCopyOptions(item.options),
+    state: item.state as CopyOperationState,
+    stage: item.stage as CopyOperationStage,
+    progress: {
+      rowsProcessed: progress.rowsProcessed,
+      totalRows: progress.totalRows,
+      cellsProcessed: progress.cellsProcessed,
+      bytesSerialized: progress.bytesSerialized,
+    },
+    failure,
+  };
+}
+
+export function parseCopyOperationHistory(value: unknown): CopyOperationHistory {
+  const item = record(value);
+  if (
+    !item ||
+    !exactObjectKeys(item, ["current", "previous"]) ||
+    (item.current !== null && !record(item.current)) ||
+    !Array.isArray(item.previous) ||
+    item.previous.length > 5
+  ) {
+    throw new DataViewerError("InvalidResponse", "The copy operation history is invalid.");
+  }
+  return {
+    current: item.current === null ? null : parseCopyOperationStatus(item.current),
+    previous: item.previous.map(parseCopyOperationStatus),
   };
 }
 
@@ -1751,7 +2148,13 @@ export function parseDataValue(value: unknown): DataValue | null {
     (unit === undefined || unit === null || typeof unit === "string") &&
     (timezone === undefined || timezone === null || typeof timezone === "string") &&
     (rawDisplay === null || typeof rawDisplay === "string") &&
-    diagnosticValue !== undefined;
+    diagnosticValue !== undefined &&
+    (dataValue.kind !== "duration" ||
+      state !== "valid" ||
+      (durationUnits.includes(unit as DurationUnit) &&
+        typeof sourceDisplay === "string" &&
+        /^[+-]?\d+$/.test(sourceDisplay) &&
+        typeof rawDisplay === "string"));
   const semanticValid =
     (state === "null" &&
       dataValue.kind === "null" &&
@@ -2205,6 +2608,7 @@ function validatedExecuteQueryRequest(request: ExecuteQueryRequest): ExecuteQuer
 }
 
 function validatedReadQueryPageRequest(request: ReadQueryPageRequest): ReadQueryPageRequest {
+  const columns = Array.isArray(request.columns) ? request.columns : [];
   if (
     !isNonEmptyString(request.documentId) ||
     !isNonEmptyString(request.sessionId) ||
@@ -2212,11 +2616,50 @@ function validatedReadQueryPageRequest(request: ReadQueryPageRequest): ReadQuery
     !isNonNegativeInteger(request.offset) ||
     !isNonNegativeInteger(request.limit) ||
     request.limit < 1 ||
-    request.limit > 200
+    request.limit > 200 ||
+    columns.length < 1 ||
+    columns.length > 64 ||
+    columns.some((column) => !isNonEmptyString(column)) ||
+    new Set(columns).size !== columns.length
   ) {
     throw new DataViewerError("InvalidRequest", "The query page request is invalid.");
   }
-  return request;
+  return { ...request, columns: [...columns] };
+}
+
+function validatedCopyIdentity(request: CopyOperationIdentity): CopyOperationIdentity {
+  if (
+    !isNonEmptyString(request.operationId) ||
+    !/^[A-Za-z0-9._-]{1,128}$/u.test(request.operationId) ||
+    !isNonEmptyString(request.documentId) ||
+    !isNonEmptyString(request.sessionId)
+  ) {
+    throw new DataViewerError("InvalidRequest", "The copy operation identity is invalid.");
+  }
+  return { ...request };
+}
+
+function validatedStartCopyRequest(request: StartCopyRequest): StartCopyRequest {
+  validatedCopyIdentity(request);
+  if (
+    (request.queryId !== null &&
+      (!isNonEmptyString(request.queryId) || request.queryId.length > 128)) ||
+    !isNonNegativeInteger(request.maxCells) ||
+    request.maxCells < 1 ||
+    !isNonNegativeInteger(request.maxBytes) ||
+    request.maxBytes < 1
+  ) {
+    throw new DataViewerError("InvalidRequest", "The copy operation request is invalid.");
+  }
+  try {
+    return {
+      ...request,
+      selection: parseCopySelection(request.selection),
+      options: parseCopyOptions(request.options),
+    };
+  } catch {
+    throw new DataViewerError("InvalidRequest", "The copy operation snapshot is invalid.");
+  }
 }
 
 function validatedDistinctValuesRequest(request: DistinctValuesRequest): DistinctValuesRequest {
@@ -2516,6 +2959,23 @@ export const tauriBackend: BackendAdapter = {
       return response;
     });
   },
+  async prepareCsvSession(documentId, sessionId) {
+    return validatedInvoke(
+      "prepare_csv_session",
+      { documentId, sessionId },
+      parseCsvPreparationStatus,
+    );
+  },
+  async getCsvPreparationStatus(documentId, sessionId) {
+    return validatedInvoke("get_csv_preparation_status", { documentId, sessionId }, (value) =>
+      value === null ? null : parseCsvPreparationStatus(value),
+    );
+  },
+  async cancelCsvPreparation(documentId, sessionId) {
+    return validatedInvoke("cancel_csv_preparation", { documentId, sessionId }, (value) =>
+      value === null ? null : parseCsvPreparationStatus(value),
+    );
+  },
   async executeQuery(request) {
     const validated = validatedExecuteQueryRequest(request);
     return validatedInvoke("execute_query", { request: validated }, (value) => {
@@ -2558,12 +3018,73 @@ export const tauriBackend: BackendAdapter = {
         response.sessionId !== validated.sessionId ||
         response.queryId !== validated.queryId ||
         response.page.sessionId !== validated.sessionId ||
-        response.page.offset !== validated.offset
+        response.page.offset !== validated.offset ||
+        response.page.columns.length !== validated.columns.length ||
+        response.page.columns.some((column, index) => column !== validated.columns[index])
       ) {
         throw new DataViewerError("InvalidResponse", "The query page belongs to another result.");
       }
       return response;
     });
+  },
+  async startCopy(request) {
+    const validated = validatedStartCopyRequest(request);
+    return validatedInvoke("start_copy", { request: validated }, (value) => {
+      const status = parseCopyOperationStatus(value);
+      if (
+        status.operationId !== validated.operationId ||
+        status.documentId !== validated.documentId ||
+        status.sessionId !== validated.sessionId ||
+        status.queryId !== validated.queryId
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The copy status belongs to another operation snapshot.",
+        );
+      }
+      return status;
+    });
+  },
+  async getCopyStatus(request) {
+    const validated = validatedCopyIdentity(request);
+    return validatedInvoke("get_copy_status", { request: validated }, (value) => {
+      const status = parseCopyOperationStatus(value);
+      if (
+        status.operationId !== validated.operationId ||
+        status.documentId !== validated.documentId ||
+        status.sessionId !== validated.sessionId
+      ) {
+        throw new DataViewerError("InvalidResponse", "The copy status identity is stale.");
+      }
+      return status;
+    });
+  },
+  async cancelCopy(request) {
+    const validated = validatedCopyIdentity(request);
+    return validatedInvoke("cancel_copy", { request: validated }, (value) => {
+      const status = parseCopyOperationStatus(value);
+      if (
+        status.operationId !== validated.operationId ||
+        status.documentId !== validated.documentId ||
+        status.sessionId !== validated.sessionId
+      ) {
+        throw new DataViewerError(
+          "InvalidResponse",
+          "The cancelled copy status identity is stale.",
+        );
+      }
+      return status;
+    });
+  },
+  async getCopyHistory(documentId, sessionId) {
+    if (!isNonEmptyString(documentId) || !isNonEmptyString(sessionId)) {
+      throw new DataViewerError("InvalidRequest", "The copy history identity is invalid.");
+    }
+    return validatedInvoke(
+      "get_copy_history",
+      { documentId, sessionId },
+      parseCopyOperationHistory,
+    );
   },
   async listDistinctValues(request) {
     const validated = validatedDistinctValuesRequest(request);
@@ -2809,7 +3330,12 @@ function browserLargeValue(row: number, column: number): DataValue {
     return {
       kind: "timestamp",
       display: "2025-12-18T01:23:34.111111111Z",
+      state: "valid",
+      sourceDisplay: "1766021014111111111",
+      unit: "ns",
+      timezone: "UTC",
       rawDisplay: "1766021014111111111 [unit=ns, timezone=UTC]",
+      diagnostic: null,
     };
   if (column === 7) return { kind: "boolean", display: row % 2 === 0 ? "true" : "false" };
   if (column === 13) return { kind: "binary", display: `base64:AAECAwQ= (${row + 5} bytes)` };
@@ -2940,6 +3466,62 @@ function browserOesPage(request: ReadPageRequest): DataPage {
   };
 }
 
+function browserCopyField(value: string, options: CopyOptionsSnapshotWire): string {
+  const mustQuote =
+    options.quoteMode === "always" ||
+    (options.quoteMode === "minimal" &&
+      (value.includes(options.delimiter) ||
+        /[\r\n]/.test(value) ||
+        value.includes(options.quoteCharacter)));
+  if (!mustQuote || options.quoteMode === "none") return value;
+  const escaped =
+    options.escapeMode === "double"
+      ? value.split(options.quoteCharacter).join(options.quoteCharacter.repeat(2))
+      : value
+          .split("\\")
+          .join("\\\\")
+          .split(options.quoteCharacter)
+          .join(`\\${options.quoteCharacter}`);
+  return `${options.quoteCharacter}${escaped}${options.quoteCharacter}`;
+}
+
+async function browserWriteOesCopy(request: StartCopyRequest): Promise<number | null> {
+  if (
+    !request.sessionId.includes("oes-session") &&
+    !request.sessionId.includes("-h5-session-") &&
+    !request.sessionId.includes("-hdf5-session-")
+  )
+    return null;
+  const page = browserOesPage({
+    documentId: request.documentId,
+    sessionId: request.sessionId,
+    offset: request.selection.rowStart,
+    limit: request.selection.rowEndExclusive - request.selection.rowStart,
+    columns: request.selection.columnIds,
+  });
+  const rows = page.rows.map((row) =>
+    row.map((value) => {
+      const text =
+        request.options.representation === "rawCanonical"
+          ? (value.rawDisplay ?? value.sourceDisplay ?? value.display ?? "")
+          : (value.display ?? "");
+      return browserCopyField(text, request.options);
+    }),
+  );
+  if (request.options.includeHeaders) rows.unshift([...request.selection.columnIds]);
+  const lineEnding = request.options.lineEnding === "crlf" ? "\r\n" : "\n";
+  const text = rows.map((row) => row.join(request.options.delimiter)).join(lineEnding);
+  const bytes = new TextEncoder().encode(text).byteLength;
+  if (bytes > request.maxBytes) {
+    throw new DataViewerError(
+      "CopyByteLimit",
+      `The serialized selection exceeds the configured ${request.maxBytes}-byte copy limit.`,
+    );
+  }
+  await navigator.clipboard.writeText(text);
+  return bytes;
+}
+
 function browserCsvSummary(
   headerMode: CsvHeaderMode = "auto",
   complete = false,
@@ -3047,10 +3629,12 @@ interface BrowserCsvState {
 
 const browserCsvStates = new Map<string, BrowserCsvState>();
 const browserCsvValidationTasks = new Map<string, CsvValidationStatusWire>();
+const browserCsvPreparations = new Map<string, CsvPreparationStatus>();
 const browserQueryTasks = new Map<
   string,
   { request: ExecuteQueryRequest; status: QueryStatusResponse }
 >();
+const browserCopyOperations = new Map<string, CopyOperationStatus>();
 const browserCancelledOpenRequests = new Set<string>();
 const browserCancelledBoundaryNavigations = new Set<string>();
 const browserOpenRequestHandlers = new Set<OpenRequestHandler>();
@@ -3073,6 +3657,8 @@ function browserCsvProfile(generation = 1, mode: CsvProfileMode = "auto"): CsvPa
       temporalFormats: [],
       timezonePolicy: "preserve",
       timezoneOffsetMinutes: null,
+      durationUnit: null,
+      durationInputFormat: null,
       failurePolicy: "preserveInvalid",
     })),
   };
@@ -3498,6 +4084,7 @@ export const browserMockBackend: BackendAdapter = {
     await wait(40);
     const sessionId = `${request.sessionId}-profile-${profile.generation}`;
     browserCsvStates.delete(request.sessionId);
+    browserCsvPreparations.delete(request.sessionId);
     browserCsvStates.set(sessionId, { ...state, generation: profile.generation, profile });
     const summary = {
       ...browserCsvSummary(state.headerMode, true, profile.generation),
@@ -3516,6 +4103,37 @@ export const browserMockBackend: BackendAdapter = {
       summary,
     };
   },
+  async prepareCsvSession(documentId, sessionId) {
+    if (!browserCsvStates.has(sessionId)) {
+      throw new DataViewerError("UnsupportedFormat", "The current file is not CSV.");
+    }
+    const status: CsvPreparationStatus = {
+      documentId,
+      sessionId,
+      state: "ready",
+      rowsScanned: 3,
+      totalRows: 3,
+      sourceReadBytes: 0,
+      totalBytes: 0,
+      cacheOutputBytes: 0,
+      navigationFrontierRow: 3,
+      elapsedMs: 1,
+      error: null,
+    };
+    browserCsvPreparations.set(sessionId, status);
+    return status;
+  },
+  async getCsvPreparationStatus(documentId, sessionId) {
+    const status = browserCsvPreparations.get(sessionId);
+    return status?.documentId === documentId ? status : null;
+  },
+  async cancelCsvPreparation(documentId, sessionId) {
+    const status = browserCsvPreparations.get(sessionId);
+    if (!status || status.documentId !== documentId) return null;
+    const cancelled = { ...status, state: "cancelled" as const };
+    browserCsvPreparations.set(sessionId, cancelled);
+    return cancelled;
+  },
   async executeQuery(request) {
     const validated = validatedExecuteQueryRequest(request);
     const columns =
@@ -3523,8 +4141,14 @@ export const browserMockBackend: BackendAdapter = {
         ? validated.plan.projection
         : validated.sessionId.includes("csv-session")
           ? ["name", "note", "empty"]
-          : browserFixtureSummary.columns.map((column) => column.name);
-    const totalRows = validated.sessionId.includes("csv-session") ? 3 : 240;
+          : validated.sessionId.includes("large-parquet-session")
+            ? browserLargeColumnNames
+            : browserFixtureSummary.columns.map((column) => column.name);
+    const totalRows = validated.sessionId.includes("csv-session")
+      ? 3
+      : validated.sessionId.includes("large-parquet-session")
+        ? (browserLargeSummary.rowCount ?? 0)
+        : 240;
     const status: QueryStatusResponse = {
       documentId: validated.documentId,
       sessionId: validated.sessionId,
@@ -3576,11 +4200,19 @@ export const browserMockBackend: BackendAdapter = {
     }
     const sourcePage = validated.sessionId.includes("csv-session")
       ? browserCsvPage(validated)
-      : browserFixturePage(validated);
-    const indexes = task.status.columns.map((column) => sourcePage.columns.indexOf(column));
+      : validated.sessionId.includes("large-parquet-session")
+        ? browserLargePage(validated)
+        : browserFixturePage(validated);
+    const indexes = validated.columns.map((column) => sourcePage.columns.indexOf(column));
+    if (indexes.some((index) => index < 0)) {
+      throw new DataViewerError(
+        "InvalidRequest",
+        "The query result no longer contains a requested column.",
+      );
+    }
     const page = {
       ...sourcePage,
-      columns: [...task.status.columns],
+      columns: [...validated.columns],
       rows: sourcePage.rows.map((row) => indexes.map((index) => row[index])),
     };
     return parseReadQueryPageResponse({
@@ -3588,6 +4220,82 @@ export const browserMockBackend: BackendAdapter = {
       sessionId: validated.sessionId,
       queryId: validated.queryId,
       page,
+    });
+  },
+  async startCopy(request) {
+    const validated = validatedStartCopyRequest(request);
+    if (browserCopyOperations.has(validated.operationId)) {
+      throw new DataViewerError("InvalidRequest", "Copy operation ID has already been used.");
+    }
+    const totalRows = validated.selection.rowEndExclusive - validated.selection.rowStart;
+    const selectedCells = totalRows * validated.selection.columnIds.length;
+    const overLimit = selectedCells > validated.maxCells;
+    let failure: CopyOperationStatus["failure"] = overLimit
+      ? {
+          reason: "selectionLimit",
+          message: `The selection exceeds the configured ${validated.maxCells}-cell copy limit.`,
+        }
+      : null;
+    let bytesSerialized = 0;
+    if (!failure) {
+      try {
+        bytesSerialized = (await browserWriteOesCopy(validated)) ?? 0;
+      } catch (error) {
+        failure = {
+          reason:
+            error instanceof DataViewerError && error.code === "CopyByteLimit"
+              ? "byteLimit"
+              : "clipboardWrite",
+          message: error instanceof Error ? error.message : "The browser clipboard write failed.",
+        };
+      }
+    }
+    const status: CopyOperationStatus = {
+      operationId: validated.operationId,
+      startedAt: new Date().toISOString(),
+      documentId: validated.documentId,
+      sessionId: validated.sessionId,
+      queryId: validated.queryId,
+      selection: validated.selection,
+      options: validated.options,
+      state: failure ? "failed" : "complete",
+      stage: overLimit ? "preparing" : failure ? "clipboardWrite" : "complete",
+      progress: {
+        rowsProcessed: failure ? 0 : totalRows,
+        totalRows,
+        cellsProcessed: failure ? 0 : selectedCells,
+        bytesSerialized,
+      },
+      failure,
+    };
+    browserCopyOperations.set(status.operationId, status);
+    return parseCopyOperationStatus(status);
+  },
+  async getCopyStatus(request) {
+    const validated = validatedCopyIdentity(request);
+    const status = browserCopyOperations.get(validated.operationId);
+    if (
+      !status ||
+      status.documentId !== validated.documentId ||
+      status.sessionId !== validated.sessionId
+    ) {
+      throw new DataViewerError("InvalidRequest", "Copy operation was not found.");
+    }
+    return parseCopyOperationStatus(status);
+  },
+  async cancelCopy(request) {
+    return browserMockBackend.getCopyStatus(request);
+  },
+  async getCopyHistory(documentId, sessionId) {
+    if (!isNonEmptyString(documentId) || !isNonEmptyString(sessionId)) {
+      throw new DataViewerError("InvalidRequest", "The copy history identity is invalid.");
+    }
+    const matching = [...browserCopyOperations.values()].filter(
+      (status) => status.documentId === documentId && status.sessionId === sessionId,
+    );
+    return parseCopyOperationHistory({
+      current: matching.length > 0 ? matching[matching.length - 1] : null,
+      previous: matching.slice(-6, -1).reverse(),
     });
   },
   async listDistinctValues(request) {
@@ -3690,6 +4398,7 @@ export const browserMockBackend: BackendAdapter = {
   },
   async closeDataFile(_documentId, sessionId) {
     browserCsvStates.delete(sessionId);
+    browserCsvPreparations.delete(sessionId);
     for (const [taskId, task] of browserCsvValidationTasks) {
       if (task.sessionId === sessionId) browserCsvValidationTasks.delete(taskId);
     }

@@ -8,6 +8,7 @@ import {
   type QueryFilter,
   type QueryScalarType,
 } from "./model";
+import type { DurationUnit } from "../backend";
 import "./query.css";
 
 export interface DistinctValue {
@@ -28,6 +29,7 @@ interface ColumnFilterPopoverProps {
   columnId: string;
   columnLabel: string;
   scalarType: QueryScalarType;
+  durationUnit?: DurationUnit;
   initialFilter: QueryFilter | null;
   distinct?: DistinctValuesState;
   onApply(filter: QueryFilter): void;
@@ -82,6 +84,7 @@ export function ColumnFilterPopover({
   columnId,
   columnLabel,
   scalarType,
+  durationUnit,
   initialFilter,
   distinct,
   onApply,
@@ -96,7 +99,7 @@ export function ColumnFilterPopover({
     setDistinctSearch("");
   }, [columnId, initialFilter, scalarType]);
 
-  const error = validateFilter(draft);
+  const error = validateFilter(draft, durationUnit);
   const operators = useMemo(() => operatorsForType(scalarType), [scalarType]);
   const valueCount = requiredFilterValueCount(draft.operator);
 

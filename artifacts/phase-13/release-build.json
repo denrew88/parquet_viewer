@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "builtAtLocal": "2026-07-23T06:22:28+09:00",
+  "command": "npm.cmd run tauri build",
+  "status": "PASS",
+  "artifacts": [
+    {
+      "kind": "release-executable",
+      "path": "src-tauri/target/release/data-viewer.exe",
+      "bytes": 76953600,
+      "mib": 73.39,
+      "sha256": "44b402ec34e01ecc061d8d22bff207c810f05ab1a8e669f9c20e6d7f01212cd0"
+    },
+    {
+      "kind": "nsis-installer",
+      "path": "src-tauri/target/release/bundle/nsis/Data Viewer_0.1.0_x64-setup.exe",
+      "bytes": 13313267,
+      "mib": 12.7,
+      "sha256": "b7b6e4b931eef786a04f1dbe7c7ed0c5190d7ed0c891209064ec9b6de3425fc2"
+    }
+  ],
+  "releaseExecutableSmoke": {
+    "status": "PASS",
+    "responding": true,
+    "mainWindowHandlePresent": true,
+    "note": "격리된 DATA_VIEWER_TEST_DATA_ROOT에서 release 실행 파일을 시작하고 응답 가능한 네이티브 창을 확인한 뒤 종료했습니다."
+  },
+  "installedNsisSmoke": "BLOCKED: 설치로 시스템 상태를 변경하는 인수 검증은 이번 실행에 포함하지 않았습니다."
+}

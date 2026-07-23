@@ -58,6 +58,29 @@ describe("grid selection reducer", () => {
     expect(state.rect).toEqual({ top: 11, left: 7, bottom: 11, right: 7 });
   });
 
+  it("remaps anchor and active coordinates by stable column ID", () => {
+    let state = createSelection("session", bounds);
+    state = selectionReducer(state, {
+      type: "click",
+      coordinate: { row: 3, column: 1 },
+      bounds,
+    });
+    state = selectionReducer(state, {
+      type: "click",
+      coordinate: { row: 7, column: 2 },
+      shiftKey: true,
+      bounds,
+    });
+    state = selectionReducer(state, {
+      type: "remapColumns",
+      previousColumnIds: ["a", "b", "c", "d", "e", "f", "g", "h"],
+      nextColumnIds: ["c", "a", "b", "d", "e", "f", "g", "h"],
+      bounds,
+    });
+    expect(state.anchor).toEqual({ row: 3, column: 2 });
+    expect(state.active).toEqual({ row: 7, column: 0 });
+  });
+
   it("rejects invalid coordinates and resets on a new session only", () => {
     const state = createSelection("a", bounds);
     expect(

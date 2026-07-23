@@ -1,0 +1,160 @@
+{
+  "allReady": true,
+  "allSourceReadBytesZero": true,
+  "checks": [
+    {
+      "latencyMs": 110.6953,
+      "sample": 1,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 107.2782,
+      "sample": 2,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 113.891,
+      "sample": 3,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 95.86619999999999,
+      "sample": 4,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 76.9435,
+      "sample": 5,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 72.06139999999999,
+      "sample": 6,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 80.21109999999999,
+      "sample": 7,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 81.59769999999999,
+      "sample": 8,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 84.84479999999999,
+      "sample": 9,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 88.2793,
+      "sample": 10,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 90.2106,
+      "sample": 11,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 92.0223,
+      "sample": 12,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 84.9574,
+      "sample": 13,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 83.88969999999999,
+      "sample": 14,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 100.7314,
+      "sample": 15,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 89.8094,
+      "sample": 16,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 80.9095,
+      "sample": 17,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 77.9375,
+      "sample": 18,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 80.8571,
+      "sample": 19,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    },
+    {
+      "latencyMs": 101.3192,
+      "sample": 20,
+      "sourceReadBytes": 0,
+      "state": "ready"
+    }
+  ],
+  "coldPreparationSeconds": 53.9417249,
+  "command": "cargo test --release phase14_release_5850000_csv_persistent_hit_is_under_one_second -- --ignored --nocapture --test-threads=1",
+  "fixtureId": "csv-5850000-low",
+  "limitMilliseconds": 1000,
+  "maxMs": 113.891,
+  "measuredAt": "2026-07-23",
+  "p50Ms": 84.9574,
+  "p95Ms": 110.6953,
+  "persistentHitLatencyMs": [
+    110.6953,
+    107.2782,
+    113.891,
+    95.86619999999999,
+    76.9435,
+    72.06139999999999,
+    80.21109999999999,
+    81.59769999999999,
+    84.84479999999999,
+    88.2793,
+    90.2106,
+    92.0223,
+    84.9574,
+    83.88969999999999,
+    100.7314,
+    89.8094,
+    80.9095,
+    77.9375,
+    80.8571,
+    101.3192
+  ],
+  "persistentHitSampleCount": 20,
+  "profile": "release",
+  "result": "PASS",
+  "rows": 5850000
+}

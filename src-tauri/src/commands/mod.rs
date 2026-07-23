@@ -9,20 +9,22 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
+    copy::{CopyManager, CopyRowReader, QueryCopyReader, SourceCopyReader, TauriClipboardWriter},
     data::{builtin_format_registry, DataSource},
     domain::{
         AppSettingsV1, BoundarySearchRequest, CancelDataBoundaryNavigationRequest,
-        CsvColumnValidation, CsvParsingProfile, CsvProfilePreview, CsvValidationState,
-        CsvValidationStatus, DataError, DataErrorCode, DataPage, DataValue, DistinctValuesRequest,
-        DistinctValuesResponse, ExecuteQueryRequest, FileSummary, FindBoundaryRequest,
-        FindBoundaryResponse, FindQueryMatchRequest, FindQueryMatchResponse, FormatDescriptor,
-        HeaderMode, QueryStatus, ReadQueryPageRequest, ReadQueryPageResponse,
+        CopyOperationHistory, CopyOperationIdentity, CopyOperationStatus, CsvColumnValidation,
+        CsvParsingProfile, CsvProfilePreview, CsvValidationState, CsvValidationStatus, DataError,
+        DataErrorCode, DataPage, DataValue, DistinctValuesRequest, DistinctValuesResponse,
+        ExecuteQueryRequest, FileSummary, FindBoundaryRequest, FindBoundaryResponse,
+        FindQueryMatchRequest, FindQueryMatchResponse, FormatDescriptor, HeaderMode, QueryStatus,
+        ReadQueryPageRequest, ReadQueryPageResponse, StartCopyRequest,
     },
     platform::{
         pick_data_file, pick_data_files, DocumentAccessError, DocumentRef, DocumentRegistry,
         PageCacheKey, PathReservation, PendingOpenQueue, ReservePath,
     },
-    query::QueryService,
+    query::{CsvPreparationStatus, QueryService},
     storage::SettingsStore,
     storage::{QueryTempCleanupResult, QueryTempUsage},
 };
@@ -33,6 +35,58 @@ const MAX_OPEN_BATCH: usize = 32;
 const COMPLETED_REQUEST_CAPACITY: usize = 256;
 const MAX_CONCURRENT_SOURCE_PREPARES: usize = 4;
 const MAX_CSV_VALIDATION_TASKS: usize = 64;
+const TEST_DATA_ROOT_ENV: &str = "DATA_VIEWER_TEST_DATA_ROOT";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ApplicationDirectoryKind {
+    LocalData,
+    Config,
+}
+
+fn test_data_directory(
+    debug_assertions: bool,
+    root: Option<std::ffi::OsString>,
+    kind: ApplicationDirectoryKind,
+) -> Option<PathBuf> {
+    if !debug_assertions {
+        return None;
+    }
+    let root = root.map(PathBuf::from)?;
+    if root.as_os_str().is_empty() {
+        return None;
+    }
+    Some(root.join(match kind {
+        ApplicationDirectoryKind::LocalData => "local",
+        ApplicationDirectoryKind::Config => "config",
+    }))
+}
+
+fn application_directory(
+    app: &AppHandle,
+    kind: ApplicationDirectoryKind,
+) -> Result<PathBuf, DataError> {
+    if let Some(directory) = test_data_directory(
+        cfg!(debug_assertions),
+        std::env::var_os(TEST_DATA_ROOT_ENV),
+        kind,
+    ) {
+        return Ok(directory);
+    }
+    let resolved = match kind {
+        ApplicationDirectoryKind::LocalData => app.path().app_local_data_dir(),
+        ApplicationDirectoryKind::Config => app.path().app_config_dir(),
+    };
+    resolved.map_err(|error| DataError {
+        code: DataErrorCode::Io,
+        message: format!(
+            "The application {} directory is unavailable: {error}",
+            match kind {
+                ApplicationDirectoryKind::LocalData => "local data",
+                ApplicationDirectoryKind::Config => "settings",
+            }
+        ),
+    })
+}
 
 #[derive(Debug)]
 struct CsvPreviewControl {
@@ -311,10 +365,12 @@ pub struct AppState {
     csv_validation_tasks: Arc<Mutex<HashMap<String, CsvValidationTask>>>,
     boundary_navigation_tasks: Mutex<HashMap<(String, String, String), BoundaryNavigationTask>>,
     query_service: Mutex<Option<Arc<QueryService>>>,
+    copy_manager: Arc<CopyManager>,
 }
 
 impl Drop for AppState {
     fn drop(&mut self) {
+        self.copy_manager.cancel_all();
         if let Ok(service) = self.query_service.get_mut() {
             if let Some(service) = service.take() {
                 service.shutdown();
@@ -410,10 +466,7 @@ impl AppState {
     }
 
     pub(crate) fn initialize_query_temp(&self, app: &AppHandle) -> Result<(), DataError> {
-        let local_data = app.path().app_local_data_dir().map_err(|error| DataError {
-            code: DataErrorCode::Io,
-            message: format!("The application local data directory is unavailable: {error}"),
-        })?;
+        let local_data = application_directory(app, ApplicationDirectoryKind::LocalData)?;
         let mut service = self.query_service.lock().map_err(|_| DataError {
             code: DataErrorCode::Io,
             message: String::from("The query service registry is unavailable."),
@@ -428,10 +481,7 @@ impl AppState {
     }
 
     fn query_service(&self, app: &AppHandle) -> Result<Arc<QueryService>, DataError> {
-        let config = app.path().app_config_dir().map_err(|error| DataError {
-            code: DataErrorCode::Io,
-            message: format!("The application settings directory is unavailable: {error}"),
-        })?;
+        let config = application_directory(app, ApplicationDirectoryKind::Config)?;
         let limit = match SettingsStore::new(config).load() {
             Ok(settings) => settings.query_temp_limit_bytes,
             Err(error) if error.code == DataErrorCode::SettingsInvalid => {
@@ -447,10 +497,7 @@ impl AppState {
             service.set_temp_limit(limit);
             return Ok(Arc::clone(service));
         }
-        let local_data = app.path().app_local_data_dir().map_err(|error| DataError {
-            code: DataErrorCode::Io,
-            message: format!("The application local data directory is unavailable: {error}"),
-        })?;
+        let local_data = application_directory(app, ApplicationDirectoryKind::LocalData)?;
         let opened = Arc::new(QueryService::open(local_data, limit)?);
         *service = Some(Arc::clone(&opened));
         Ok(opened)
@@ -462,6 +509,33 @@ impl AppState {
                 let _ = service.drop_session(document_id, session_id);
             }
         }
+    }
+
+    fn initialized_query_service(&self) -> Option<Arc<QueryService>> {
+        self.query_service
+            .lock()
+            .ok()
+            .and_then(|service| service.as_ref().map(Arc::clone))
+    }
+
+    fn prepare_csv_if_initialized(
+        &self,
+        document_id: &str,
+        session_id: &str,
+    ) -> Result<Option<CsvPreparationStatus>, DataError> {
+        let Some(service) = self.initialized_query_service() else {
+            return Ok(None);
+        };
+        let source = self
+            .documents
+            .with_source(document_id, session_id, |source| source.query_source_spec())
+            .map_err(document_error)??;
+        if source.provider.reusable_source_identity().is_none() {
+            return Ok(None);
+        }
+        service
+            .prepare_csv_session(document_id, session_id, source)
+            .map(Some)
     }
 
     fn open_path(&self, path: impl AsRef<Path>) -> Result<OpenFileResponse, DataError> {
@@ -608,6 +682,7 @@ impl AppState {
             };
             match result {
                 Ok(item) => {
+                    let _ = self.prepare_csv_if_initialized(&item.document_id, &item.session_id);
                     outcomes[item_index] =
                         Some(Ok((item.document_id.clone(), item.session_id.clone())));
                     opened.push(item);
@@ -727,6 +802,42 @@ impl AppState {
         }
         let projection = validate_projection(request.columns)?;
         let offset = request.offset as u64;
+        if let Some(service) = self.initialized_query_service() {
+            let source = self
+                .documents
+                .with_source(&request.document_id, &request.session_id, |source| {
+                    source.query_source_spec().ok()
+                })
+                .map_err(document_error)?;
+            if let Some(source) = source {
+                let implicit_columns = (projection.is_none()
+                    && source.columns.len() <= MAX_PROJECTION_COLUMNS)
+                    .then(|| {
+                        source
+                            .columns
+                            .iter()
+                            .map(|column| column.name.clone())
+                            .collect::<Vec<_>>()
+                    });
+                let prepared_columns = projection.as_deref().or(implicit_columns.as_deref());
+                if let Some(columns) = prepared_columns {
+                    if let Some(page) = service.read_prepared_csv_page(
+                        &request.document_id,
+                        &request.session_id,
+                        source,
+                        offset,
+                        request.limit,
+                        columns,
+                    )? {
+                        return Ok(ReadPageResponse {
+                            document_id: request.document_id,
+                            session_id: request.session_id,
+                            page,
+                        });
+                    }
+                }
+            }
+        }
         let page = self
             .documents
             .get_or_load_page(
@@ -744,6 +855,8 @@ impl AppState {
     }
 
     fn close(&self, document_id: &str, session_id: &str) -> Result<(), DataError> {
+        self.copy_manager
+            .cancel_session(document_id, session_id, false);
         self.drop_queries_if_initialized(document_id, session_id);
         self.documents
             .close(document_id, session_id)
@@ -1244,10 +1357,7 @@ pub fn list_supported_formats() -> Vec<FormatDescriptor> {
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle) -> Result<AppSettingsV1, DataError> {
-    let directory = app.path().app_config_dir().map_err(|error| DataError {
-        code: DataErrorCode::Io,
-        message: format!("The application settings directory is unavailable: {error}"),
-    })?;
+    let directory = application_directory(&app, ApplicationDirectoryKind::Config)?;
     SettingsStore::new(directory).load()
 }
 
@@ -1257,10 +1367,7 @@ pub fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettingsV1, DataError> {
-    let directory = app.path().app_config_dir().map_err(|error| DataError {
-        code: DataErrorCode::Io,
-        message: format!("The application settings directory is unavailable: {error}"),
-    })?;
+    let directory = application_directory(&app, ApplicationDirectoryKind::Config)?;
     let saved = SettingsStore::new(directory).save(&settings)?;
     if let Ok(service) = state.query_service.lock() {
         if let Some(service) = service.as_ref() {
@@ -1283,7 +1390,80 @@ pub fn execute_query(
         })
         .map_err(document_error)??;
     request.plan.validate(&source.columns)?;
+    state
+        .copy_manager
+        .cancel_session(&request.document_id, &request.session_id, true);
     state.query_service(&app)?.execute(request, source)
+}
+
+#[tauri::command]
+pub fn start_copy(
+    request: StartCopyRequest,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CopyOperationStatus, DataError> {
+    request.validate()?;
+    let settings = get_settings(app.clone())?;
+    if request.max_cells > settings.copy_limits.max_cells
+        || request.max_bytes > settings.copy_limits.max_bytes
+    {
+        return Err(DataError::invalid_request(
+            "Copy limits cannot exceed the active application settings snapshot.",
+        ));
+    }
+    state
+        .documents
+        .with_source(&request.document_id, &request.session_id, |_| ())
+        .map_err(document_error)?;
+    let query_service = state.query_service(&app)?;
+    let reader: Arc<dyn CopyRowReader> = if let Some(query_id) = request.query_id.clone() {
+        Arc::new(QueryCopyReader::new(
+            Arc::clone(&query_service),
+            request.document_id.clone(),
+            request.session_id.clone(),
+            query_id,
+        ))
+    } else {
+        Arc::new(SourceCopyReader::new(
+            Arc::clone(&state.documents),
+            Arc::clone(&query_service),
+            request.document_id.clone(),
+            request.session_id.clone(),
+        ))
+    };
+    let staging_directory = query_service.copy_staging_directory();
+    state.copy_manager.start_with_display_formats(
+        request,
+        reader,
+        Arc::new(TauriClipboardWriter::new(app)),
+        staging_directory,
+        settings.display_formats,
+    )
+}
+
+#[tauri::command]
+pub fn get_copy_status(
+    request: CopyOperationIdentity,
+    state: State<'_, AppState>,
+) -> Result<CopyOperationStatus, DataError> {
+    state.copy_manager.status(&request)
+}
+
+#[tauri::command]
+pub fn cancel_copy(
+    request: CopyOperationIdentity,
+    state: State<'_, AppState>,
+) -> Result<CopyOperationStatus, DataError> {
+    state.copy_manager.cancel(&request)
+}
+
+#[tauri::command]
+pub fn get_copy_history(
+    document_id: String,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<CopyOperationHistory, DataError> {
+    state.copy_manager.history(&document_id, &session_id)
 }
 
 #[tauri::command]
@@ -1377,11 +1557,7 @@ pub async fn find_data_boundary(
         .documents
         .with_source(&request.document_id, &request.session_id, |_| ())
         .map_err(document_error)?;
-    let query_service = request
-        .query_id
-        .as_ref()
-        .map(|_| state.query_service(&app))
-        .transpose()?;
+    let query_service = state.query_service(&app)?;
     let cancel = state.begin_boundary_navigation(&request)?;
     let search = BoundarySearchRequest {
         row: request.row as u64,
@@ -1393,33 +1569,42 @@ pub async fn find_data_boundary(
     let documents = Arc::clone(&state.documents);
     let worker_request = request.clone();
     let worker_cancel = Arc::clone(&cancel);
-    let resolved = tauri::async_runtime::spawn_blocking(move || {
-        match (worker_request.query_id.as_deref(), query_service) {
-            (Some(query_id), Some(service)) => service.find_boundary(
+    let resolved =
+        tauri::async_runtime::spawn_blocking(move || match worker_request.query_id.as_deref() {
+            Some(query_id) => query_service.find_boundary(
                 &worker_request.document_id,
                 &worker_request.session_id,
                 query_id,
                 &search,
                 &worker_cancel,
             ),
-            (None, None) => documents
+            None => documents
                 .with_source(
                     &worker_request.document_id,
                     &worker_request.session_id,
-                    |source| source.find_boundary(&search, &worker_cancel),
+                    |source| {
+                        if let Ok(spec) = source.query_source_spec() {
+                            if let Some(result) = query_service.find_prepared_csv_boundary(
+                                &worker_request.document_id,
+                                &worker_request.session_id,
+                                spec,
+                                &search,
+                                &worker_cancel,
+                            )? {
+                                return Ok(result);
+                            }
+                        }
+                        source.find_boundary(&search, &worker_cancel)
+                    },
                 )
                 .map_err(document_error)
                 .and_then(|result| result),
-            _ => Err(DataError::invalid_request(
-                "Boundary query identity does not match its resolver.",
-            )),
-        }
-    })
-    .await
-    .map_err(|error| DataError {
-        code: DataErrorCode::Io,
-        message: format!("The boundary-navigation worker failed: {error}"),
-    });
+        })
+        .await
+        .map_err(|error| DataError {
+            code: DataErrorCode::Io,
+            message: format!("The boundary-navigation worker failed: {error}"),
+        });
     state.finish_boundary_navigation(&request, &cancel);
     let resolved = resolved??;
     Ok(FindBoundaryResponse {
@@ -1595,9 +1780,24 @@ pub fn configure_csv(
     document_id: String,
     session_id: String,
     header_mode: HeaderMode,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OpenFileResponse, DataError> {
-    state.configure_csv(&document_id, &session_id, header_mode)
+    let response = state.configure_csv(&document_id, &session_id, header_mode)?;
+    if let Ok(source) = state
+        .documents
+        .with_source(&response.document_id, &response.session_id, |source| {
+            source.query_source_spec()
+        })
+        .map_err(document_error)
+        .and_then(|source| source)
+    {
+        if let Ok(service) = state.query_service(&app) {
+            let _ =
+                service.prepare_csv_session(&response.document_id, &response.session_id, source);
+        }
+    }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -1676,6 +1876,7 @@ pub fn cancel_csv_profile_validation(
 #[tauri::command]
 pub async fn apply_csv_profile(
     request: ApplyCsvProfileRequest,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OpenFileResponse, DataError> {
     let documents = Arc::clone(&state.documents);
@@ -1700,11 +1901,75 @@ pub async fn apply_csv_profile(
         .documents
         .replace_source(&request.document_id, &request.session_id, source)
         .map_err(document_error)?;
-    Ok(OpenFileResponse {
+    let response = OpenFileResponse {
         document_id: request.document_id,
         session_id,
         summary,
-    })
+    };
+    if let Ok(source) = state
+        .documents
+        .with_source(&response.document_id, &response.session_id, |source| {
+            source.query_source_spec()
+        })
+        .map_err(document_error)
+        .and_then(|source| source)
+    {
+        if let Ok(service) = state.query_service(&app) {
+            let _ =
+                service.prepare_csv_session(&response.document_id, &response.session_id, source);
+        }
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub fn prepare_csv_session(
+    document_id: String,
+    session_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CsvPreparationStatus, DataError> {
+    let source = state
+        .documents
+        .with_source(&document_id, &session_id, |source| {
+            source.query_source_spec()
+        })
+        .map_err(document_error)??;
+    state
+        .query_service(&app)?
+        .prepare_csv_session(&document_id, &session_id, source)
+}
+
+#[tauri::command]
+pub fn get_csv_preparation_status(
+    document_id: String,
+    session_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<CsvPreparationStatus>, DataError> {
+    state
+        .documents
+        .with_source(&document_id, &session_id, |_| ())
+        .map_err(document_error)?;
+    state
+        .query_service(&app)?
+        .csv_preparation_status(&document_id, &session_id)
+}
+
+#[tauri::command]
+pub fn cancel_csv_preparation(
+    document_id: String,
+    session_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<CsvPreparationStatus>, DataError> {
+    state
+        .documents
+        .with_source(&document_id, &session_id, |_| ())
+        .map_err(document_error)?;
+    state
+        .query_service(&app)?
+        .cancel_csv_preparation(&document_id, &session_id)
 }
 
 #[tauri::command]
@@ -1747,6 +2012,41 @@ mod tests {
         CsvConversionFailurePolicy, CsvProfileMode, CsvTargetType, CsvValidationState,
         DataValueState, SourceCapability, ValueKind,
     };
+
+    #[test]
+    fn debug_test_data_root_separates_local_and_config_directories() {
+        let root = std::ffi::OsString::from("C:/workspace/.tmp/phase13-native-data");
+        assert_eq!(
+            test_data_directory(
+                true,
+                Some(root.clone()),
+                ApplicationDirectoryKind::LocalData,
+            ),
+            Some(PathBuf::from(&root).join("local"))
+        );
+        assert_eq!(
+            test_data_directory(true, Some(root.clone()), ApplicationDirectoryKind::Config),
+            Some(PathBuf::from(root).join("config"))
+        );
+        assert_eq!(
+            test_data_directory(
+                true,
+                Some(std::ffi::OsString::new()),
+                ApplicationDirectoryKind::LocalData,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn release_build_contract_ignores_test_data_root() {
+        let root = std::ffi::OsString::from("C:/must-not-be-used-by-release");
+        assert_eq!(
+            test_data_directory(false, Some(root), ApplicationDirectoryKind::LocalData),
+            None,
+            "release behavior must ignore DATA_VIEWER_TEST_DATA_ROOT completely"
+        );
+    }
 
     fn write_fixture(path: &Path, values: Vec<i32>) {
         let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));

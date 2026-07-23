@@ -11,6 +11,7 @@ import {
   type FileSummary,
   type FormatDescriptor,
   type CsvParsingProfileWire,
+  type CsvPreparationStatus,
   type OpenDataRequest,
   type OpenDataResponse,
 } from "./backend";
@@ -194,6 +195,26 @@ const csvPage: DataPage = {
   ],
 };
 
+function csvPreparationStatus(
+  state: CsvPreparationStatus["state"],
+  overrides: Partial<CsvPreparationStatus> = {},
+): CsvPreparationStatus {
+  return {
+    documentId: "legacy-csv-session",
+    sessionId: "csv-session",
+    state,
+    rowsScanned: 125,
+    totalRows: 1_000,
+    sourceReadBytes: 2_048,
+    totalBytes: 16_384,
+    cacheOutputBytes: 4_096,
+    navigationFrontierRow: state === "ready" ? 125 : 0,
+    elapsedMs: 250,
+    error: null,
+    ...overrides,
+  };
+}
+
 const csvProfile: CsvParsingProfileWire = {
   mode: "auto",
   generation: 3,
@@ -210,6 +231,8 @@ const csvProfile: CsvParsingProfileWire = {
     temporalFormats: [],
     timezonePolicy: "preserve",
     timezoneOffsetMinutes: null,
+    durationUnit: null,
+    durationInputFormat: null,
     failurePolicy: "preserveInvalid",
   })),
 };
@@ -337,7 +360,9 @@ function queryStatus(
       totalRows: 4,
       resultRows: state === "complete" ? 1 : 0,
     },
-    columns: ["id", "label", "score", "active"],
+    columns: request.sessionId.includes("csv")
+      ? ["name", "note", "empty"]
+      : ["id", "label", "score", "active"],
     elapsedMs: state === "complete" ? 12 : 0,
     findMatchCount: null,
     error:
@@ -398,9 +423,66 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
     getCsvProfileValidationStatus: vi.fn().mockRejectedValue(new Error("not csv")),
     cancelCsvProfileValidation: vi.fn().mockRejectedValue(new Error("not csv")),
     applyCsvProfile: vi.fn().mockRejectedValue(new Error("not csv")),
+    prepareCsvSession: vi.fn(async (documentId: string, sessionId: string) => ({
+      documentId,
+      sessionId,
+      state: "ready" as const,
+      rowsScanned: 0,
+      totalRows: 0,
+      sourceReadBytes: 0,
+      totalBytes: 0,
+      cacheOutputBytes: 0,
+      navigationFrontierRow: 0,
+      elapsedMs: 0,
+      error: null,
+    })),
+    getCsvPreparationStatus: vi.fn(async (documentId: string, sessionId: string) => ({
+      documentId,
+      sessionId,
+      state: "ready" as const,
+      rowsScanned: 0,
+      totalRows: 0,
+      sourceReadBytes: 0,
+      totalBytes: 0,
+      cacheOutputBytes: 0,
+      navigationFrontierRow: 0,
+      elapsedMs: 0,
+      error: null,
+    })),
+    cancelCsvPreparation: vi.fn(async (documentId: string, sessionId: string) => ({
+      documentId,
+      sessionId,
+      state: "cancelled" as const,
+      rowsScanned: 0,
+      totalRows: 0,
+      sourceReadBytes: 0,
+      totalBytes: 0,
+      cacheOutputBytes: 0,
+      navigationFrontierRow: 0,
+      elapsedMs: 0,
+      error: null,
+    })),
     executeQuery: vi.fn().mockRejectedValue(new Error("query unavailable")),
     getQueryStatus: vi.fn().mockRejectedValue(new Error("query unavailable")),
     readQueryPage: vi.fn().mockRejectedValue(new Error("query unavailable")),
+    startCopy: vi.fn(async (request) => ({
+      ...request,
+      startedAt: "2026-07-21T12:00:00.000Z",
+      state: "complete" as const,
+      stage: "complete" as const,
+      progress: {
+        rowsProcessed: request.selection.rowEndExclusive - request.selection.rowStart,
+        totalRows: request.selection.rowEndExclusive - request.selection.rowStart,
+        cellsProcessed:
+          (request.selection.rowEndExclusive - request.selection.rowStart) *
+          request.selection.columnIds.length,
+        bytesSerialized: 0,
+      },
+      failure: null,
+    })),
+    getCopyStatus: vi.fn().mockRejectedValue(new Error("copy operation unavailable")),
+    cancelCopy: vi.fn().mockRejectedValue(new Error("copy operation unavailable")),
+    getCopyHistory: vi.fn().mockResolvedValue({ current: null, previous: [] }),
     listDistinctValues: vi.fn().mockRejectedValue(new Error("query unavailable")),
     findQueryMatch: vi.fn().mockRejectedValue(new Error("query unavailable")),
     cancelQuery: vi.fn().mockRejectedValue(new Error("query unavailable")),
@@ -982,6 +1064,113 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("prepares each CSV session, polls within one second, and hides ready status", async () => {
+    const prepareCsvSession = vi.fn().mockResolvedValue(csvPreparationStatus("preparing"));
+    const getCsvPreparationStatus = vi
+      .fn()
+      .mockResolvedValue(csvPreparationStatus("ready", { rowsScanned: 1_000, elapsedMs: 900 }));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession,
+          getCsvPreparationStatus,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
+    expect(screen.getByText("125 / 1,000 rows · 0.3s")).toBeInTheDocument();
+    expect(prepareCsvSession).toHaveBeenCalledWith("legacy-csv-session", "csv-session");
+    await waitFor(() => expect(getCsvPreparationStatus).toHaveBeenCalledTimes(1), {
+      timeout: 1_500,
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Preparing CSV for fast queries")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows preparation failure reason and supports Retry, Cancel, and Dismiss", async () => {
+    const prepareCsvSession = vi
+      .fn()
+      .mockResolvedValueOnce(
+        csvPreparationStatus("failed", {
+          error: { code: "BuildFailed", message: "Temporary source could not be built." },
+        }),
+      )
+      .mockResolvedValueOnce(csvPreparationStatus("preparing"));
+    const cancelCsvPreparation = vi.fn().mockResolvedValue(
+      csvPreparationStatus("cancelled", {
+        error: { code: "Cancelled", message: "Stopped by user." },
+      }),
+    );
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession,
+          cancelCsvPreparation,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "BuildFailed: Temporary source could not be built.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("CSV preparation cancelled")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled: Stopped by user.")).toBeInTheDocument();
+    expect(cancelCsvPreparation).toHaveBeenCalledWith("legacy-csv-session", "csv-session");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("CSV preparation cancelled")).not.toBeInTheDocument();
+  });
+
+  it("drops wrong-session preparation responses and cleans polling on tab close", async () => {
+    const prepareCsvSession = vi
+      .fn()
+      .mockResolvedValueOnce(csvPreparationStatus("preparing", { sessionId: "wrong-session" }))
+      .mockResolvedValueOnce(csvPreparationStatus("preparing"));
+    const getCsvPreparationStatus = vi.fn().mockResolvedValue(csvPreparationStatus("preparing"));
+    const firstView = render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession,
+          getCsvPreparationStatus,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    await screen.findByText("Kim, Mina");
+    await waitFor(() => expect(prepareCsvSession).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Preparing CSV for fast queries")).not.toBeInTheDocument();
+    expect(getCsvPreparationStatus).not.toHaveBeenCalled();
+    firstView.unmount();
+
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession,
+          getCsvPreparationStatus,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close quoted.csv" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 850));
+    expect(getCsvPreparationStatus).not.toHaveBeenCalled();
+  });
+
   it("shows a stable workspace drop target and dismisses it on leave or Escape", async () => {
     const drag = dragDropHarness();
     const { unmount } = render(<App backend={backend()} dragDropAdapter={drag.adapter} />);
@@ -1324,6 +1513,22 @@ describe("App", () => {
     const second = screen.getByRole("tab", { name: "second.csv" });
     expect(first).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "first.parquet" }), {
+      altKey: true,
+      shiftKey: true,
+      key: "ArrowRight",
+    });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("tablist", { name: "Open files" }))
+          .getAllByRole("tab")
+          .map((tab) => tab.textContent),
+      ).toEqual(["second.csv", "first.parquet"]),
+    );
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Schema" })).toHaveAttribute("aria-selected", "true");
+
     fireEvent.click(second);
     expect(screen.getByRole("tab", { name: "Data" })).toHaveAttribute("aria-selected", "true");
 
@@ -1657,6 +1862,21 @@ describe("App", () => {
 
   it("CPY-008 uses the loaded active preset for shortcut and context-menu copy", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const startCopy = vi.fn(async (request: Parameters<BackendAdapter["startCopy"]>[0]) => ({
+      ...request,
+      startedAt: "2026-07-21T12:00:00.000Z",
+      state: "complete" as const,
+      stage: "complete" as const,
+      progress: {
+        rowsProcessed: request.selection.rowEndExclusive - request.selection.rowStart,
+        totalRows: request.selection.rowEndExclusive - request.selection.rowStart,
+        cellsProcessed:
+          (request.selection.rowEndExclusive - request.selection.rowStart) *
+          request.selection.columnIds.length,
+        bytesSerialized: 0,
+      },
+      failure: null,
+    }));
     const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -1672,13 +1892,30 @@ describe("App", () => {
       },
     };
     try {
-      render(<App backend={backend({ getSettings: vi.fn().mockResolvedValue(customSettings) })} />);
+      render(
+        <App
+          backend={backend({
+            getSettings: vi.fn().mockResolvedValue(customSettings),
+            startCopy,
+          })}
+        />,
+      );
       await openFile();
+      await screen.findByText("Copy (CUSTOM)", {}, { timeout: 5_000 });
       const grid = screen.getByRole("grid", { name: "Data preview" });
       grid.focus();
       fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+      await waitFor(() => {
+        expect(grid).toHaveAttribute("data-selection-left", "0");
+        expect(grid).toHaveAttribute("data-selection-right", "1");
+      });
       fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith('"1"|"alpha"'));
+      await waitFor(() => expect(startCopy).toHaveBeenCalledTimes(1));
+      expect(startCopy.mock.calls[0]![0]).toMatchObject({
+        selection: { rowStart: 0, rowEndExclusive: 1, columnIds: ["id", "label"] },
+        options: { delimiter: "|", quoteMode: "always", includeHeaders: false },
+      });
+      expect(writeText).not.toHaveBeenCalled();
 
       fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByRole("menuitem", { name: "Copy configured value" }));
@@ -1686,7 +1923,12 @@ describe("App", () => {
 
       fireEvent.contextMenu(screen.getByText("alpha"), { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByRole("menuitem", { name: "Copy with column headers" }));
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith('"id"|"label"\r\n"1"|"alpha"'));
+      await waitFor(() => expect(startCopy).toHaveBeenCalledTimes(2));
+      expect(startCopy.mock.calls[1]![0]).toMatchObject({
+        selection: { rowStart: 0, rowEndExclusive: 1, columnIds: ["id", "label"] },
+        options: { delimiter: "|", quoteMode: "always", includeHeaders: true },
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
     } finally {
       if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
       else Reflect.deleteProperty(navigator, "clipboard");
@@ -1786,7 +2028,7 @@ describe("App", () => {
     expect(await screen.findByText("7")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "CSV Parsing Profile" })).not.toBeInTheDocument();
     expect(screen.getByText("CSV: Custom")).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "Search data" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Find" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filter name" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sort name: not sorted" })).toBeInTheDocument();
   });
@@ -2164,8 +2406,10 @@ describe("App", () => {
       />,
     );
     await openFile();
-    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const search = await screen.findByRole("searchbox", { name: "Find data" });
     fireEvent.change(search, { target: { value: "alpha" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(readQueryPage).toHaveBeenCalledTimes(1));
     expect(screen.getByText("alpha")).toBeInTheDocument();
@@ -2218,11 +2462,14 @@ describe("App", () => {
       />,
     );
     await openFile();
-    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const search = await screen.findByRole("searchbox", { name: "Find data" });
     fireEvent.change(search, { target: { value: "first" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
     await screen.findByText("Query queued");
     fireEvent.change(search, { target: { value: "second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
 
     second.resolve(queryStatus(executeQuery.mock.calls[1][0]));
@@ -2263,10 +2510,13 @@ describe("App", () => {
       />,
     );
     await openFile();
-    const search = await screen.findByRole("searchbox", { name: "Search data" });
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const search = await screen.findByRole("searchbox", { name: "Find data" });
     fireEvent.change(search, { target: { value: "first" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(await screen.findByText("committed")).toBeInTheDocument();
     fireEvent.change(search, { target: { value: "second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(2));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(cancelQuery).toHaveBeenCalled());
@@ -2284,9 +2534,11 @@ describe("App", () => {
       />,
     );
     await openFile();
-    fireEvent.change(await screen.findByRole("searchbox", { name: "Search data" }), {
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Find data" }), {
       target: { value: "alpha" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(
       await screen.findByText(/QueryTempLimitExceeded: Disk limit reached/),
     ).toBeInTheDocument();
@@ -2425,9 +2677,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close filter" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Find" }));
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search data" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find data" }), {
       target: { value: "alpha" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(executeQuery).toHaveBeenCalled());
     await screen.findByText("2 matches");
     fireEvent.click(screen.getByRole("button", { name: "Next match" }));
@@ -2442,6 +2695,82 @@ describe("App", () => {
     await waitFor(() => expect(findQueryMatch).toHaveBeenCalledTimes(2));
     expect(findQueryMatch.mock.calls[1][0]).toEqual(
       expect.objectContaining({ fromResultOffset: 2, fromMatchIndex: 1 }),
+    );
+  });
+
+  it("keeps the newest Find navigation when responses finish out of order", async () => {
+    const older = deferred<Awaited<ReturnType<BackendAdapter["findQueryMatch"]>>>();
+    const newer = deferred<Awaited<ReturnType<BackendAdapter["findQueryMatch"]>>>();
+    const findQueryMatch = vi
+      .fn()
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+    const executeQuery = vi.fn(async (request) => ({
+      ...queryStatus(request, "complete"),
+      findMatchCount: 2,
+    }));
+    const readQueryPage = vi.fn(async (request) => ({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      page,
+    }));
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(querySummary()),
+          executeQuery,
+          readQueryPage,
+          findQueryMatch,
+        })}
+      />,
+    );
+    await openFile();
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find data" }), {
+      target: { value: "alpha" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByText("2 matches");
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous match" }));
+    await waitFor(() => expect(findQueryMatch).toHaveBeenCalledTimes(2));
+    const request = findQueryMatch.mock.calls[1][0];
+    newer.resolve({
+      documentId: request.documentId,
+      sessionId: request.sessionId,
+      queryId: request.queryId,
+      match: {
+        rowOffset: 2,
+        columnId: "label",
+        matchIndex: 1,
+        totalMatches: 2,
+        wrapped: false,
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("grid", { name: "Data preview" })).toHaveAttribute(
+        "data-active-row",
+        "2",
+      ),
+    );
+    const oldRequest = findQueryMatch.mock.calls[0][0];
+    older.resolve({
+      documentId: oldRequest.documentId,
+      sessionId: oldRequest.sessionId,
+      queryId: oldRequest.queryId,
+      match: {
+        rowOffset: 1,
+        columnId: "label",
+        matchIndex: 0,
+        totalMatches: 2,
+        wrapped: false,
+      },
+    });
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole("grid", { name: "Data preview" })).toHaveAttribute(
+      "data-active-row",
+      "2",
     );
   });
 

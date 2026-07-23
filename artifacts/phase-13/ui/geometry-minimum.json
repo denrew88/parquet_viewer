@@ -1,0 +1,21 @@
+{
+  "result": "PASS",
+  "project": "desktop-minimum",
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "finalRow": {
+    "cellTop": 464,
+    "cellBottom": 512,
+    "cellHeight": 48,
+    "gridTop": 212,
+    "gridBottom": 530,
+    "gridContentBottom": 530,
+    "bottomClearance": 18,
+    "clientHeight": 318,
+    "scrollHeight": 9600054,
+    "mountedRows": 14,
+    "mountedCells": 112
+  }
+}

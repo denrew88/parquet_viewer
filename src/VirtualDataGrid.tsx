@@ -27,6 +27,7 @@ import {
   LoaderCircle,
   Search,
   Settings2,
+  RotateCcw,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -44,10 +45,16 @@ import type {
   DataBoundaryDirection,
   DataPage,
   DataValue,
+  DurationUnit,
   FileSummary,
   FindBoundaryRequest,
   FindBoundaryResponse,
+  CopyOperationHistory,
+  CopyOperationIdentity,
+  CopyOperationStatus,
+  CopyRepresentation,
   ReadPageRequest,
+  StartCopyRequest,
 } from "./backend";
 import {
   applyGridKey,
@@ -59,7 +66,7 @@ import {
   type SelectionAction,
   type SelectionState,
 } from "./gridSelection";
-import { CopyAccumulator, CopyByteLimitExceededError, serializeCopyField } from "./copy/serializer";
+import { serializeCopyField } from "./copy/serializer";
 import { COPY_PRESETS } from "./copy/presets";
 import type { CopyOptions, CopyPreset } from "./copy/model";
 import {
@@ -71,19 +78,21 @@ import { ColumnFilterPopover, type DistinctValuesState } from "./query/ColumnFil
 import {
   clearFilters,
   removeFilter,
+  setSort,
   setSearch,
   toggleSort,
   upsertFilter,
   type QueryPlan,
   type QueryScalarType,
 } from "./query/model";
+import { columnReflowOffsets, moveId, normalizedIdOrder, restoreSourceOrder } from "./gridOrdering";
+import { reorderAtInsertion, usePointerReorder } from "./components/usePointerReorder";
 import { inferQueryScalarType } from "./query/scalarType";
 import {
   QueryToolbar,
   type QuerySearchColumn,
   type QueryToolbarStatus,
 } from "./query/QueryToolbar";
-import { COPY_CHUNK_ROWS, COPY_SOFT_BYTE_LIMIT, COPY_SOFT_CELL_LIMIT } from "./tsv";
 import { formatDataValue } from "./settings/displayFormat";
 import {
   DEFAULT_COPY_LIMITS,
@@ -91,8 +100,11 @@ import {
   type CopyLimits,
   type DisplayFormats,
 } from "./settings/model";
+
+const EXCEL_WORKSHEET_MAX_ROWS = 1_048_576;
 import {
   GRID_COLUMN_OVERSCAN,
+  GRID_BOTTOM_CLEARANCE,
   GRID_DEFAULT_COLUMN_WIDTH,
   GRID_HEADER_HEIGHT,
   GRID_MAX_COLUMN_WIDTH,
@@ -106,11 +118,20 @@ import {
   segmentStartForRow,
 } from "./gridSizing";
 const GRID_SEGMENT_EDGE_ROWS = 2_000;
-const GRID_BOTTOM_PADDING = 2;
 const MAX_PAGE_WINDOW = 3;
 const MAX_CONCURRENT_REQUESTS = 2;
-const COPY_PROJECTION_COLUMN_LIMIT = 64;
-const COPY_TARGET_CHUNK_CELLS = 64_000;
+const COPY_STATUS_POLL_MS = 100;
+
+function durationUnitForColumn(summary: FileSummary, columnId: string): DurationUnit | undefined {
+  const logicalType = summary.columns
+    .find((column) => column.name === columnId)
+    ?.logicalType.toLocaleLowerCase();
+  if (!logicalType?.includes("duration")) return undefined;
+  if (logicalType.includes("nanosecond") || logicalType.includes("duration(ns")) return "ns";
+  if (logicalType.includes("microsecond") || logicalType.includes("duration(us")) return "us";
+  if (logicalType.includes("millisecond") || logicalType.includes("duration(ms")) return "ms";
+  return "s";
+}
 
 function rawValueMetadata(value: DataValue): { unit?: string; timezone?: string } {
   if (value.unit || value.timezone) {
@@ -139,7 +160,7 @@ export interface VirtualDataGridProps {
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
-  documentId?: string;
+  documentId: string;
   findDataBoundary?(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
   findTarget?: { row: number; columnId: string; key: string };
   isLoading: boolean;
@@ -162,6 +183,10 @@ export interface VirtualDataGridProps {
   readPage(request: ReadPageRequest): Promise<DataPage>;
   readCellValue?(row: number, columnId: string): Promise<DataValue>;
   cancelDataBoundaryNavigation?(request: CancelDataBoundaryNavigationRequest): Promise<void>;
+  startCopy(request: StartCopyRequest): Promise<CopyOperationStatus>;
+  getCopyStatus(request: CopyOperationIdentity): Promise<CopyOperationStatus>;
+  cancelCopyOperation(request: CopyOperationIdentity): Promise<CopyOperationStatus>;
+  getCopyHistory(documentId: string, sessionId: string): Promise<CopyOperationHistory>;
   queryId?: string;
   resultKey?: string;
   summary: FileSummary;
@@ -172,10 +197,32 @@ function projectedPageKey(offset: number, columns: readonly string[]): string {
   return `${offset}:${JSON.stringify(columns)}`;
 }
 
-interface CopyProgress {
-  copiedRows: number;
-  totalRows: number;
-  state: "copying" | "cancelling" | "committing";
+type CopyRequestSnapshot = Omit<StartCopyRequest, "operationId">;
+
+function copyIsActive(status: CopyOperationStatus | null): boolean {
+  return Boolean(
+    status && ["queued", "running", "cancelling", "committing"].includes(status.state),
+  );
+}
+
+function copyOptionsSnapshot(
+  options: CopyOptions,
+  includeHeaders: boolean,
+  representation: CopyRepresentation,
+): StartCopyRequest["options"] {
+  return {
+    delimiter: options.delimiter,
+    includeHeaders,
+    quoteMode: options.quoteMode,
+    quoteCharacter: options.quoteCharacter,
+    escapeMode: options.escapeMode,
+    lineEnding: options.lineEnding,
+    nullRepresentation: options.nullRepresentation,
+    emptyStringRepresentation: options.emptyStringRepresentation,
+    booleanRepresentation: options.booleanRepresentation,
+    dateTimeRepresentation: { ...options.dateTimeRepresentation },
+    representation,
+  };
 }
 
 async function defaultWriteClipboardText(text: string): Promise<void> {
@@ -244,6 +291,10 @@ export function VirtualDataGrid({
   copyPresetError = null,
   copyPresetSaving = false,
   cancelDataBoundaryNavigation = async () => undefined,
+  startCopy,
+  getCopyStatus,
+  cancelCopyOperation,
+  getCopyHistory,
   distinctValuesForColumn,
   documentId,
   findDataBoundary = async (request) => ({
@@ -280,6 +331,8 @@ export function VirtualDataGrid({
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(active);
+  const previousActive = useRef(active);
+  const resumedVisibleOffset = useRef<number | null | undefined>(undefined);
   activeRef.current = active;
   const latestCancelBoundaryNavigation = useRef(cancelDataBoundaryNavigation);
   latestCancelBoundaryNavigation.current = cancelDataBoundaryNavigation;
@@ -290,6 +343,9 @@ export function VirtualDataGrid({
   latestResultKey.current = activeResultKey;
   const generation = useRef(0);
   const copyGeneration = useRef(0);
+  const cellCopyGeneration = useRef(0);
+  const copySequence = useRef(0);
+  const copyPollTimer = useRef<number | null>(null);
   const inspectorGeneration = useRef(0);
   const mounted = useRef(true);
   const dragging = useRef(false);
@@ -298,6 +354,8 @@ export function VirtualDataGrid({
   const boundaryNavigationQueue = useRef<Promise<void>>(Promise.resolve());
   const activeBoundaryRequest = useRef<FindBoundaryRequest | null>(null);
   const horizontalGeneration = useRef(0);
+  const columnDragActiveRef = useRef(false);
+  const previousColumnDragActive = useRef(false);
   const inFlight = useRef(new Map<string, Promise<DataPage>>());
   const pendingLogicalScroll = useRef<number | null>(null);
   const segmentRecentering = useRef(false);
@@ -318,17 +376,30 @@ export function VirtualDataGrid({
   );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [chooserOpen, setChooserOpen] = useState(false);
+  const chooserRef = useRef<HTMLDivElement>(null);
+  const chooserTriggerRef = useRef<HTMLButtonElement>(null);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const copyMenuRef = useRef<HTMLDivElement>(null);
   const copyMenuPanelRef = useRef<HTMLDivElement>(null);
   const copyMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
+  const copyHistoryRef = useRef<HTMLDivElement>(null);
+  const copyHistoryTriggerRef = useRef<HTMLButtonElement>(null);
   const [searchInput, setSearchInput] = useState("");
   const [columnSearch, setColumnSearch] = useState("");
-  const logicalColumnNames = useMemo(
+  const sourceLogicalColumnNames = useMemo(
     () => logicalColumnNamesProp ?? summary.columns.map((column) => column.name),
     [logicalColumnNamesProp, summary.columns],
   );
+  const sourceLogicalColumnsKey = JSON.stringify(sourceLogicalColumnNames);
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => [...sourceLogicalColumnNames]);
+  const logicalColumnNames = useMemo(
+    () => normalizedIdOrder(sourceLogicalColumnNames, columnOrder),
+    [columnOrder, sourceLogicalColumnNames],
+  );
   const logicalColumnsKey = JSON.stringify(logicalColumnNames);
+  const previousSessionId = useRef(summary.sessionId);
+  const previousLogicalColumns = useRef<string[]>([...logicalColumnNames]);
   const initialBounds = {
     rowCount: Math.max(1, summary.rowCount ?? page.offset + page.rows.length),
     columnCount: Math.max(1, logicalColumnNames.length),
@@ -346,12 +417,22 @@ export function VirtualDataGrid({
     reactDispatchSelection(action);
     return next;
   }
-  const [copyProgress, setCopyProgress] = useState<CopyProgress | null>(null);
+  const [copyStatus, setCopyStatus] = useState<CopyOperationStatus | null>(null);
+  const [copyHistory, setCopyHistory] = useState<CopyOperationHistory>({
+    current: null,
+    previous: [],
+  });
+  const [lastCopySnapshot, setLastCopySnapshot] = useState<CopyRequestSnapshot | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [inspected, setInspected] = useState<{
     coordinate: GridCoordinate;
     value: DataValue;
   } | null>(null);
+  const displayedInspected = useMemo(
+    () =>
+      inspected ? { ...inspected, value: formatDataValue(inspected.value, displayFormats) } : null,
+    [displayFormats, inspected],
+  );
   const [contextMenu, setContextMenu] = useState<{
     coordinate: GridCoordinate;
     x: number;
@@ -367,14 +448,30 @@ export function VirtualDataGrid({
   const [filterPopoverPosition, setFilterPopoverPosition] = useState({ left: 8, top: 8 });
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const filterTriggerColumnId = useRef<string | null>(null);
+  const [filterFocusTarget, setFilterFocusTarget] = useState<string | null>(null);
   const queryEnabled = Boolean(queryPlan && onQueryPlanChange);
 
-  const closeFilterPopover = useCallback((restoreFocus = true) => {
-    setFilterPopover(null);
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => filterTriggerRef.current?.focus());
-    }
-  }, []);
+  useEffect(() => {
+    setColumnOrder((current) => {
+      const next = normalizedIdOrder(sourceLogicalColumnNames, current);
+      return sameProjectedColumns(current, next) ? current : next;
+    });
+  }, [sourceLogicalColumnsKey, sourceLogicalColumnNames]);
+
+  const closeFilterPopover = useCallback(
+    (restoreFocus = true) => {
+      setFilterPopover(null);
+      if (restoreFocus) {
+        setFilterFocusTarget(filterPopover?.columnId ?? filterTriggerColumnId.current);
+      }
+    },
+    [filterPopover],
+  );
+
+  useLayoutEffect(() => {
+    if (!filterPopover && filterFocusTarget) filterTriggerRef.current?.focus();
+  }, [filterFocusTarget, filterPopover]);
 
   const handleSearchChange = useCallback(
     (search: Parameters<typeof setSearch>[1]) => {
@@ -405,6 +502,8 @@ export function VirtualDataGrid({
       mounted.current = false;
       generation.current += 1;
       copyGeneration.current += 1;
+      cellCopyGeneration.current += 1;
+      if (copyPollTimer.current !== null) window.clearTimeout(copyPollTimer.current);
       inspectorGeneration.current += 1;
       navigationGeneration.current += 1;
       boundaryQueueEpoch.current += 1;
@@ -423,12 +522,48 @@ export function VirtualDataGrid({
   }, []);
 
   useEffect(() => {
+    inspectorGeneration.current += 1;
+  }, [displayFormats]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => setColumnSearch(searchInput), 100);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
   useEffect(() => {
+    const generationId = ++copyGeneration.current;
+    if (copyPollTimer.current !== null) window.clearTimeout(copyPollTimer.current);
+    setCopyStatus(null);
+    setCopyMessage(null);
+    setLastCopySnapshot(null);
+    setCopyHistory({ current: null, previous: [] });
+    if (!getCopyHistory || !documentId) return;
+    void getCopyHistory(documentId, summary.sessionId)
+      .then((history) => {
+        if (mounted.current && generationId === copyGeneration.current) setCopyHistory(history);
+      })
+      .catch((error) => {
+        if (mounted.current && generationId === copyGeneration.current) {
+          setCopyMessage(error instanceof Error ? error.message : "Copy history is unavailable.");
+        }
+      });
+  }, [documentId, getCopyHistory, summary.sessionId]);
+
+  useEffect(() => {
     const firstPage = latestPage.current;
+    const previousSelection = latestSelection.current;
+    const previousColumns = previousLogicalColumns.current;
+    const previousActiveColumnId = previousColumns[previousSelection.active.column];
+    const preserveLogicalCell = previousSessionId.current === summary.sessionId;
+    const nextBounds = {
+      rowCount: Math.max(1, firstPage.totalRows ?? firstPage.rows.length),
+      columnCount: Math.max(1, logicalColumnNames.length),
+      pageStep: 10,
+    };
+    const preservedCoordinate = {
+      row: Math.max(0, Math.min(nextBounds.rowCount - 1, previousSelection.active.row)),
+      column: Math.max(0, logicalColumnNames.indexOf(previousActiveColumnId)),
+    };
     generation.current += 1;
     horizontalGeneration.current += 1;
     navigationGeneration.current += 1;
@@ -448,27 +583,26 @@ export function VirtualDataGrid({
     setActiveOffset(firstPage.offset);
     setActiveProjection([...firstPage.columns]);
     setLoadingPageKeys(new Set());
-    setColumnVisibility({});
+    if (!preserveLogicalCell) setColumnVisibility({});
     setResolvedRowCountHint(null);
     skipAdjacentPrefetchOnce.current = false;
-    copyGeneration.current += 1;
     inspectorGeneration.current += 1;
-    setCopyProgress(null);
-    setCopyMessage(null);
     setInspected(null);
     dispatchSelection({
       type: "reset",
       sessionId: activeResultKey,
-      bounds: {
-        rowCount: Math.max(1, firstPage.totalRows ?? firstPage.rows.length),
-        columnCount: Math.max(1, logicalColumnNames.length),
-        pageStep: 10,
-      },
+      bounds: nextBounds,
     });
-    if (scrollRef.current) {
+    if (preserveLogicalCell) {
+      dispatchSelection({ type: "click", coordinate: preservedCoordinate, bounds: nextBounds });
+      pendingLogicalScroll.current = preservedCoordinate.row;
+      setSegmentStart(segmentStartForRow(preservedCoordinate.row, nextBounds.rowCount));
+    } else if (scrollRef.current) {
       scrollRef.current.scrollLeft = 0;
       scrollRef.current.scrollTop = 0;
     }
+    previousSessionId.current = summary.sessionId;
+    previousLogicalColumns.current = [...logicalColumnNames];
     if (activeRef.current) {
       window.requestAnimationFrame(() => {
         const grid = gridRef.current;
@@ -477,7 +611,9 @@ export function VirtualDataGrid({
         }
       });
     }
-  }, [activeResultKey, logicalColumnsKey, logicalColumnNames.length]);
+    // Column order changes remap selection separately and must not reset the result cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeResultKey, sourceLogicalColumnsKey, logicalColumnNames.length, summary.sessionId]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
@@ -493,13 +629,96 @@ export function VirtualDataGrid({
 
   useEffect(() => {
     if (!copyMenuOpen) return;
-    const close = (event: PointerEvent) => {
-      if (copyMenuRef.current?.contains(event.target as Node)) return;
+    const close = (event: Event) => {
+      if (event.target instanceof Node && copyMenuRef.current?.contains(event.target)) return;
       setCopyMenuOpen(false);
     };
+    const keydown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setCopyMenuOpen(false);
+      copyMenuTriggerRef.current?.focus();
+    };
     window.addEventListener("pointerdown", close, true);
-    return () => window.removeEventListener("pointerdown", close, true);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", keydown);
+    };
   }, [copyMenuOpen]);
+
+  useEffect(() => {
+    if (!chooserOpen) return;
+    const close = (event: Event) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        (chooserRef.current?.contains(target) || chooserTriggerRef.current?.contains(target))
+      )
+        return;
+      setChooserOpen(false);
+    };
+    const keydown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setChooserOpen(false);
+      chooserTriggerRef.current?.focus();
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, [chooserOpen]);
+
+  useEffect(() => {
+    if (!copyHistoryOpen) return;
+    const close = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && copyHistoryRef.current?.contains(target)) return;
+      setCopyHistoryOpen(false);
+    };
+    const keydown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setCopyHistoryOpen(false);
+      copyHistoryTriggerRef.current?.focus();
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, [copyHistoryOpen]);
+
+  useEffect(() => {
+    setCopyHistoryOpen(false);
+  }, [activeResultKey, active]);
+
+  useEffect(() => {
+    if (copyStatus?.state !== "complete") return;
+    const timer = window.setTimeout(() => {
+      setCopyStatus((current) =>
+        current?.operationId === copyStatus.operationId ? null : current,
+      );
+      setCopyMessage((current) => (current?.includes(copyStatus.operationId) ? null : current));
+    }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [copyStatus]);
 
   useLayoutEffect(() => {
     if (!copyMenuOpen) return;
@@ -665,6 +884,10 @@ export function VirtualDataGrid({
   const finalLoadedPage = [...pages.values()].find((loaded) => !loaded.hasMore);
   const loadedRowCount = finalLoadedPage ? loadedEnd : loadedEnd + 1;
   const rowCount = knownCount ?? Math.max(resolvedRowCountHint ?? 0, loadedRowCount);
+  const selectedExcelRows =
+    selection.rect.bottom - selection.rect.top + 1 + (copyOptions.includeHeaders ? 1 : 0);
+  const excelRowLimitExceeded =
+    copyOptions.preset === "excel" && selectedExcelRows > EXCEL_WORKSHEET_MAX_ROWS;
   const maxSegmentStart = Math.max(0, rowCount - GRID_MAX_SEGMENT_ROWS);
   const boundedSegmentStart = Math.min(segmentStart, maxSegmentStart);
   const segmentRowCount = Math.max(
@@ -679,6 +902,76 @@ export function VirtualDataGrid({
     () => ({ rowCount, columnCount: logicalColumnNames.length, pageStep }),
     [logicalColumnNames.length, pageStep, rowCount],
   );
+
+  function applyColumnOrder(nextOrder: readonly string[]): void {
+    const next = normalizedIdOrder(sourceLogicalColumnNames, nextOrder);
+    if (next.every((id, index) => id === logicalColumnNames[index])) return;
+    dispatchSelection({
+      type: "remapColumns",
+      previousColumnIds: logicalColumnNames,
+      nextColumnIds: next,
+      bounds: { ...selectionBounds, columnCount: next.length },
+    });
+    previousLogicalColumns.current = [...next];
+    setColumnOrder(next);
+  }
+
+  function moveColumn(columnId: string, direction: -1 | 1): void {
+    applyColumnOrder(moveId(logicalColumnNames, columnId, direction));
+  }
+
+  const columnReorder = usePointerReorder({
+    ids: logicalColumnNames,
+    containerRef: scrollRef,
+    orientation: "horizontal",
+    onCommit: applyColumnOrder,
+  });
+  const columnDragActive = Boolean(columnReorder.state.movingId);
+  columnDragActiveRef.current = columnDragActive;
+  const visibleColumnIds = visibleColumns.map((column) => column.id);
+  const columnWidths = Object.fromEntries(
+    visibleColumns.map((column) => [column.id, column.getSize()]),
+  );
+  const previewVisibleOrder =
+    columnReorder.state.movingId &&
+    columnReorder.state.targetId &&
+    visibleColumnIds.includes(columnReorder.state.movingId) &&
+    visibleColumnIds.includes(columnReorder.state.targetId)
+      ? reorderAtInsertion(
+          visibleColumnIds,
+          columnReorder.state.movingId,
+          columnReorder.state.targetId,
+          columnReorder.state.side ?? "before",
+        )
+      : visibleColumnIds;
+  const columnPreviewOffsets = columnReflowOffsets(
+    visibleColumnIds,
+    previewVisibleOrder,
+    columnWidths,
+  );
+  const restoredColumnOrder = restoreSourceOrder(sourceLogicalColumnNames, logicalColumnNames);
+  const isSourceColumnOrder = restoredColumnOrder.every(
+    (id, index) => id === logicalColumnNames[index],
+  );
+
+  useEffect(() => {
+    const grid = scrollRef.current;
+    if (!grid || !columnReorder.state.movingId) return;
+    const lockVerticalWheel = (event: WheelEvent) => {
+      if (event.deltaY !== 0) event.preventDefault();
+    };
+    grid.addEventListener("wheel", lockVerticalWheel, { passive: false });
+    return () => grid.removeEventListener("wheel", lockVerticalWheel);
+  }, [columnReorder.state.movingId]);
+
+  useEffect(() => {
+    if (columnDragActive && !previousColumnDragActive.current) {
+      horizontalGeneration.current += 1;
+      inFlight.current.clear();
+      setLoadingPageKeys(new Set());
+    }
+    previousColumnDragActive.current = columnDragActive;
+  }, [columnDragActive]);
 
   const rowVirtualizer = useVirtualizer({
     count: segmentRowCount,
@@ -707,6 +1000,30 @@ export function VirtualDataGrid({
         callback({ width: rect.width || 1024, height: rect.height || 420 }),
       ),
   });
+
+  useEffect(() => {
+    const resumedFromInactive = active && !previousActive.current;
+    previousActive.current = active;
+    if (active) {
+      if (resumedFromInactive) resumedVisibleOffset.current = null;
+      window.requestAnimationFrame(() => {
+        rowVirtualizer.measure();
+        columnVirtualizer.measure();
+      });
+      return;
+    }
+    cellCopyGeneration.current += 1;
+    inspectorGeneration.current += 1;
+    setInspected(null);
+    setChooserOpen(false);
+    setCopyMenuOpen(false);
+    setCopyHistoryOpen(false);
+    generation.current += 1;
+    horizontalGeneration.current += 1;
+    navigationGeneration.current += 1;
+    inFlight.current.clear();
+    setLoadingPageKeys(new Set());
+  }, [active, columnVirtualizer, rowVirtualizer]);
 
   useEffect(() => {
     if (segmentStart !== boundedSegmentStart) setSegmentStart(boundedSegmentStart);
@@ -788,19 +1105,21 @@ export function VirtualDataGrid({
         const cellRect = cell.getBoundingClientRect();
         if (gridRect.width > 0 && gridRect.height > 0 && cellRect.width > 0) {
           const visibleTop = gridRect.top + GRID_HEADER_HEIGHT;
+          const visibleBottom = gridRect.top + grid.clientHeight - GRID_BOTTOM_CLEARANCE;
           const visibleLeft = gridRect.left + GRID_ROW_NUMBER_WIDTH;
+          const visibleRight = gridRect.left + grid.clientWidth;
           if (cellRect.top < visibleTop) {
             grid.scrollTop -= visibleTop - cellRect.top;
             adjusted = true;
-          } else if (cellRect.bottom > gridRect.bottom) {
-            grid.scrollTop += cellRect.bottom - gridRect.bottom;
+          } else if (cellRect.bottom > visibleBottom) {
+            grid.scrollTop += cellRect.bottom - visibleBottom;
             adjusted = true;
           }
           if (cellRect.left < visibleLeft) {
             grid.scrollLeft -= visibleLeft - cellRect.left;
             adjusted = true;
-          } else if (cellRect.right > gridRect.right) {
-            grid.scrollLeft += cellRect.right - gridRect.right;
+          } else if (cellRect.right > visibleRight) {
+            grid.scrollLeft += cellRect.right - visibleRight;
             adjusted = true;
           }
         }
@@ -840,14 +1159,25 @@ export function VirtualDataGrid({
 
   const requestPage = useCallback(
     (offset: number, foreground: boolean) => {
-      if (offset < 0 || activeProjection.length === 0) return Promise.resolve(null);
+      if (
+        !activeRef.current ||
+        columnDragActiveRef.current ||
+        offset < 0 ||
+        activeProjection.length === 0
+      )
+        return Promise.resolve(null);
       const key = projectedPageKey(offset, activeProjection);
       if (pages.has(key)) return Promise.resolve(pages.get(key) ?? null);
       const compatible = compatiblePageFor(pages.values(), page, offset, activeProjection);
       if (compatible) return Promise.resolve(compatible);
       const existing = inFlight.current.get(key);
       if (existing) return existing;
-      if (inFlight.current.size >= MAX_CONCURRENT_REQUESTS) return Promise.resolve(null);
+      if (inFlight.current.size >= MAX_CONCURRENT_REQUESTS) {
+        if (!foreground) return Promise.resolve(null);
+        generation.current += 1;
+        inFlight.current.clear();
+        setLoadingPageKeys(new Set());
+      }
       const requestGeneration = generation.current;
       const requestHorizontalGeneration = horizontalGeneration.current;
       const requestedColumns = [...activeProjection];
@@ -865,6 +1195,7 @@ export function VirtualDataGrid({
             if (
               requestGeneration !== generation.current ||
               requestHorizontalGeneration !== horizontalGeneration.current ||
+              columnDragActiveRef.current ||
               nextPage.sessionId !== summary.sessionId ||
               nextPage.offset !== offset ||
               !sameProjectedColumns(nextPage.columns, requestedColumns)
@@ -915,6 +1246,13 @@ export function VirtualDataGrid({
     (virtualColumn) => visibleColumnIndexes[virtualColumn.index],
   );
   const mountedLogicalOrdinalsKey = mountedLogicalOrdinals.join(",");
+  const desiredProjection = orderedProjectionForWindow(
+    logicalColumnNames,
+    mountedLogicalOrdinals,
+    activeProjection,
+  );
+  const desiredProjectionKey = JSON.stringify(desiredProjection);
+  const activeProjectionSettled = sameProjectedColumns(activeProjection, desiredProjection);
 
   useEffect(() => {
     const grid = scrollRef.current;
@@ -968,13 +1306,18 @@ export function VirtualDataGrid({
   }, [boundedSegmentStart, maxSegmentStart, rowCount, segmentRowCount]);
 
   useEffect(() => {
-    setActiveProjection((current) => {
-      const next = orderedProjectionForWindow(logicalColumnNames, mountedLogicalOrdinals, current);
-      return sameProjectedColumns(current, next) ? current : next;
-    });
+    if (!active || columnDragActive || activeProjectionSettled) return;
+    setActiveProjection(desiredProjection);
     // The key captures the virtual range without making this effect depend on a fresh array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logicalColumnsKey, mountedLogicalOrdinalsKey]);
+  }, [
+    active,
+    activeProjectionSettled,
+    columnDragActive,
+    desiredProjectionKey,
+    logicalColumnsKey,
+    mountedLogicalOrdinalsKey,
+  ]);
 
   const activeProjectionKey = JSON.stringify(activeProjection);
   useEffect(() => {
@@ -984,7 +1327,7 @@ export function VirtualDataGrid({
   }, [activeProjectionKey]);
 
   useEffect(() => {
-    if (rowCount === 0) return;
+    if (!active || columnDragActive || !activeProjectionSettled || rowCount === 0) return;
     const scrollRow = Math.min(
       rowCount - 1,
       boundedSegmentStart +
@@ -1002,6 +1345,11 @@ export function VirtualDataGrid({
 
     const current = pages.get(visibleKey) ?? compatible;
     if (!current) return;
+    if (resumedVisibleOffset.current !== undefined) {
+      if (resumedVisibleOffset.current === null) resumedVisibleOffset.current = visibleOffset;
+      if (resumedVisibleOffset.current === visibleOffset) return;
+      resumedVisibleOffset.current = undefined;
+    }
     if (skipAdjacentPrefetchOnce.current) {
       skipAdjacentPrefetchOnce.current = false;
       return;
@@ -1016,7 +1364,10 @@ export function VirtualDataGrid({
     }
   }, [
     activeProjection,
+    activeProjectionSettled,
+    active,
     boundedSegmentStart,
+    columnDragActive,
     firstVisibleRow,
     lastVisibleRow,
     page,
@@ -1042,19 +1393,23 @@ export function VirtualDataGrid({
     };
   }, []);
 
-  function valueAt(rowIndex: number, columnIndex: number): DataValue | null {
+  function rawValueAt(rowIndex: number, columnIndex: number): DataValue | null {
     const offset = pageOffsetFor(rowIndex, page.limit);
     const columnName = logicalColumnNames[columnIndex];
     if (!columnName) return null;
     const loaded = compatiblePageFor(pages.values(), page, offset, [columnName]);
     if (!loaded) return null;
     const projectedIndex = loaded.columns.indexOf(columnName);
-    const value = loaded.rows[rowIndex - offset]?.[projectedIndex] ?? null;
+    return loaded.rows[rowIndex - offset]?.[projectedIndex] ?? null;
+  }
+
+  function valueAt(rowIndex: number, columnIndex: number): DataValue | null {
+    const value = rawValueAt(rowIndex, columnIndex);
     return value ? formatDataValue(value, displayFormats) : null;
   }
 
   function inspect(coordinate: GridCoordinate) {
-    const value = valueAt(coordinate.row, coordinate.column);
+    const value = rawValueAt(coordinate.row, coordinate.column);
     if (!value) return;
     const requestGeneration = ++inspectorGeneration.current;
     setInspected({ coordinate, value });
@@ -1068,7 +1423,7 @@ export function VirtualDataGrid({
             inspectorGeneration.current === requestGeneration &&
             latestResultKey.current === resultIdentity
           ) {
-            setInspected({ coordinate, value: formatDataValue(fullValue, displayFormats) });
+            setInspected({ coordinate, value: fullValue });
           }
         })
         .catch((error) => {
@@ -1091,172 +1446,135 @@ export function VirtualDataGrid({
     window.requestAnimationFrame(() => gridRef.current?.focus());
   }
 
-  async function copySelection(includeColumnHeaders?: boolean, options = copyOptions) {
-    if (copyProgress || rowCount === 0 || logicalColumnNames.length === 0) return;
-    const copyId = ++copyGeneration.current;
-    const sessionId = summary.sessionId;
-    const copyResultKey = activeResultKey;
-    const { top, left, bottom, right } = selection.rect;
-    const totalRows = bottom - top + 1;
-    const selectedColumns = logicalColumnNames.slice(left, right + 1);
-    const cellCount = totalRows * selectedColumns.length;
-    const activeCopyLimits = { ...copyLimits };
-    setCopyMessage(null);
+  function copyStatusMessage(status: CopyOperationStatus): string {
+    const operation = `Copy ${status.operationId} (${status.startedAt})`;
+    if (status.state === "complete") {
+      return `${operation} completed: ${status.progress.rowsProcessed.toLocaleString()} rows copied.`;
+    }
+    if (status.state === "failed" && status.failure) {
+      return `${operation} failed during ${status.stage} (${status.failure.reason}): ${status.failure.message}`;
+    }
+    if (status.state === "cancelled") {
+      return `${operation} cancelled${status.failure ? ` (${status.failure.reason}): ${status.failure.message}` : "."}`;
+    }
+    return `${operation}: ${status.state} / ${status.stage}, ${status.progress.rowsProcessed.toLocaleString()} / ${status.progress.totalRows.toLocaleString()} rows.`;
+  }
 
-    if (!Number.isSafeInteger(cellCount) || cellCount > activeCopyLimits.maxCells) {
-      setCopyMessage(
-        `Selection exceeds the configured ${activeCopyLimits.maxCells.toLocaleString()}-cell clipboard limit.`,
-      );
-      return;
-    }
-    if (
-      cellCount > COPY_SOFT_CELL_LIMIT &&
-      !window.confirm(
-        `Copy ${cellCount.toLocaleString()} cells? Large selections may take a moment.`,
-      )
-    ) {
-      return;
-    }
-
-    const activeCopyOptions = {
-      ...options,
-      includeHeaders: includeColumnHeaders ?? options.includeHeaders,
-    };
-    const writer = new CopyAccumulator(activeCopyOptions, activeCopyLimits.maxBytes);
-    const copyChunkRows = Math.max(
-      1,
-      Math.min(COPY_CHUNK_ROWS, Math.floor(COPY_TARGET_CHUNK_CELLS / selectedColumns.length)),
-    );
-    const columnGroups: string[][] = [];
-    for (
-      let columnOffset = 0;
-      columnOffset < selectedColumns.length;
-      columnOffset += COPY_PROJECTION_COLUMN_LIMIT
-    ) {
-      columnGroups.push(
-        selectedColumns.slice(columnOffset, columnOffset + COPY_PROJECTION_COLUMN_LIMIT),
-      );
-    }
-    let copiedRows = 0;
-    let softBytesConfirmed = cellCount > COPY_SOFT_CELL_LIMIT;
-    setCopyProgress({ copiedRows, totalRows, state: "copying" });
+  async function refreshCopyHistory(expectedGeneration = copyGeneration.current): Promise<void> {
     try {
-      for (let offset = top; offset <= bottom; offset += copyChunkRows) {
-        if (
-          !mounted.current ||
-          copyId !== copyGeneration.current ||
-          copyResultKey !== latestResultKey.current
-        )
-          return;
-        const limit = Math.min(copyChunkRows, bottom - offset + 1);
-        const cachedRows: DataValue[][] = [];
-        let cached = true;
-        for (let row = offset; row < offset + limit; row += 1) {
-          const values = [];
-          for (let column = left; column <= right; column += 1) {
-            const value = valueAt(row, column);
-            if (value === null) {
-              cached = false;
-              break;
-            }
-            values.push(value);
-          }
-          if (!cached) break;
-          cachedRows.push(values);
-        }
-        let rows = cached ? cachedRows : null;
-        if (!rows) {
-          let combinedRows: DataValue[][] | null = null;
-          for (const columns of columnGroups) {
-            const response = await readPage({ sessionId, offset, limit, columns });
-            if (
-              !mounted.current ||
-              copyId !== copyGeneration.current ||
-              copyResultKey !== latestResultKey.current
-            )
-              return;
-            if (
-              response.sessionId !== sessionId ||
-              response.offset !== offset ||
-              !sameProjectedColumns(response.columns, columns) ||
-              response.rows.length > limit ||
-              response.rows.some((row) => row.length !== columns.length)
-            ) {
-              throw new Error("The copy page response did not match the requested range.");
-            }
-            if (combinedRows === null) {
-              combinedRows = response.rows.map((row) => [...row]);
-            } else {
-              if (combinedRows.length !== response.rows.length) {
-                throw new Error("The copy page projections returned different row counts.");
-              }
-              response.rows.forEach((row, rowIndex) => combinedRows![rowIndex].push(...row));
-            }
-          }
-          rows = (combinedRows ?? []).map((row) =>
-            row.map((value) => formatDataValue(value, displayFormats)),
-          );
-        }
-        if (knownCount !== null && rows.length !== limit) {
-          throw new Error("The copy page response did not match the requested range.");
-        }
-        if (
-          !mounted.current ||
-          copyId !== copyGeneration.current ||
-          copyResultKey !== latestResultKey.current
-        )
-          return;
-        writer.appendRows(
-          rows,
-          copiedRows === 0 && activeCopyOptions.includeHeaders ? selectedColumns : undefined,
-        );
-        copiedRows += rows.length;
-        setCopyProgress({ copiedRows, totalRows, state: "copying" });
-        if (rows.length < limit) break;
-      }
-
-      if (
-        writer.byteLength > COPY_SOFT_BYTE_LIMIT &&
-        !softBytesConfirmed &&
-        !window.confirm(
-          `Copy ${(writer.byteLength / (1024 * 1024)).toFixed(1)} MiB to the clipboard?`,
-        )
-      ) {
-        return;
-      }
-      softBytesConfirmed = true;
-      if (
-        !mounted.current ||
-        copyId !== copyGeneration.current ||
-        copyResultKey !== latestResultKey.current
-      )
-        return;
-      setCopyProgress({ copiedRows, totalRows, state: "committing" });
-      await writeClipboardText(writer.finish());
-      if (
-        mounted.current &&
-        copyId === copyGeneration.current &&
-        copyResultKey === latestResultKey.current
-      ) {
-        setCopyMessage(`Copied ${copiedRows.toLocaleString()} rows.`);
-      }
+      const history = await getCopyHistory(documentId, summary.sessionId);
+      if (mounted.current && expectedGeneration === copyGeneration.current) setCopyHistory(history);
     } catch (error) {
-      if (copyId !== copyGeneration.current) return;
-      setCopyMessage(
-        error instanceof CopyByteLimitExceededError || error instanceof Error
-          ? error.message
-          : "The selection could not be copied.",
-      );
-    } finally {
-      if (copyId === copyGeneration.current) setCopyProgress(null);
+      if (mounted.current && expectedGeneration === copyGeneration.current) {
+        setCopyMessage(error instanceof Error ? error.message : "Copy history is unavailable.");
+      }
     }
   }
 
-  function cancelCopy() {
-    copyGeneration.current += 1;
-    setCopyProgress((current) => (current ? { ...current, state: "cancelling" } : current));
-    window.setTimeout(() => setCopyProgress(null), 0);
-    setCopyMessage("Copy cancelled.");
+  function acceptCopyStatus(
+    status: CopyOperationStatus,
+    generationId: number,
+    snapshot: CopyRequestSnapshot,
+  ): void {
+    if (!mounted.current || generationId !== copyGeneration.current) return;
+    setCopyStatus(status);
+    setCopyHistory((current) => ({ ...current, current: status }));
+    setCopyMessage(copyStatusMessage(status));
+    if (!copyIsActive(status)) {
+      void refreshCopyHistory(generationId);
+      return;
+    }
+    copyPollTimer.current = window.setTimeout(() => {
+      if (generationId !== copyGeneration.current) return;
+      void getCopyStatus({
+        operationId: status.operationId,
+        documentId: snapshot.documentId,
+        sessionId: snapshot.sessionId,
+      })
+        .then((next) => acceptCopyStatus(next, generationId, snapshot))
+        .catch((error) => {
+          if (mounted.current && generationId === copyGeneration.current) {
+            setCopyStatus(null);
+            setCopyMessage(error instanceof Error ? error.message : "Copy status is unavailable.");
+          }
+        });
+    }, COPY_STATUS_POLL_MS);
+  }
+
+  async function startCopySnapshot(snapshot: CopyRequestSnapshot): Promise<void> {
+    const generationId = ++copyGeneration.current;
+    if (copyPollTimer.current !== null) window.clearTimeout(copyPollTimer.current);
+    const fallbackId = `${Date.now().toString(36)}-${(++copySequence.current).toString(36)}`;
+    const operationId = `copy-${globalThis.crypto?.randomUUID?.() ?? fallbackId}`;
+    setLastCopySnapshot(snapshot);
+    setCopyMessage(`Starting copy ${operationId}...`);
+    try {
+      const status = await startCopy({ operationId, ...snapshot });
+      acceptCopyStatus(status, generationId, snapshot);
+    } catch (error) {
+      if (mounted.current && generationId === copyGeneration.current) {
+        setCopyStatus(null);
+        setCopyMessage(
+          error instanceof Error ? error.message : "The selection could not be copied.",
+        );
+      }
+    }
+  }
+
+  async function copySelection(
+    includeColumnHeaders?: boolean,
+    options = copyOptions,
+    representation: CopyRepresentation = "display",
+  ) {
+    if (copyIsActive(copyStatus) || rowCount === 0 || logicalColumnNames.length === 0) return;
+    const { top, left, bottom, right } = latestSelection.current.rect;
+    const selectedColumns = visibleColumns
+      .map((column) => column.id)
+      .filter((columnId) => {
+        const logicalIndex = logicalColumnNames.indexOf(columnId);
+        return logicalIndex >= left && logicalIndex <= right;
+      });
+    if (selectedColumns.length === 0) {
+      setCopyMessage("The selection contains no visible columns.");
+      return;
+    }
+    const snapshot: CopyRequestSnapshot = {
+      documentId,
+      sessionId: summary.sessionId,
+      queryId: queryId ?? null,
+      selection: {
+        rowStart: top,
+        rowEndExclusive: bottom + 1,
+        columnIds: [...selectedColumns],
+      },
+      options: copyOptionsSnapshot(
+        options,
+        includeColumnHeaders ?? options.includeHeaders,
+        representation,
+      ),
+      maxCells: copyLimits.maxCells,
+      maxBytes: copyLimits.maxBytes,
+    };
+    await startCopySnapshot(snapshot);
+  }
+
+  async function cancelCopy() {
+    if (!copyStatus || !copyIsActive(copyStatus)) return;
+    const generationId = copyGeneration.current;
+    if (copyPollTimer.current !== null) window.clearTimeout(copyPollTimer.current);
+    setCopyStatus({ ...copyStatus, state: "cancelling" });
+    try {
+      const status = await cancelCopyOperation({
+        operationId: copyStatus.operationId,
+        documentId: copyStatus.documentId,
+        sessionId: copyStatus.sessionId,
+      });
+      if (lastCopySnapshot) acceptCopyStatus(status, generationId, lastCopySnapshot);
+    } catch (error) {
+      if (mounted.current && generationId === copyGeneration.current) {
+        setCopyMessage(error instanceof Error ? error.message : "Copy cancellation failed.");
+      }
+    }
   }
 
   function closeContextMenu(restoreFocus = true) {
@@ -1293,6 +1611,13 @@ export function VirtualDataGrid({
     coordinate: GridCoordinate,
     representation: "configured" | "display" | "raw" = "configured",
   ) {
+    const requestGeneration = ++cellCopyGeneration.current;
+    const resultIdentity = activeResultKey;
+    const isCurrent = () =>
+      mounted.current &&
+      activeRef.current &&
+      cellCopyGeneration.current === requestGeneration &&
+      latestResultKey.current === resultIdentity;
     let value = valueAt(coordinate.row, coordinate.column);
     if (!value) return;
     try {
@@ -1300,16 +1625,18 @@ export function VirtualDataGrid({
       if (representation !== "display" && readCellValue && columnId) {
         value = formatDataValue(await readCellValue(coordinate.row, columnId), displayFormats);
       }
+      if (!isCurrent()) return;
       const text =
         representation === "display"
           ? (value.display ?? "")
           : representation === "raw"
-            ? (value.sourceDisplay ?? value.rawDisplay ?? value.display ?? "")
+            ? (value.rawDisplay ?? value.sourceDisplay ?? value.display ?? "")
             : serializeCopyField(value, copyOptions);
       await writeClipboardText(text);
-      setCopyMessage("Copied cell value.");
+      if (isCurrent()) setCopyMessage("Copied cell value.");
     } catch (error) {
-      setCopyMessage(error instanceof Error ? error.message : "The cell could not be copied.");
+      if (isCurrent())
+        setCopyMessage(error instanceof Error ? error.message : "The cell could not be copied.");
     }
   }
 
@@ -1642,12 +1969,13 @@ export function VirtualDataGrid({
     column.id.toLocaleLowerCase().includes(columnSearch.trim().toLocaleLowerCase()),
   );
   const mountedCellCount = virtualRows.length * columnVirtualItems.length;
-  const querySearchColumns: QuerySearchColumn[] = visibleColumns.map((column) => {
-    const columnId = column.id;
+  const visibleColumnIdSet = new Set(visibleColumns.map((column) => column.id));
+  const querySearchColumns: QuerySearchColumn[] = sourceLogicalColumnNames.map((columnId) => {
     const scalarType = queryScalarTypes?.[columnId] ?? inferQueryScalarType(summary, columnId);
     return {
       id: columnId,
       label: columnId,
+      hidden: !visibleColumnIdSet.has(columnId),
       searchable: scalarType !== "other",
       disabledReason:
         scalarType === "other" ? "Search is unavailable for this column type." : undefined,
@@ -1656,6 +1984,7 @@ export function VirtualDataGrid({
   const queryHasConditions = Boolean(
     queryPlan && (queryPlan.filters.length > 0 || queryPlan.search?.text.trim()),
   );
+  const activeCopyStatus = copyIsActive(copyStatus) ? copyStatus : null;
 
   return (
     <div
@@ -1664,6 +1993,7 @@ export function VirtualDataGrid({
     >
       {queryEnabled && queryPlan && (
         <QueryToolbar
+          active={active}
           columns={querySearchColumns}
           onCancelQuery={onCancelQuery}
           onClearFilters={handleClearFilters}
@@ -1671,6 +2001,9 @@ export function VirtualDataGrid({
           onFindPrevious={onFindPrevious}
           onRemoveFilter={handleRemoveFilter}
           onRetryQuery={onRetryQuery}
+          onSortChange={(sort) => {
+            if (queryPlan && onQueryPlanChange) onQueryPlanChange(setSort(queryPlan, sort));
+          }}
           onSearchChange={handleSearchChange}
           plan={queryPlan}
           status={queryStatus}
@@ -1694,8 +2027,13 @@ export function VirtualDataGrid({
           aria-expanded={chooserOpen}
           aria-label="Choose columns"
           className="column-tool-button"
-          onClick={() => setChooserOpen((open) => !open)}
+          onClick={() => {
+            setCopyHistoryOpen(false);
+            setCopyMenuOpen(false);
+            setChooserOpen((open) => !open);
+          }}
           title="Choose columns"
+          ref={chooserTriggerRef}
           type="button"
         >
           <Columns3 aria-hidden="true" />
@@ -1703,35 +2041,60 @@ export function VirtualDataGrid({
         <span className="column-count">
           {visibleColumns.length.toLocaleString()} / {allColumns.length.toLocaleString()} columns
         </span>
+        <button
+          aria-label="Restore source column order"
+          className="column-tool-button column-order-restore"
+          disabled={isSourceColumnOrder || Boolean(columnReorder.state.movingId)}
+          onClick={() => {
+            const activeColumnId = logicalColumnNames[selection.active.column];
+            applyColumnOrder(restoredColumnOrder);
+            window.requestAnimationFrame(() => {
+              if (!activeColumnId) return;
+              const restoredVisibleIds = restoredColumnOrder.filter((id) =>
+                table.getColumn(id)?.getIsVisible(),
+              );
+              const visibleIndex = restoredVisibleIds.indexOf(activeColumnId);
+              if (visibleIndex >= 0)
+                columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
+            });
+          }}
+          title="Restore source column order"
+          type="button"
+        >
+          <RotateCcw aria-hidden="true" />
+        </button>
         <div className="copy-controls">
           <button
             aria-label={
-              !copyProgress
+              !activeCopyStatus
                 ? "Copy selection"
-                : copyProgress.state === "copying"
+                : ["queued", "running"].includes(activeCopyStatus.state)
                   ? "Cancel copy"
                   : "Finishing copy"
             }
             className="copy-selection-button"
-            disabled={rowCount === 0 || Boolean(copyProgress && copyProgress.state !== "copying")}
+            disabled={
+              rowCount === 0 ||
+              Boolean(activeCopyStatus && !["queued", "running"].includes(activeCopyStatus.state))
+            }
             onClick={
-              !copyProgress
+              !activeCopyStatus
                 ? () => void copySelection()
-                : copyProgress.state === "copying"
-                  ? cancelCopy
+                : ["queued", "running"].includes(activeCopyStatus.state)
+                  ? () => void cancelCopy()
                   : undefined
             }
             title={
-              !copyProgress
+              !activeCopyStatus
                 ? `Copy selection as ${copyOptions.preset}`
-                : copyProgress.state === "copying"
+                : ["queued", "running"].includes(activeCopyStatus.state)
                   ? "Cancel copy"
                   : "Finishing clipboard write"
             }
             type="button"
           >
-            {copyProgress ? (
-              copyProgress.state === "copying" ? (
+            {activeCopyStatus ? (
+              ["queued", "running"].includes(activeCopyStatus.state) ? (
                 <X aria-hidden="true" />
               ) : (
                 <LoaderCircle aria-hidden="true" />
@@ -1740,9 +2103,9 @@ export function VirtualDataGrid({
               <ClipboardCopy aria-hidden="true" />
             )}
             <span>
-              {!copyProgress
+              {!activeCopyStatus
                 ? `Copy (${copyOptions.preset.toUpperCase()})`
-                : copyProgress.state === "copying"
+                : ["queued", "running"].includes(activeCopyStatus.state)
                   ? "Cancel"
                   : "Finishing"}
             </span>
@@ -1753,8 +2116,12 @@ export function VirtualDataGrid({
               aria-haspopup="menu"
               aria-label="Copy options"
               className="copy-options-button"
-              disabled={Boolean(copyProgress) || copyPresetSaving}
-              onClick={() => setCopyMenuOpen((open) => !open)}
+              disabled={Boolean(activeCopyStatus) || copyPresetSaving}
+              onClick={() => {
+                setChooserOpen(false);
+                setCopyHistoryOpen(false);
+                setCopyMenuOpen((open) => !open);
+              }}
               ref={copyMenuTriggerRef}
               title="Copy options"
               type="button"
@@ -1777,6 +2144,16 @@ export function VirtualDataGrid({
                   type="button"
                 >
                   Copy with column headers
+                </button>
+                <button
+                  onClick={() => {
+                    setCopyMenuOpen(false);
+                    void copySelection(undefined, copyOptions, "rawCanonical");
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  Copy raw values
                 </button>
                 {(["excel", "tsv", "csv", "custom"] as const).map((preset) => (
                   <button
@@ -1818,12 +2195,85 @@ export function VirtualDataGrid({
             )}
           </div>
         </div>
-        {(copyProgress || copyMessage) && (
-          <span className="copy-status" role="status" aria-live="polite">
-            {copyProgress
-              ? `${copyProgress.state === "cancelling" ? "Cancelling" : copyProgress.state === "committing" ? "Writing clipboard" : "Copying"} ${copyProgress.copiedRows.toLocaleString()} / ${copyProgress.totalRows.toLocaleString()} rows`
-              : copyMessage}
+        {excelRowLimitExceeded && (
+          <span
+            className="copy-warning"
+            role="status"
+            title={`${selectedExcelRows.toLocaleString()} selected rows exceed Excel's ${EXCEL_WORKSHEET_MAX_ROWS.toLocaleString()}-row worksheet limit. Copy is not truncated.`}
+          >
+            <TriangleAlert aria-hidden="true" /> Excel limit: {selectedExcelRows.toLocaleString()}{" "}
+            rows exceed {EXCEL_WORKSHEET_MAX_ROWS.toLocaleString()}; copy is not truncated.
           </span>
+        )}
+        {(activeCopyStatus || copyMessage) && (
+          <span className="copy-status" role="status" aria-live="polite">
+            {activeCopyStatus ? copyStatusMessage(activeCopyStatus) : copyMessage}
+          </span>
+        )}
+        {copyStatus && !activeCopyStatus && copyStatus.state !== "complete" && (
+          <span className="copy-failure-actions">
+            {lastCopySnapshot && (
+              <button
+                className="copy-retry"
+                onClick={() => void startCopySnapshot(lastCopySnapshot)}
+                type="button"
+              >
+                Retry
+              </button>
+            )}
+            <button
+              className="copy-retry"
+              onClick={() => {
+                setCopyStatus(null);
+                setCopyMessage(null);
+              }}
+              type="button"
+            >
+              Dismiss
+            </button>
+          </span>
+        )}
+        {(copyHistory.current || copyHistory.previous.length > 0) && (
+          <div className="copy-history" ref={copyHistoryRef}>
+            <button
+              aria-expanded={copyHistoryOpen}
+              className="copy-history__trigger"
+              onClick={() => {
+                setChooserOpen(false);
+                setCopyMenuOpen(false);
+                setCopyHistoryOpen((open) => !open);
+              }}
+              ref={copyHistoryTriggerRef}
+              type="button"
+            >
+              Copy history
+            </button>
+            {copyHistoryOpen && (
+              <ol aria-label="Copy history">
+                {[copyHistory.current, ...copyHistory.previous]
+                  .filter((item): item is CopyOperationStatus => item !== null)
+                  .filter(
+                    (item, index, items) =>
+                      items.findIndex((candidate) => candidate.operationId === item.operationId) ===
+                      index,
+                  )
+                  .slice(0, 5)
+                  .map((item, index) => (
+                    <li key={item.operationId}>
+                      <strong>{index === 0 ? "Current" : "Previous"}</strong>
+                      <span>{item.operationId}</span>
+                      <time>{item.startedAt}</time>
+                      <span>{item.state}</span>
+                      {item.failure && (
+                        <span>
+                          {item.failure.reason}: {item.failure.message}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+              </ol>
+            )}
+          </div>
         )}
         {copyPresetSaving ? (
           <span className="copy-status" role="status" aria-live="polite">
@@ -1835,7 +2285,12 @@ export function VirtualDataGrid({
           </span>
         ) : null}
         {chooserOpen && (
-          <div className="column-chooser" role="dialog" aria-label="Column chooser">
+          <div
+            className="column-chooser"
+            ref={chooserRef}
+            role="dialog"
+            aria-label="Column chooser"
+          >
             <div className="column-chooser__header">
               <strong>Columns</strong>
               <button
@@ -1897,9 +2352,13 @@ export function VirtualDataGrid({
         className="virtual-grid"
         data-active-column={selection.active.column}
         data-active-row={selection.active.row}
+        data-bottom-clearance={GRID_BOTTOM_CLEARANCE}
+        data-document-id={documentId}
         data-mounted-cells={mountedCellCount}
         data-mounted-columns={columnVirtualItems.length}
         data-mounted-rows={virtualRows.length}
+        data-query-id={queryId ?? ""}
+        data-session-id={summary.sessionId}
         data-selection-bottom={selection.rect.bottom}
         data-selection-kind={selection.kind}
         data-selection-left={selection.rect.left}
@@ -1945,7 +2404,7 @@ export function VirtualDataGrid({
           <div
             className="virtual-grid__canvas"
             style={{
-              height: GRID_HEADER_HEIGHT + rowVirtualizer.getTotalSize() + GRID_BOTTOM_PADDING,
+              height: GRID_HEADER_HEIGHT + rowVirtualizer.getTotalSize() + GRID_BOTTOM_CLEARANCE,
               width: GRID_ROW_NUMBER_WIDTH + totalColumnWidth,
             }}
           >
@@ -1969,12 +2428,14 @@ export function VirtualDataGrid({
                     : undefined;
                 return (
                   <div
+                    {...columnReorder.getItemProps(column.id)}
                     aria-colindex={virtualColumn.index + 1}
                     aria-label={column.id}
-                    className={`virtual-grid__column-header${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}`}
+                    className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}${columnReorder.state.movingId === column.id ? " is-reordering" : ""}${columnReorder.state.movingId && columnReorder.state.movingId !== column.id ? " is-live-reflowing" : ""}`}
                     data-column-index={logicalColumn}
                     key={column.id}
                     onClick={(event) => {
+                      if (columnReorder.consumeSuppressedClick(column.id)) return;
                       if (
                         (event.target as HTMLElement).closest(
                           ".column-resizer, .query-column-actions",
@@ -1988,12 +2449,32 @@ export function VirtualDataGrid({
                       });
                       gridRef.current?.focus();
                     }}
+                    onKeyDown={(event) => {
+                      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey)
+                        return;
+                      const direction =
+                        event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : null;
+                      if (direction === null) return;
+                      event.preventDefault();
+                      moveColumn(column.id, direction);
+                      window.requestAnimationFrame(() => {
+                        Array.from(
+                          gridRef.current?.querySelectorAll<HTMLElement>(
+                            ".virtual-grid__column-header",
+                          ) ?? [],
+                        )
+                          .find((header) => header.getAttribute("aria-label") === column.id)
+                          ?.focus();
+                      });
+                    }}
                     role="columnheader"
                     style={{
                       left: GRID_ROW_NUMBER_WIDTH + virtualColumn.start,
+                      transform: `translate3d(${columnPreviewOffsets[column.id] ?? 0}px, 0, 0)`,
                       width: column.getSize(),
                     }}
                     title={column.id}
+                    tabIndex={0}
                   >
                     <span>{column.id}</span>
                     {queryEnabled && queryPlan && onQueryPlanChange && (
@@ -2006,6 +2487,8 @@ export function VirtualDataGrid({
                             event.stopPropagation();
                             const trigger = event.currentTarget;
                             const rect = trigger.getBoundingClientRect();
+                            setFilterFocusTarget(null);
+                            filterTriggerColumnId.current = column.id;
                             filterTriggerRef.current = trigger;
                             onOpenDistinctValues?.(column.id);
                             setFilterPopover((current) =>
@@ -2014,6 +2497,11 @@ export function VirtualDataGrid({
                                 : { columnId: column.id, left: rect.left, top: rect.bottom + 4 },
                             );
                           }}
+                          ref={
+                            filterTriggerColumnId.current === column.id
+                              ? filterTriggerRef
+                              : undefined
+                          }
                           title={`Filter ${column.id}`}
                           type="button"
                         >
@@ -2029,7 +2517,7 @@ export function VirtualDataGrid({
                           className={columnSort ? "is-active" : undefined}
                           onClick={(event) => {
                             event.stopPropagation();
-                            onQueryPlanChange(toggleSort(queryPlan, column.id, event.shiftKey));
+                            onQueryPlanChange(toggleSort(queryPlan, column.id, false));
                           }}
                           title={`Sort ${column.id}${columnSort ? ` (${columnSort.direction})` : ""}`}
                           type="button"
@@ -2059,6 +2547,7 @@ export function VirtualDataGrid({
                       aria-valuemin={GRID_MIN_COLUMN_WIDTH}
                       aria-valuenow={column.getSize()}
                       className="column-resizer"
+                      data-reorder-ignore
                       onDoubleClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -2144,7 +2633,7 @@ export function VirtualDataGrid({
                           value?.kind === "string" && !displayFormats.string.wrapLongLines
                             ? " virtual-grid__cell--nowrap"
                             : ""
-                        }${selected ? " is-selected" : ""}${active ? " is-active" : ""}`}
+                        }${selected ? " is-selected" : ""}${active ? " is-active" : ""}${columnReorder.state.movingId === column.id ? " is-reordering" : ""}${columnReorder.state.movingId && columnReorder.state.movingId !== column.id ? " is-live-reflowing" : ""}`}
                         data-grid-column={logicalColumn}
                         data-grid-row={virtualRow.index}
                         key={`${virtualRow.index}:${column.id}`}
@@ -2178,6 +2667,7 @@ export function VirtualDataGrid({
                         role="gridcell"
                         style={{
                           left: GRID_ROW_NUMBER_WIDTH + virtualColumn.start,
+                          transform: `translate3d(${columnPreviewOffsets[column.id] ?? 0}px, 0, 0)`,
                           width: column.getSize(),
                         }}
                         title={value?.display ?? undefined}
@@ -2249,7 +2739,7 @@ export function VirtualDataGrid({
         </button>
       </div>
 
-      {inspected && (
+      {displayedInspected && (
         <div
           aria-label="Full cell value"
           aria-modal="true"
@@ -2265,8 +2755,8 @@ export function VirtualDataGrid({
             <div>
               <strong>Cell value</strong>
               <span>
-                Row {inspected.coordinate.row + 1},{" "}
-                {logicalColumnNames[inspected.coordinate.column]}
+                Row {displayedInspected.coordinate.row + 1},{" "}
+                {logicalColumnNames[displayedInspected.coordinate.column]}
               </span>
             </div>
             <button
@@ -2281,11 +2771,11 @@ export function VirtualDataGrid({
           </header>
           <div className="value-inspector__values">
             {(() => {
-              const metadata = rawValueMetadata(inspected.value);
+              const metadata = rawValueMetadata(displayedInspected.value);
               return (
                 <section>
                   <strong>Type</strong>
-                  <pre>{inspected.value.kind}</pre>
+                  <pre>{displayedInspected.value.kind}</pre>
                   {metadata.unit && <span>Unit: {metadata.unit}</span>}
                   {metadata.timezone && <span>Timezone: {metadata.timezone}</span>}
                 </section>
@@ -2293,9 +2783,13 @@ export function VirtualDataGrid({
             })()}
             <section>
               <strong>Display</strong>
-              <pre>{inspected.value.display === null ? "null" : inspected.value.display}</pre>
+              <pre>
+                {displayedInspected.value.display === null
+                  ? "null"
+                  : displayedInspected.value.display}
+              </pre>
               <button
-                onClick={() => void copyContextCell(inspected.coordinate, "display")}
+                onClick={() => void copyContextCell(displayedInspected.coordinate, "display")}
                 type="button"
               >
                 Copy displayed value
@@ -2303,31 +2797,125 @@ export function VirtualDataGrid({
             </section>
             <section>
               <strong>Copy value</strong>
-              <pre>{copyValuePreview(inspected.value, copyOptions)}</pre>
+              <pre>{copyValuePreview(displayedInspected.value, copyOptions)}</pre>
             </section>
-            {inspected.value.rawDisplay !== null && inspected.value.rawDisplay !== undefined && (
-              <section>
-                <strong>Raw</strong>
-                <pre>{inspected.value.rawDisplay}</pre>
-                <button
-                  onClick={() => void copyContextCell(inspected.coordinate, "raw")}
-                  type="button"
-                >
-                  Copy raw value
-                </button>
-              </section>
-            )}
-            {inspected.value.sourceDisplay !== null &&
-              inspected.value.sourceDisplay !== undefined &&
-              inspected.value.sourceDisplay !== inspected.value.rawDisplay && (
+            {displayedInspected.value.rawDisplay !== null &&
+              displayedInspected.value.rawDisplay !== undefined && (
+                <section>
+                  <strong>Raw</strong>
+                  <pre>{displayedInspected.value.rawDisplay}</pre>
+                  <button
+                    onClick={() => void copyContextCell(displayedInspected.coordinate, "raw")}
+                    type="button"
+                  >
+                    Copy raw value
+                  </button>
+                </section>
+              )}
+            {displayedInspected.value.sourceDisplay !== null &&
+              displayedInspected.value.sourceDisplay !== undefined &&
+              displayedInspected.value.sourceDisplay !== displayedInspected.value.rawDisplay && (
                 <section>
                   <strong>Source</strong>
-                  <pre>{inspected.value.sourceDisplay}</pre>
+                  <pre>{displayedInspected.value.sourceDisplay}</pre>
                 </section>
               )}
           </div>
         </div>
       )}
+      {columnReorder.state.movingId &&
+        (() => {
+          const grid = scrollRef.current;
+          const movingId = columnReorder.state.movingId;
+          const movingColumn = visibleColumns.find((column) => column.id === movingId);
+          const logicalColumn = logicalColumnNames.indexOf(movingId);
+          const clientX = columnReorder.state.clientX;
+          const grabOffsetX = columnReorder.state.grabOffsetX;
+          if (
+            !grid ||
+            !movingColumn ||
+            logicalColumn < 0 ||
+            clientX === null ||
+            grabOffsetX === null
+          )
+            return null;
+          const gridRect = grid.getBoundingClientRect();
+          const width = movingColumn.getSize();
+          const left = Math.max(
+            0,
+            Math.min(clientX - grabOffsetX - gridRect.left, gridRect.width - width),
+          );
+          const sortIndex = queryPlan?.sort.findIndex((sort) => sort.columnId === movingId) ?? -1;
+          const sort = sortIndex >= 0 ? queryPlan?.sort[sortIndex] : undefined;
+          const filtered = queryPlan?.filters.some((item) => item.columnId === movingId);
+          return createPortal(
+            <div
+              aria-hidden="true"
+              className="virtual-grid__column-drag-clip"
+              data-testid="column-drag-overlay"
+              style={{
+                height: gridRect.height,
+                left: gridRect.left,
+                top: gridRect.top,
+                width: gridRect.width,
+              }}
+            >
+              <div
+                className="virtual-grid__column-drag-strip"
+                style={{
+                  height: gridRect.height,
+                  transform: `translate3d(${left}px, 0, 0)`,
+                  width,
+                }}
+              >
+                <div
+                  className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}`}
+                  style={{ left: 0, width }}
+                >
+                  <span>{movingId}</span>
+                  {queryEnabled && (
+                    <div className="query-column-actions">
+                      <span className={filtered ? "is-active" : undefined}>
+                        <Filter aria-hidden="true" />
+                      </span>
+                      <span className={sort ? "is-active" : undefined}>
+                        {sort?.direction === "ascending" ? (
+                          <ArrowUp aria-hidden="true" />
+                        ) : sort?.direction === "descending" ? (
+                          <ArrowDown aria-hidden="true" />
+                        ) : (
+                          <ArrowUpDown aria-hidden="true" />
+                        )}
+                        {sort && <small>{sortIndex + 1}</small>}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {virtualRows.map((virtualRow) => {
+                  const top = GRID_HEADER_HEIGHT + virtualRow.start - grid.scrollTop;
+                  if (top + GRID_ROW_HEIGHT < GRID_HEADER_HEIGHT || top > gridRect.height)
+                    return null;
+                  const value = valueAt(virtualRow.index, logicalColumn);
+                  const coordinate = { row: virtualRow.index, column: logicalColumn };
+                  const selected = isSelected(selection, coordinate);
+                  const active =
+                    selection.active.row === coordinate.row &&
+                    selection.active.column === coordinate.column;
+                  return (
+                    <div
+                      className={`${value ? cellClass(value) : "virtual-grid__cell virtual-grid__cell--loading"}${value?.kind === "string" && !displayFormats.string.wrapLongLines ? " virtual-grid__cell--nowrap" : ""}${selected ? " is-selected" : ""}${active ? " is-active" : ""}`}
+                      key={virtualRow.index}
+                      style={{ height: GRID_ROW_HEIGHT, left: 0, top, width }}
+                    >
+                      {value ? dataCellText(value) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body,
+          );
+        })()}
       {contextMenu &&
         createPortal(
           <div
@@ -2362,7 +2950,7 @@ export function VirtualDataGrid({
             style={contextMenuPosition}
           >
             <button
-              disabled={Boolean(copyProgress)}
+              disabled={Boolean(activeCopyStatus)}
               onClick={() => {
                 closeContextMenu();
                 void copySelection();
@@ -2374,7 +2962,7 @@ export function VirtualDataGrid({
               <kbd>Ctrl+C</kbd>
             </button>
             <button
-              disabled={Boolean(copyProgress)}
+              disabled={Boolean(activeCopyStatus)}
               onClick={() => {
                 closeContextMenu();
                 void copySelection(true);
@@ -2455,6 +3043,7 @@ export function VirtualDataGrid({
                 <ColumnFilterPopover
                   columnId={filterPopover.columnId}
                   columnLabel={filterPopover.columnId}
+                  durationUnit={durationUnitForColumn(summary, filterPopover.columnId)}
                   distinct={distinctValuesForColumn?.(filterPopover.columnId)}
                   initialFilter={initialFilter}
                   onApply={(filter) => {

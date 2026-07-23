@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "generatorVersion": "phase14-fixtures-v1",
+  "generator": "scripts/generate_phase14_fixtures.py",
+  "generatorSha256": "10a3334116e5125c7a6f8e3a7e0457473ab68d28da870714b5e3064a10bd7ea7",
+  "seed": 20260723,
+  "generatedAtUtc": "2026-07-23T04:15:46.617926+00:00",
+  "outputDirectory": ".tmp/phase14-fixtures",
+  "environment": {
+    "python": "3.11.14",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "configuration": {
+    "checkpointInterval": 4096,
+    "rowGroupRows": 65536,
+    "largeRows": 5850000,
+    "largeFixturePolicy": "reference Phase 13; never regenerate"
+  },
+  "fixtures": [
+    {
+      "id": "csv-state-matrix",
+      "kind": "csv",
+      "path": ".tmp/phase14-fixtures/small/csv-state-matrix.csv",
+      "rows": 6,
+      "columns": 8,
+      "bytes": 425,
+      "sha256": "3e8ca80096f6ed000d1ce7e8cb19caa8acfb8d027ac32dbee0874e4ac3ff5c4d",
+      "profile": {
+        "header": true,
+        "nullToken": "__NULL__",
+        "columns": {
+          "row_id": "int64",
+          "text_value": "text",
+          "int_value": "int64",
+          "boolean_value": "boolean",
+          "decimal_value": "decimal",
+          "date_value": "date",
+          "timestamp_value": "timestamp",
+          "duration_value": "duration_ns"
+        }
+      },
+      "oraclePath": ".tmp/phase14-fixtures/small/csv-state-matrix.oracle.json",
+      "oracleSha256": "ee0f148a6a771333ffe4b9fd318696a471fad4c01e78a90ddca8ca6111fbe845",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-state-matrix-oracle",
+      "kind": "json",
+      "path": ".tmp/phase14-fixtures/small/csv-state-matrix.oracle.json",
+      "rows": 6,
+      "columns": 8,
+      "bytes": 6838,
+      "sha256": "ee0f148a6a771333ffe4b9fd318696a471fad4c01e78a90ddca8ca6111fbe845",
+      "profile": {
+        "kind": "independent-state-oracle"
+      },
+      "oraclePath": null,
+      "oracleSha256": null,
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-checkpoint-boundaries",
+      "kind": "csv",
+      "path": ".tmp/phase14-fixtures/small/csv-checkpoint-boundaries.csv",
+      "rows": 65537,
+      "columns": 3,
+      "bytes": 1474844,
+      "sha256": "b3233574e3caf8a401cf74f698a5c1b00ef375d4db1e706e98afbbdfe320b215",
+      "profile": {
+        "header": true,
+        "checkpointInterval": 4096
+      },
+      "oraclePath": ".tmp/phase14-fixtures/small/csv-checkpoint-boundaries.oracle.json",
+      "oracleSha256": "4109bed93e9ec3c6b81e72f09e4655d3b1048be548084594611f8222fe78f287",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-checkpoint-boundaries-oracle",
+      "kind": "json",
+      "path": ".tmp/phase14-fixtures/small/csv-checkpoint-boundaries.oracle.json",
+      "rows": 65537,
+      "columns": 3,
+      "bytes": 774,
+      "sha256": "4109bed93e9ec3c6b81e72f09e4655d3b1048be548084594611f8222fe78f287",
+      "profile": {
+        "kind": "logical-record-offset-oracle"
+      },
+      "oraclePath": null,
+      "oracleSha256": null,
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-typed-raw",
+      "kind": "csv",
+      "path": ".tmp/phase14-fixtures/small/csv-typed-raw.csv",
+      "rows": 5,
+      "columns": 8,
+      "bytes": 443,
+      "sha256": "8cbcd3f178b878b1364006eb91a44c5a89ce4e25520177a7fa7459a95dcf8b1a",
+      "profile": {
+        "header": true,
+        "nullToken": "__NULL__",
+        "columns": {
+          "int64": "int64",
+          "uint64": "uint64",
+          "decimal": "decimal",
+          "boolean": "boolean",
+          "date": "date",
+          "timestamp": "timestamp",
+          "duration": "duration_ns",
+          "text": "text"
+        }
+      },
+      "oraclePath": ".tmp/phase14-fixtures/small/csv-typed-raw.oracle.json",
+      "oracleSha256": "881698a6293d549c9dffbb34a1dafea7d05c7d04476e6734a76f67f500198ee7",
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-typed-raw-oracle",
+      "kind": "json",
+      "path": ".tmp/phase14-fixtures/small/csv-typed-raw.oracle.json",
+      "rows": 5,
+      "columns": 8,
+      "bytes": 8246,
+      "sha256": "881698a6293d549c9dffbb34a1dafea7d05c7d04476e6734a76f67f500198ee7",
+      "profile": {
+        "kind": "typed-raw-copy-oracle"
+      },
+      "oraclePath": null,
+      "oracleSha256": null,
+      "source": "phase14-generated"
+    },
+    {
+      "id": "csv-5850000-low",
+      "kind": "csv",
+      "path": ".tmp/phase13-fixtures/large/csv-5850000-low.csv",
+      "rows": 5850000,
+      "columns": 15,
+      "bytes": 641656312,
+      "sha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
+      "profile": "low-cardinality-15-column",
+      "source": "phase13-reference",
+      "sourceManifest": "artifacts/phase-13/fixture-manifest.json",
+      "sourceManifestSha256": "56ebb04d9a9485980030d907b17ce86870742c36c2bcd22eabaf837e2be73a90",
+      "available": true
+    },
+    {
+      "id": "csv-5850000-high",
+      "kind": "csv",
+      "path": ".tmp/phase13-fixtures/large/csv-5850000-high.csv",
+      "rows": 5850000,
+      "columns": 15,
+      "bytes": 979427914,
+      "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+      "profile": "high-cardinality-15-column",
+      "source": "phase13-reference",
+      "sourceManifest": "artifacts/phase-13/fixture-manifest.json",
+      "sourceManifestSha256": "56ebb04d9a9485980030d907b17ce86870742c36c2bcd22eabaf837e2be73a90",
+      "available": true
+    },
+    {
+      "id": "csv-5850000-long-invalid",
+      "kind": "csv",
+      "path": ".tmp/phase13-fixtures/large/csv-5850000-long-invalid.csv",
+      "rows": 5850000,
+      "columns": 15,
+      "bytes": 642704881,
+      "sha256": "8426413113a812a4293ccf9eaef72f4cff33ab83d139c162fc96a8219d286450",
+      "profile": "low-cardinality-final-long-malformed-row",
+      "source": "phase13-reference",
+      "sourceManifest": "artifacts/phase-13/fixture-manifest.json",
+      "sourceManifestSha256": "56ebb04d9a9485980030d907b17ce86870742c36c2bcd22eabaf837e2be73a90",
+      "available": true
+    }
+  ],
+  "summary": {
+    "generatedFixtureCount": 6,
+    "referencedLargeFixtureCount": 3,
+    "allLargeReferencesAvailable": true
+  },
+  "validation": "PENDING_AUDIT"
+}

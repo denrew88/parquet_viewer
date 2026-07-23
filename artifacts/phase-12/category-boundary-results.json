@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "fixture": ".tmp/phase11-large/query-low-5850000-15c.parquet",
+  "rows": 5850000,
+  "column": "category",
+  "columnIndex": 1,
+  "backendRelease": {
+    "downMs": 1.4318,
+    "upMs": 43.4667,
+    "decodedBoundaryScans": 0,
+    "adjacentProbeReads": 2
+  },
+  "nativeRelease": {
+    "warmupMs": 119.3124,
+    "timingsMs": [45.9164, 47.0922, 46.4245, 40.2565, 36.4841],
+    "p95Ms": 47.0922,
+    "navigationIpcPerMove": 1,
+    "readPageIpcPerMoveMaximum": 1,
+    "rssDeltaBytes": 2707456
+  },
+  "optimization": {
+    "rule": "Skip only row groups whose exact Parquet statistics prove that every string is occupied or every value is empty.",
+    "fallback": "Decode Arrow values for missing, inexact, or mixed occupancy statistics.",
+    "emptyCellSemanticsPreserved": true
+  },
+  "measuredAtUtc": "2026-07-22T12:04:05.565Z"
+}

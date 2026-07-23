@@ -102,7 +102,7 @@ impl OesHdf5Source {
 
         let file = File::open(path)
             .map_err(|_| DataError::invalid_oes_hdf5(path, "could not open the HDF5 container"))?;
-        let declared_shape = validate_v3_attributes(path, &file, metadata.len())?;
+        let declared_shape = validate_v3_attributes(path, &file)?;
         for name in ["time", "wavelength", "oes"] {
             validate_dataset_link(path, &file, name)?;
         }
@@ -242,15 +242,32 @@ impl OesHdf5Source {
         limit: usize,
         requested: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
-        if !(1..=MAX_PAGE_SIZE).contains(&limit) {
+        self.read_projected_bounded(
+            offset,
+            limit,
+            requested,
+            MAX_PAGE_SIZE,
+            MAX_PROJECTION_COLUMNS,
+        )
+    }
+
+    fn read_projected_bounded(
+        &self,
+        offset: u64,
+        limit: usize,
+        requested: Option<&[String]>,
+        max_rows: usize,
+        max_columns: usize,
+    ) -> Result<DataPage, DataError> {
+        if !(1..=max_rows).contains(&limit) {
             return Err(DataError::invalid_request(format!(
-                "Page limit must be between 1 and {MAX_PAGE_SIZE} rows."
+                "Projected read limit must be between 1 and {max_rows} rows."
             )));
         }
         let requested_end = offset
             .checked_add(limit as u64)
             .ok_or_else(|| DataError::invalid_request("Page offset and limit overflow."))?;
-        let projection = self.validate_projection(requested)?;
+        let projection = self.validate_projection(requested, max_columns)?;
         let total_rows = self.summary.row_count.unwrap_or_default();
         if offset >= total_rows {
             return Ok(DataPage {
@@ -270,6 +287,32 @@ impl OesHdf5Source {
         let row_end = usize::try_from(end).map_err(|_| {
             DataError::invalid_request("Page end does not fit the platform address space.")
         })?;
+        let rows_to_decode = row_end - row_start;
+        let cells = rows_to_decode
+            .checked_mul(projection.names.len())
+            .ok_or_else(|| DataError::invalid_request("H5 copy cell count overflow."))?;
+        if cells > crate::domain::COPY_MAX_BATCH_CELLS {
+            return Err(DataError::invalid_request(
+                "H5 projected copy batch exceeds 64,000 cells.",
+            ));
+        }
+        let intensity_bytes = rows_to_decode
+            .checked_mul(projection.intensity_columns.len())
+            .and_then(|elements| {
+                elements.checked_mul(match self.oes_type {
+                    OesElementType::I32 => mem::size_of::<i32>(),
+                    OesElementType::I64 => mem::size_of::<i64>(),
+                })
+            })
+            .ok_or_else(|| DataError::invalid_request("H5 hyperslab byte count overflow."))?;
+        if intensity_bytes > MAX_DECODED_CHUNK_BYTES {
+            return Err(DataError::oes_hdf5_limit(
+                &self.path,
+                format!(
+                    "copy hyperslab requires {intensity_bytes} decoded bytes; the limit is {MAX_DECODED_CHUNK_BYTES}"
+                ),
+            ));
+        }
         let plans = plan_hyperslabs(&projection.intensity_columns)?;
         let mut decoded: Vec<Option<Vec<i64>>> = std::iter::repeat_with(|| None)
             .take(projection.names.len())
@@ -363,13 +406,14 @@ impl OesHdf5Source {
     fn validate_projection(
         &self,
         requested: Option<&[String]>,
+        max_columns: usize,
     ) -> Result<ProjectionPlan, DataError> {
         let names = match requested {
             None => self
                 .summary
                 .columns
                 .iter()
-                .take(MAX_PROJECTION_COLUMNS)
+                .take(max_columns)
                 .map(|column| column.name.clone())
                 .collect::<Vec<_>>(),
             Some(columns) => {
@@ -378,9 +422,9 @@ impl OesHdf5Source {
                         "Column projection must contain at least one column.",
                     ));
                 }
-                if columns.len() > MAX_PROJECTION_COLUMNS {
+                if columns.len() > max_columns {
                     return Err(DataError::invalid_request(format!(
-                        "Column projection cannot exceed {MAX_PROJECTION_COLUMNS} columns."
+                        "Column projection cannot exceed {max_columns} columns."
                     )));
                 }
                 columns.to_vec()
@@ -440,6 +484,31 @@ impl TabularSource for OesHdf5Source {
         columns: Option<&[String]>,
     ) -> Result<DataPage, DataError> {
         OesHdf5Source::read_page_projected(self, offset, limit, columns)
+    }
+
+    fn read_copy_projected(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        if columns.is_empty()
+            || limit == 0
+            || limit
+                .checked_mul(columns.len())
+                .is_none_or(|cells| cells > crate::domain::COPY_MAX_BATCH_CELLS)
+        {
+            return Err(DataError::invalid_request(
+                "H5 copy batches must contain 1 to 64,000 cells.",
+            ));
+        }
+        self.read_projected_bounded(
+            offset,
+            limit,
+            Some(columns),
+            crate::domain::COPY_MAX_BATCH_CELLS,
+            self.summary.column_count,
+        )
     }
 
     fn find_boundary(
@@ -846,21 +915,7 @@ fn validate_signature(path: &Path, file_size: u64) -> Result<(), DataError> {
     Ok(())
 }
 
-fn validate_v3_attributes(
-    path: &Path,
-    file: &File,
-    source_file_size: u64,
-) -> Result<[usize; 2], DataError> {
-    let format = optional_string_attr(file, "format", source_file_size).ok_or_else(|| {
-        DataError::invalid_oes_hdf5(path, "missing or invalid root format attribute")
-    })?;
-    if format != "oefh5" {
-        return Err(DataError::invalid_oes_hdf5(
-            path,
-            "root format attribute must equal 'oefh5'",
-        ));
-    }
-
+fn validate_v3_attributes(path: &Path, file: &File) -> Result<[usize; 2], DataError> {
     let version_attr = file
         .attr("format_version")
         .map_err(|_| DataError::invalid_oes_hdf5(path, "missing root format_version attribute"))?;
@@ -1489,23 +1544,6 @@ fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
     (year, month as u32, day as u32)
 }
 
-fn optional_string_attr(file: &File, name: &str, source_file_size: u64) -> Option<String> {
-    let attr = file.attr(name).ok()?;
-    if !attr.is_scalar() {
-        return None;
-    }
-    let descriptor = attr.dtype().ok()?.to_descriptor().ok()?;
-    match descriptor {
-        TypeDescriptor::FixedUnicode(size)
-            if size <= MAX_AXIS_ELEMENT_BYTES
-                && attr.storage_size() <= MAX_AXIS_ELEMENT_BYTES as u64 => {}
-        TypeDescriptor::VarLenUnicode if source_file_size <= MAX_AXIS_BYTES_PER_FILE as u64 => {}
-        _ => return None,
-    }
-    let value = attr.read_scalar::<VarLenUnicode>().ok()?;
-    (value.len() <= MAX_AXIS_ELEMENT_BYTES).then(|| value.as_str().to_owned())
-}
-
 fn plan_hyperslabs(selected: &[(usize, usize)]) -> Result<Vec<HyperslabPlan>, DataError> {
     let mut sorted = selected.to_vec();
     sorted.sort_unstable_by_key(|(_, wavelength_index)| *wavelength_index);
@@ -1782,6 +1820,46 @@ mod tests {
                 .row_count,
             Some(2)
         );
+    }
+
+    #[test]
+    fn h5_003_format_attribute_is_not_required_or_inspected() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        for case in ["missing", "integer", "array"] {
+            let path = directory.path().join(format!("format-{case}.h5"));
+            let file = File::create(&path).expect("create fixture");
+            file.new_attr::<i32>()
+                .shape(())
+                .create("format_version")
+                .expect("format version")
+                .write_scalar(&3)
+                .expect("write version");
+            file.new_attr_builder()
+                .with_data(&[2_i64, 3])
+                .create("shape")
+                .expect("shape");
+            match case {
+                "integer" => {
+                    file.new_attr::<i32>()
+                        .shape(())
+                        .create("format")
+                        .expect("integer format")
+                        .write_scalar(&7)
+                        .expect("write integer format");
+                }
+                "array" => {
+                    file.new_attr_builder()
+                        .with_data(&[1_i32, 2])
+                        .create("format")
+                        .expect("array format");
+                }
+                _ => {}
+            }
+            assert_eq!(
+                validate_v3_attributes(&path, &file).expect("format-independent attributes"),
+                [2, 3]
+            );
+        }
     }
 
     #[test]
@@ -2129,6 +2207,77 @@ mod tests {
                     }]
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn copy_reads_all_4_097_wide_columns_with_one_contiguous_hyperslab() {
+        crate::platform::initialize_hdf5_runtime().expect("HDF5 runtime");
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("wide-copy.oes.h5");
+        let file = File::create(&path).expect("create wide fixture");
+        write_v3_attributes(&file, [2, 4_096]);
+        file.new_dataset_builder()
+            .with_data(&[10_i64, 20])
+            .create("time")
+            .expect("time dataset");
+        file.new_dataset_builder()
+            .with_data(&(0..4_096_i64).collect::<Vec<_>>())
+            .create("wavelength")
+            .expect("wavelength dataset");
+        let intensity = ndarray::Array2::from_shape_fn((4_096, 2), |(wavelength, time)| {
+            i32::try_from(wavelength * 10 + time).unwrap()
+        });
+        file.new_dataset_builder()
+            .with_data(&intensity)
+            .chunk((128, 2))
+            .blosc_zstd(5, BloscShuffle::Byte)
+            .create("oes")
+            .expect("oes dataset");
+        drop(file);
+
+        let source = OesHdf5Source::open(path).expect("open wide fixture");
+        let columns = source
+            .summary()
+            .columns
+            .iter()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(columns.len(), 4_097);
+        let page = source
+            .read_copy_projected(0, 2, &columns)
+            .expect("wide copy projection");
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(page.rows[0].len(), 4_097);
+        assert_eq!(page.rows[0][0].display.as_deref(), Some("10"));
+        assert_eq!(page.rows[1][0].display.as_deref(), Some("20"));
+        assert_eq!(page.rows[0][1].display.as_deref(), Some("0"));
+        assert_eq!(page.rows[1][4_096].display.as_deref(), Some("40951"));
+        let checksum = page
+            .rows
+            .iter()
+            .flat_map(|row| row.iter().skip(1))
+            .map(|value| value.display.as_deref().unwrap().parse::<i64>().unwrap())
+            .sum::<i64>();
+        let expected_checksum = (0..4_096_i64)
+            .flat_map(|wavelength| [wavelength * 10, wavelength * 10 + 1])
+            .sum::<i64>();
+        assert_eq!(checksum, expected_checksum);
+        assert_eq!(source.take_intensity_read_count(), 1);
+
+        assert_eq!(
+            source
+                .read_page_projected(0, 1, Some(&columns))
+                .unwrap_err()
+                .code,
+            DataErrorCode::InvalidRequest
+        );
+        assert_eq!(
+            source
+                .read_copy_projected(0, 17, &columns)
+                .unwrap_err()
+                .code,
+            DataErrorCode::InvalidRequest
         );
     }
 

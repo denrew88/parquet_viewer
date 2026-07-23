@@ -16,6 +16,27 @@ const artifact = path.resolve(
   process.argv[4] ?? path.join(root, "artifacts", "phase-9", "ui", "native-cdp-smoke.png"),
 );
 const artifactDirectory = path.dirname(artifact);
+const phase13Mode = process.argv.includes("--phase13");
+
+if (phase13Mode) {
+  const phase13Script = path.join(root, "scripts", "native_phase13_smoke.mjs");
+  const child = spawn(
+    process.execPath,
+    [phase13Script, "--executable", executable, "--bootstrap", fixture, "--screenshot", artifact],
+    {
+      cwd: root,
+      windowsHide: false,
+      stdio: "inherit",
+      env: process.env,
+    },
+  );
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code ?? 1));
+  });
+  process.exit(exitCode);
+}
+
 const thousandsSeparator = process.env.NATIVE_THOUSANDS_SEPARATOR ?? ".";
 const separatorName =
   thousandsSeparator === "," ? "comma" : thousandsSeparator === " " ? "space" : "dot";
@@ -280,15 +301,16 @@ try {
     () =>
       [...document.querySelectorAll('[role="status"].copy-status')].some((element) => {
         const text = element.textContent ?? "";
-        return (
-          text !== "" && !text.startsWith("Copying") && !text.startsWith("Writing clipboard")
-        );
+        return text !== "" && !text.startsWith("Copying") && !text.startsWith("Writing clipboard");
       }),
     undefined,
     { timeout: 30_000 },
   );
   const copyStatuses = await page.locator('[role="status"].copy-status').allTextContents();
-  assert.ok(copyStatuses.includes("Copied 1 rows."), `Native copy failed: ${copyStatuses.join(" | ")}`);
+  assert.ok(
+    copyStatuses.includes("Copied 1 rows."),
+    `Native copy failed: ${copyStatuses.join(" | ")}`,
+  );
   const clipboardText = await page.evaluate(async () => navigator.clipboard.readText());
   assert.notEqual(clipboardText, "__native-smoke-sentinel__", "Copy did not write the clipboard.");
   const clipboardLines = clipboardText.trimEnd().split(/\r?\n/);

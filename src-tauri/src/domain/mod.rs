@@ -1,4 +1,5 @@
 mod boundary;
+mod copy;
 mod csv_profile;
 mod error;
 mod models;
@@ -6,11 +7,12 @@ mod query;
 mod settings;
 
 pub use boundary::*;
+pub use copy::*;
 pub use csv_profile::{
     CsvColumnInference, CsvColumnProfile, CsvColumnValidation, CsvConversionFailurePolicy,
-    CsvParsingProfile, CsvPreviewCell, CsvPreviewColumn, CsvPreviewRow, CsvPreviewStage,
-    CsvProfileMode, CsvProfilePreview, CsvTargetType, CsvTimezonePolicy, CsvValidationErrorSample,
-    CsvValidationState, CsvValidationStatus,
+    CsvDurationInputFormat, CsvParsingProfile, CsvPreviewCell, CsvPreviewColumn, CsvPreviewRow,
+    CsvPreviewStage, CsvProfileMode, CsvProfilePreview, CsvTargetType, CsvTimezonePolicy,
+    CsvValidationErrorSample, CsvValidationState, CsvValidationStatus, DurationUnit,
 };
 pub use error::{DataError, DataErrorCode};
 pub use models::{

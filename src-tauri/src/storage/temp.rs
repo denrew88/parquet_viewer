@@ -66,6 +66,7 @@ pub struct QueryTempManager {
     active_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active_queries: Arc<AtomicUsize>,
     limit_bytes: AtomicU64,
+    external_cache_bytes: AtomicU64,
 }
 
 #[derive(Debug)]
@@ -104,6 +105,7 @@ impl QueryTempManager {
             active_paths: Arc::new(Mutex::new(HashSet::new())),
             active_queries: Arc::new(AtomicUsize::new(0)),
             limit_bytes: AtomicU64::new(effective_limit(limit_bytes)),
+            external_cache_bytes: AtomicU64::new(0),
         })
     }
 
@@ -151,8 +153,10 @@ impl QueryTempManager {
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
         let free_bytes = fs2::available_space(&self.process_directory)
             .map_err(|error| temp_io(&self.process_directory, error))?;
+        let process_bytes = directory_bytes(&self.process_directory)?;
         Ok(QueryTempUsage {
-            process_bytes: directory_bytes(&self.process_directory)?,
+            process_bytes: process_bytes
+                .saturating_add(self.external_cache_bytes.load(Ordering::Acquire)),
             limit_bytes: self.limit_bytes.load(Ordering::Acquire),
             available_bytes: free_bytes,
             active_queries: self.active_queries.load(Ordering::Acquire),
@@ -225,9 +229,20 @@ impl QueryTempManager {
         let _ = remove_with_retry(&self.process_directory, timeout);
     }
 
-    #[cfg(test)]
-    pub fn process_directory(&self) -> &Path {
+    pub(crate) fn process_directory(&self) -> &Path {
         &self.process_directory
+    }
+
+    pub(crate) fn process_temp_bytes(&self) -> Result<u64, DataError> {
+        directory_bytes(&self.process_directory)
+    }
+
+    pub(crate) fn configured_limit(&self) -> u64 {
+        self.limit_bytes.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_external_cache_bytes(&self, bytes: u64) {
+        self.external_cache_bytes.store(bytes, Ordering::Release);
     }
 }
 

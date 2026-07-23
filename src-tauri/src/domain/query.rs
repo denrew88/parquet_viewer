@@ -12,6 +12,7 @@ pub enum QueryScalarType {
     Decimal,
     Date,
     Timestamp,
+    Duration,
     Boolean,
     Other,
 }
@@ -181,6 +182,8 @@ pub fn scalar_type_for_column(column: &ColumnSchema) -> QueryScalarType {
     let logical = column.logical_type.to_ascii_lowercase();
     if logical.contains("timestamp") {
         QueryScalarType::Timestamp
+    } else if logical.contains("duration") {
+        QueryScalarType::Duration
     } else if logical == "date" || logical.contains("date32") || logical.contains("date64") {
         QueryScalarType::Date
     } else if logical.contains("decimal") {
@@ -227,7 +230,8 @@ fn validate_filter(filter: &QueryFilter) -> Result<(), DataError> {
         QueryScalarType::Number
         | QueryScalarType::Decimal
         | QueryScalarType::Date
-        | QueryScalarType::Timestamp => matches!(
+        | QueryScalarType::Timestamp
+        | QueryScalarType::Duration => matches!(
             filter.operator,
             FilterOperator::Equals
                 | FilterOperator::NotEquals
@@ -315,6 +319,7 @@ fn validate_literal(scalar: QueryScalarType, value: &str) -> Result<(), DataErro
                         && time.split(':').take(3).collect::<Vec<_>>().len() == 3
                 })
         }
+        QueryScalarType::Duration => valid_duration_literal(value),
         QueryScalarType::Other => false,
     };
     if valid {
@@ -324,6 +329,43 @@ fn validate_literal(scalar: QueryScalarType, value: &str) -> Result<(), DataErro
             "Filter literal is invalid for {scalar:?}: {value}"
         )))
     }
+}
+
+fn valid_duration_literal(value: &str) -> bool {
+    for suffix in ["ms", "us", "ns", "s"] {
+        if let Some(count) = value.strip_suffix(suffix) {
+            return !count.is_empty() && count.parse::<i64>().is_ok();
+        }
+    }
+    let unsigned = value
+        .strip_prefix('+')
+        .or_else(|| value.strip_prefix('-'))
+        .unwrap_or(value);
+    let clock = if let Some((days, clock)) = unsigned.split_once("d ") {
+        if days.is_empty() || days.parse::<u64>().is_err() {
+            return false;
+        }
+        clock
+    } else {
+        unsigned
+    };
+    let (clock, fraction) = clock
+        .split_once('.')
+        .map_or((clock, None), |(clock, fraction)| (clock, Some(fraction)));
+    if fraction.is_some_and(|digits| {
+        digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|byte| byte.is_ascii_digit())
+    }) {
+        return false;
+    }
+    let parts = clock.split(':').collect::<Vec<_>>();
+    if parts.len() != 3 || parts.iter().any(|part| part.len() != 2) {
+        return false;
+    }
+    let parsed = parts
+        .iter()
+        .map(|part| part.parse::<u8>())
+        .collect::<Result<Vec<_>, _>>();
+    parsed.is_ok_and(|parts| parts[0] <= 23 && parts[1] <= 59 && parts[2] <= 59)
 }
 
 fn valid_date_literal(value: &str) -> bool {
@@ -397,6 +439,34 @@ pub struct ReadQueryPageRequest {
     pub query_id: String,
     pub offset: i64,
     pub limit: usize,
+    pub columns: Vec<String>,
+}
+
+impl ReadQueryPageRequest {
+    pub fn validate(&self) -> Result<(), DataError> {
+        if self.document_id.trim().is_empty()
+            || self.session_id.trim().is_empty()
+            || self.query_id.trim().is_empty()
+            || self.offset < 0
+            || !(1..=200).contains(&self.limit)
+            || !(1..=64).contains(&self.columns.len())
+            || self.columns.iter().any(|column| column.trim().is_empty())
+        {
+            return Err(DataError::invalid_request(
+                "Query page identity, offset, limit, or projection is invalid.",
+            ));
+        }
+        let unique = self
+            .columns
+            .iter()
+            .collect::<std::collections::HashSet<_>>();
+        if unique.len() != self.columns.len() {
+            return Err(DataError::invalid_request(
+                "Query page projection columns must be unique.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -546,5 +616,28 @@ mod tests {
         let mut invalid = plan;
         invalid.filters[0].operator = FilterOperator::Between;
         assert!(invalid.validate(&columns()).is_err());
+    }
+
+    #[test]
+    fn page_002_query_page_projection_boundaries_match_wire_contract() {
+        let valid = ReadQueryPageRequest {
+            document_id: String::from("document-1"),
+            session_id: String::from("session-1"),
+            query_id: String::from("query-1"),
+            offset: 0,
+            limit: 200,
+            columns: vec![String::from("value")],
+        };
+        assert!(valid.validate().is_ok());
+
+        let mut invalid = valid.clone();
+        invalid.columns.clear();
+        assert!(invalid.validate().is_err());
+        invalid.columns = vec![String::from("value"), String::from("value")];
+        assert!(invalid.validate().is_err());
+        invalid.columns = (0..65).map(|index| format!("column-{index}")).collect();
+        assert!(invalid.validate().is_err());
+        invalid.columns = vec![String::from(" ")];
+        assert!(invalid.validate().is_err());
     }
 }

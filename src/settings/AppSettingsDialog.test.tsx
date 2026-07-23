@@ -69,6 +69,7 @@ describe("AppSettingsDialog", () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
     await user.selectOptions(screen.getByRole("combobox", { name: "Integer grouping" }), "comma");
+    await user.click(screen.getByRole("button", { name: "Show Timestamp details" }));
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Timestamp fractional digits mode" }),
       "fixed",
@@ -81,7 +82,9 @@ describe("AppSettingsDialog", () => {
       expect.objectContaining({
         displayFormats: expect.objectContaining({
           integer: { grouping: "comma" },
-          timestamp: { fractionalDigits: { mode: "fixed", digits: 6 } },
+          timestamp: expect.objectContaining({
+            fractionalDigits: { mode: "fixed", digits: 6 },
+          }),
           string: expect.objectContaining({ maximumVisibleLines: 2 }),
         }),
       }),
@@ -109,6 +112,35 @@ describe("AppSettingsDialog", () => {
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({ displayFormats: defaultAppSettings().displayFormats }),
     );
+  });
+
+  it("uses production previews and hides timestamp time controls for Date only", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    expect(screen.getByText("2d 03:04:05.123456789", { selector: "output" })).toBeVisible();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Timestamp preset" }),
+      "dateOnly",
+    );
+    expect(screen.getAllByText("2025-12-18", { selector: "output" })).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Show Timestamp details" }));
+    expect(screen.queryByRole("combobox", { name: "Timestamp separator" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Timestamp timezone suffix" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps all format rows visible and allows only one inline detail panel", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    const timestamp = screen.getByRole("button", { name: "Show Timestamp details" });
+    await user.click(timestamp);
+    expect(screen.getByLabelText("Timestamp details")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Integer grouping" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Show Duration details" }));
+    expect(screen.queryByLabelText("Timestamp details")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Duration details")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "All formats" })).not.toBeInTheDocument();
   });
 
   it("applies inclusive copy limits in cells and MiB", async () => {
