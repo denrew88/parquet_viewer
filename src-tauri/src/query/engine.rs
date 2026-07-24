@@ -124,7 +124,7 @@ struct QueryLimiter {
 }
 
 struct QueryPermit(&'static QueryLimiter);
-struct CsvPreparationPermit(&'static QueryLimiter);
+struct CsvPreparationPermit(Arc<QueryLimiter>);
 
 struct QueryBudgetMonitor {
     temp: Arc<QueryTempManager>,
@@ -295,6 +295,14 @@ impl crate::data::QueryInputProvider for PreparedQueryProvider {
 
     fn reusable_source_identity(&self) -> Option<String> {
         self.inner.reusable_source_identity()
+    }
+
+    fn csv_prepared_physical_columns(&self) -> Vec<crate::data::CsvPreparedPhysicalColumn> {
+        self.inner.csv_prepared_physical_columns()
+    }
+
+    fn csv_source_column_count(&self) -> Option<usize> {
+        self.inner.csv_source_column_count()
     }
 
     fn prepared_artifact_path(&self) -> Option<&Path> {
@@ -602,6 +610,7 @@ pub struct QueryService {
     execute_gate: Mutex<()>,
     next_distinct_id: AtomicU64,
     next_csv_preparation_id: AtomicU64,
+    csv_preparation_limiter: Arc<QueryLimiter>,
     shutting_down: AtomicBool,
     // Drop after result connections and leases have released their files.
     csv_cache: Arc<CsvPersistentCache>,
@@ -623,6 +632,7 @@ impl QueryService {
             execute_gate: Mutex::new(()),
             next_distinct_id: AtomicU64::new(1),
             next_csv_preparation_id: AtomicU64::new(1),
+            csv_preparation_limiter: csv_preparation_limiter(),
             shutting_down: AtomicBool::new(false),
             csv_cache,
             temp,
@@ -703,7 +713,12 @@ impl QueryService {
             &identity,
             &task.source_fingerprint,
             source.columns.len(),
+            source
+                .provider
+                .csv_source_column_count()
+                .unwrap_or(source.columns.len()),
             None,
+            source.provider.csv_prepared_physical_columns(),
         );
         let cache_hit = match self.csv_cache.lookup(&cache_identity) {
             Ok(hit) => hit,
@@ -758,9 +773,7 @@ impl QueryService {
                     hit.rows,
                     source.columns.len(),
                 )?;
-                let parquet_path = lease.path().join("prepared.parquet");
-                self.csv_cache
-                    .materialize_parquet_link(&hit, &parquet_path)?;
+                let parquet_path = hit.path.join("prepared.parquet");
                 build_csv_cached_database(
                     &source,
                     &database_path,
@@ -785,14 +798,9 @@ impl QueryService {
             })();
             match restore {
                 Ok((connection, hit)) => {
-                    let cache_output_bytes = ["prepared.duckdb", "prepared.parquet"]
-                        .iter()
-                        .map(|name| {
-                            std::fs::metadata(lease.path().join(name))
-                                .map(|metadata| metadata.len())
-                                .unwrap_or(0)
-                        })
-                        .sum();
+                    let cache_output_bytes = std::fs::metadata(&database_path)
+                        .map(|metadata| metadata.len())
+                        .unwrap_or(0);
                     let artifact = Arc::new(CsvPreparedArtifact {
                         database_path,
                         row_count: hit.rows,
@@ -831,11 +839,14 @@ impl QueryService {
 
         let temp = Arc::clone(&self.temp);
         let csv_cache = Arc::clone(&self.csv_cache);
+        let csv_preparation_limiter = Arc::clone(&self.csv_preparation_limiter);
         let service = Arc::downgrade(self);
         let worker_key = key.clone();
         let worker_task = Arc::clone(&task);
         let worker = std::thread::spawn(move || {
-            let Some(_permit) = acquire_csv_preparation_permit(&worker_task.cancel) else {
+            let Some(_permit) =
+                acquire_csv_preparation_permit(&csv_preparation_limiter, &worker_task.cancel)
+            else {
                 set_csv_preparation_state(&worker_task, CsvPreparationState::Cancelled, None);
                 return;
             };
@@ -886,36 +897,71 @@ impl QueryService {
                         &worker_task.identity,
                         &worker_task.source_fingerprint,
                         source.columns.len(),
+                        source
+                            .provider
+                            .csv_source_column_count()
+                            .unwrap_or(source.columns.len()),
                         Some(row_count),
+                        source.provider.csv_prepared_physical_columns(),
                     );
-                    let persistent_lease = csv_cache
-                        .publish(
-                            &publish_identity,
-                            database_path.parent().unwrap_or_else(|| Path::new(".")),
-                            || {
-                                if !source_fingerprint_matches(
-                                    &source.path,
-                                    source_file.as_ref(),
-                                    &worker_task.source_fingerprint,
-                                )? {
-                                    return Err(DataError::query_failed(
-                                        "The CSV source changed after the prepared cache was copied.",
-                                    ));
-                                }
-                                let service = service.upgrade().ok_or_else(DataError::task_cancelled)?;
+                    let artifact_directory =
+                        database_path.parent().unwrap_or_else(|| Path::new("."));
+                    let has_publish_artifacts =
+                        match csv_cache.has_publish_artifacts(artifact_directory) {
+                            Ok(has_artifacts) => has_artifacts,
+                            Err(error) => {
+                                set_csv_preparation_state(
+                                    &worker_task,
+                                    CsvPreparationState::Failed,
+                                    Some(error),
+                                );
+                                return;
+                            }
+                        };
+                    let persistent_lease = if has_publish_artifacts {
+                        match csv_cache.publish(&publish_identity, artifact_directory, || {
+                            if !source_fingerprint_matches(
+                                &source.path,
+                                source_file.as_ref(),
+                                &worker_task.source_fingerprint,
+                            )? {
+                                return Err(DataError::query_failed(
+                                    "The CSV source changed before persistent cache publication.",
+                                ));
+                            }
+                            let service =
+                                service.upgrade().ok_or_else(DataError::task_cancelled)?;
+                            if worker_task.cancel.load(Ordering::Acquire)
+                                || !csv_preparation_is_current(&service, &worker_key, &worker_task)?
+                            {
+                                return Err(DataError::task_cancelled());
+                            }
+                            Ok(())
+                        }) {
+                            Ok(lease) => Some(lease),
+                            Err(error)
                                 if worker_task.cancel.load(Ordering::Acquire)
-                                    || !csv_preparation_is_current(
-                                        &service,
-                                        &worker_key,
-                                        &worker_task,
-                                    )?
-                                {
-                                    return Err(DataError::task_cancelled());
-                                }
-                                Ok(())
-                            },
-                        )
-                        .ok();
+                                    || error.code == DataErrorCode::TaskCancelled =>
+                            {
+                                set_csv_preparation_state(
+                                    &worker_task,
+                                    CsvPreparationState::Cancelled,
+                                    None,
+                                );
+                                return;
+                            }
+                            Err(error) => {
+                                set_csv_preparation_state(
+                                    &worker_task,
+                                    CsvPreparationState::Failed,
+                                    Some(error),
+                                );
+                                return;
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     if !source_fingerprint_matches(
                         &source.path,
                         source_file.as_ref(),
@@ -927,7 +973,7 @@ impl QueryService {
                             &worker_task,
                             CsvPreparationState::Failed,
                             Some(DataError::query_failed(
-                                "The CSV source changed after the prepared cache was copied.",
+                                "The CSV source changed after persistent cache publication.",
                             )),
                         );
                         return;
@@ -950,6 +996,21 @@ impl QueryService {
                             None,
                         );
                         return;
+                    }
+                    if let Some(lease) = &persistent_lease {
+                        if let Err(error) = build_csv_cached_database(
+                            &source,
+                            &database_path,
+                            &lease.path().join("prepared.parquet"),
+                            temp.configured_limit(),
+                        ) {
+                            set_csv_preparation_state(
+                                &worker_task,
+                                CsvPreparationState::Failed,
+                                Some(error),
+                            );
+                            return;
+                        }
                     }
                     let connection = query_connection_config()
                         .and_then(|config| {
@@ -2503,7 +2564,9 @@ fn csv_cache_identity(
     profile_identity: &str,
     fingerprint: &SourceFingerprint,
     columns: usize,
+    source_columns: usize,
     rows: Option<u64>,
+    physical_columns: Vec<crate::data::CsvPreparedPhysicalColumn>,
 ) -> CsvCacheIdentity {
     CsvCacheIdentity {
         canonical_path: fingerprint.canonical_path.to_string_lossy().into_owned(),
@@ -2514,6 +2577,8 @@ fn csv_cache_identity(
         profile_identity: profile_identity.to_owned(),
         rows,
         columns,
+        source_columns,
+        physical_columns,
     }
 }
 
@@ -2532,15 +2597,17 @@ fn build_csv_cached_database(
         .unwrap_or_else(|| Path::new("."))
         .to_string_lossy()
         .replace('\\', "/");
+    let view = source
+        .provider
+        .prepared_view_sql(&quote_literal(&parquet_path));
     connection
         .execute_batch(&format!(
-            "SET allowed_paths = [{}, {}]; SET allowed_directories = [{}]; SET temp_directory = {}; SET max_temp_directory_size = '{}B'; SET preserve_insertion_order = true; SET default_null_order = 'NULLS_LAST'; CREATE VIEW dv_source AS SELECT * FROM read_parquet({}); CHECKPOINT;",
+            "SET allowed_paths = [{}, {}]; SET allowed_directories = [{}]; SET temp_directory = {}; SET max_temp_directory_size = '{}B'; SET preserve_insertion_order = true; SET default_null_order = 'NULLS_LAST'; CREATE OR REPLACE VIEW dv_source AS {view}; CHECKPOINT;",
             quote_literal(&source_path),
             quote_literal(&parquet_path),
             quote_literal(&temp_path),
             quote_literal(&temp_path),
             temp_limit,
-            quote_literal(&parquet_path),
         ))
         .map_err(duckdb_error)
 }
@@ -3128,9 +3195,25 @@ fn acquire_query_permit(cancel: &AtomicBool) -> Option<QueryPermit> {
     }
 }
 
-fn acquire_csv_preparation_permit(cancel: &AtomicBool) -> Option<CsvPreparationPermit> {
-    static LIMITER: OnceLock<QueryLimiter> = OnceLock::new();
-    let limiter = LIMITER.get_or_init(QueryLimiter::default);
+fn csv_preparation_limiter() -> Arc<QueryLimiter> {
+    #[cfg(test)]
+    {
+        // Parallel unit tests create independent QueryService instances. Keep
+        // the production cap within each instance without allowing unrelated
+        // fixtures to queue behind one process-global test permit.
+        Arc::new(QueryLimiter::default())
+    }
+    #[cfg(not(test))]
+    {
+        static LIMITER: OnceLock<Arc<QueryLimiter>> = OnceLock::new();
+        Arc::clone(LIMITER.get_or_init(|| Arc::new(QueryLimiter::default())))
+    }
+}
+
+fn acquire_csv_preparation_permit(
+    limiter: &Arc<QueryLimiter>,
+    cancel: &AtomicBool,
+) -> Option<CsvPreparationPermit> {
     let mut active = limiter.active.lock().ok()?;
     loop {
         if cancel.load(Ordering::Acquire) {
@@ -3138,7 +3221,7 @@ fn acquire_csv_preparation_permit(cancel: &AtomicBool) -> Option<CsvPreparationP
         }
         if *active < MAX_CONCURRENT_CSV_PREPARATIONS {
             *active += 1;
-            return Some(CsvPreparationPermit(limiter));
+            return Some(CsvPreparationPermit(Arc::clone(limiter)));
         }
         let (next, _) = limiter
             .changed
@@ -3316,9 +3399,10 @@ mod tests {
     use crate::{
         data::{DataSource, ParquetSource, QueryInputProvider, QueryPrepareContext, TabularSource},
         domain::{
-            ColumnSchema, CsvProfileMode, CsvTargetType, DataValueState, FilterOperator,
-            HeaderMode, QueryFilter, QueryPlan, QueryScalarType, QuerySearch, QuerySearchMode,
-            QuerySort, QuerySortDirection, DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+            ColumnSchema, CsvDurationInputFormat, CsvProfileMode, CsvTargetType, DataValueState,
+            DurationUnit, FilterOperator, HeaderMode, QueryFilter, QueryPlan, QueryScalarType,
+            QuerySearch, QuerySearchMode, QuerySort, QuerySortDirection,
+            DEFAULT_QUERY_TEMP_LIMIT_BYTES,
         },
     };
 
@@ -3980,6 +4064,46 @@ mod tests {
         assert!(ready.cache_output_bytes > 0);
         assert_eq!(ready.navigation_frontier_row, 3);
         assert!(ready.error.is_none());
+        let cache_entry = service.csv_cache.entry_paths().remove(0);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cache_entry.join("cache-manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["cacheSchemaVersion"], 3);
+        assert_eq!(
+            manifest["physicalLayout"],
+            serde_json::json!([
+                "__dv_row_id:INT64",
+                "__dv_base_raw_0:BYTE_ARRAY",
+                "__dv_base_raw_1:BYTE_ARRAY",
+                "__dv_value_1:INT64",
+                "__dv_state_word_0:INT64"
+            ])
+        );
+        assert_eq!(
+            manifest["physicalMapping"],
+            serde_json::json!([
+                {"field": "__dv_row_id", "physicalKind": "rowId", "sourceIndex": null, "stateWordIndex": null},
+                {"field": "__dv_base_raw_0", "physicalKind": "baseRaw", "sourceIndex": 0, "stateWordIndex": null},
+                {"field": "__dv_base_raw_1", "physicalKind": "baseRaw", "sourceIndex": 1, "stateWordIndex": null},
+                {"field": "__dv_value_1", "physicalKind": "nativeValue", "sourceIndex": 1, "stateWordIndex": null},
+                {"field": "__dv_state_word_0", "physicalKind": "stateWord", "sourceIndex": null, "stateWordIndex": 0}
+            ])
+        );
+        assert!(manifest["schemaContract"]
+            .as_array()
+            .is_some_and(|contract| contract.iter().all(|field| {
+                field.as_str().is_some_and(|field| {
+                    field.contains("physical=")
+                        && field.contains("logical=")
+                        && field.contains("converted=")
+                        && field.contains("maxDef=")
+                        && field.contains("maxRep=")
+                })
+            })));
+        assert!(manifest["schemaFingerprint"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("fnv1a64:")));
 
         let columns = vec![String::from("value"), String::from("numeric")];
         let page = service
@@ -4169,6 +4293,8 @@ mod tests {
             let audit = service.csv_cache.audit();
             assert_eq!(audit.misses, 1);
             assert_eq!(audit.publishes, 1);
+            assert!(audit.relocated_bytes > 0);
+            assert_eq!(audit.copied_bytes, 0);
             cached_entry = service.csv_cache.entry_paths()[0].clone();
             let manifest_path = cached_entry.join("cache-manifest.json");
             let manifest_before = std::fs::read(&manifest_path).unwrap();
@@ -6171,7 +6297,8 @@ mod tests {
         let source_dir = tempfile::tempdir().unwrap();
         let path = source_dir.path().join("invalid.csv");
         std::fs::write(&path, "amount\n1\nbad\nNULL\n\n").unwrap();
-        let source = DataSource::open(&path).unwrap();
+        let mut source = DataSource::open(&path).unwrap();
+        source.configure_csv(HeaderMode::Present).unwrap();
         let mut profile = source.active_csv_profile().unwrap();
         profile.mode = CsvProfileMode::Custom;
         profile.generation += 1;
@@ -6229,6 +6356,338 @@ mod tests {
             .unwrap()
             .page;
         assert_eq!(page.rows[0][0].state, DataValueState::Invalid);
+    }
+
+    #[test]
+    fn csv_compact_utf8_fallback_preserves_mixed_raw_normalized_and_states() {
+        let source_dir = tempfile::tempdir().unwrap();
+        let path = source_dir.path().join("compact-fallback.csv");
+        std::fs::write(
+            &path,
+            "text,decimal,date,ts,duration,skipped\n  alpha  ,1.230,2025-01-02,2025-01-02T03:04:05.123456789Z,1500,keep-a\nNULL,NULL,NULL,NULL,NULL,keep-null\n,,,,,keep-empty\nok,bad,bad,bad,bad,keep-invalid\n",
+        )
+        .unwrap();
+        let source = DataSource::open(&path).unwrap();
+        let mut profile = source.active_csv_profile().unwrap();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation += 1;
+        profile.columns[0].target_type = CsvTargetType::Text;
+        profile.columns[0].trim = true;
+        profile.columns[1].target_type = CsvTargetType::Decimal;
+        profile.columns[2].target_type = CsvTargetType::Date;
+        profile.columns[3].target_type = CsvTargetType::Timestamp;
+        profile.columns[4].target_type = CsvTargetType::Duration;
+        profile.columns[4].duration_unit = Some(DurationUnit::Ms);
+        profile.columns[4].duration_input_format = Some(CsvDurationInputFormat::RawInteger);
+        profile.columns[5].target_type = CsvTargetType::Skip;
+        let source = source.prepare_csv_profile(&profile).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let (_directory, service) = service();
+        service
+            .prepare_csv_session("compact-document", "compact-session", spec.clone())
+            .unwrap();
+        let ready = wait_csv_preparation(&service, "compact-document", "compact-session");
+        assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+        let columns = spec
+            .columns
+            .iter()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
+        let page = service
+            .read_prepared_csv_page(
+                "compact-document",
+                "compact-session",
+                spec.clone(),
+                0,
+                4,
+                &columns,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(page.rows[0][0].display.as_deref(), Some("alpha"));
+        assert_eq!(page.rows[0][0].raw_display.as_deref(), Some("  alpha  "));
+        assert_eq!(page.rows[0][1].display.as_deref(), Some("1.230"));
+        assert_eq!(page.rows[0][4].display.as_deref(), Some("1500"));
+        assert!(page.rows[1]
+            .iter()
+            .all(|value| value.state == DataValueState::Null));
+        assert!(page.rows[2]
+            .iter()
+            .all(|value| value.state == DataValueState::Empty));
+        assert_eq!(page.rows[3][0].state, DataValueState::Valid);
+        assert!(page.rows[3][1..]
+            .iter()
+            .all(|value| value.state == DataValueState::Invalid));
+        for value in &page.rows[3][1..] {
+            assert_eq!(value.raw_display.as_deref(), Some("bad"));
+        }
+        let copied = service
+            .read_prepared_csv_copy("compact-document", "compact-session", spec, 0, 4, &columns)
+            .unwrap()
+            .unwrap();
+        assert_eq!(copied.rows, page.rows);
+    }
+
+    #[test]
+    fn csv_compact_auto_utf8_fallback_mapping_uses_resolved_types() {
+        let source_dir = tempfile::tempdir().unwrap();
+        let path = source_dir.path().join("auto-fallback.csv");
+        std::fs::write(
+            &path,
+            "decimal,date,ts\n1.230,2025-01-02,2025-01-02T03:04:05Z\n2.500,2025-01-03,2025-01-03T04:05:06Z\n",
+        )
+        .unwrap();
+        let source = DataSource::open(&path).unwrap();
+        let mut profile = source.active_csv_profile().unwrap();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation += 1;
+        for column in &mut profile.columns {
+            column.target_type = CsvTargetType::Auto;
+            column.trim = true;
+        }
+        let source = source.prepare_csv_profile(&profile).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        assert_eq!(spec.columns[0].logical_type, "Decimal");
+        assert_eq!(spec.columns[1].logical_type, "Date");
+        assert_eq!(spec.columns[2].logical_type, "Timestamp");
+        assert_eq!(
+            spec.provider
+                .csv_prepared_physical_columns()
+                .iter()
+                .map(|column| column.physical_kind.as_str())
+                .collect::<Vec<_>>(),
+            ["fallbackValue", "fallbackValue", "fallbackValue"]
+        );
+
+        let (_directory, service) = service();
+        service
+            .prepare_csv_session("auto-document", "auto-session", spec)
+            .unwrap();
+        let ready = wait_csv_preparation(&service, "auto-document", "auto-session");
+        assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+        let cache_entry = service.csv_cache.entry_paths().remove(0);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cache_entry.join("cache-manifest.json")).unwrap(),
+        )
+        .unwrap();
+        let kinds = manifest["physicalMapping"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| {
+                entry["field"]
+                    .as_str()
+                    .is_some_and(|field| field.starts_with("__dv_value_"))
+            })
+            .map(|entry| entry["physicalKind"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, ["fallbackValue", "fallbackValue", "fallbackValue"]);
+    }
+
+    #[test]
+    fn csv_reserved_internal_headers_are_resolved_before_preparation() {
+        let source_dir = tempfile::tempdir().unwrap();
+        let path = source_dir.path().join("reserved-headers.csv");
+        std::fs::write(
+            &path,
+            "__dv_row_id,__dv_raw_0,__dv_state_word_0,__dv_value_1\na,b,c,d\n",
+        )
+        .unwrap();
+        let mut source = DataSource::open(&path).unwrap();
+        source.configure_csv(HeaderMode::Present).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let columns = spec
+            .columns
+            .iter()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            columns,
+            [
+                "__dv_row_id (source)",
+                "__dv_raw_0 (source)",
+                "__dv_state_word_0 (source)",
+                "__dv_value_1 (source)"
+            ]
+        );
+        let (_directory, service) = service();
+        service
+            .prepare_csv_session("reserved-document", "reserved-session", spec.clone())
+            .unwrap();
+        let ready = wait_csv_preparation(&service, "reserved-document", "reserved-session");
+        assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+        let page = service
+            .read_prepared_csv_page(
+                "reserved-document",
+                "reserved-session",
+                spec,
+                0,
+                1,
+                &columns,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            page.rows[0]
+                .iter()
+                .map(|value| value.display.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("a"), Some("b"), Some("c"), Some("d")]
+        );
+    }
+
+    #[test]
+    fn csv_compact_trimmed_text_preserves_rust_unicode_whitespace_semantics() {
+        let source_dir = tempfile::tempdir().unwrap();
+        let path = source_dir.path().join("compact-unicode-trim.csv");
+        std::fs::write(
+            &path,
+            "text\n\"\talpha\t\"\n\"\nbeta\n\"\n\"\u{00a0}gamma\u{00a0}\"\n\"\u{2003}delta\u{3000}\"\n",
+        )
+        .unwrap();
+        let mut source = DataSource::open(&path).unwrap();
+        source.configure_csv(HeaderMode::Present).unwrap();
+        let mut profile = source.active_csv_profile().unwrap();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation += 1;
+        profile.columns[0].target_type = CsvTargetType::Text;
+        profile.columns[0].trim = true;
+        let source = source.prepare_csv_profile(&profile).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let (_directory, service) = service();
+        service
+            .prepare_csv_session("unicode-document", "unicode-session", spec.clone())
+            .unwrap();
+        let ready = wait_csv_preparation(&service, "unicode-document", "unicode-session");
+        assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+
+        let cache_entry = service.csv_cache.entry_paths().remove(0);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cache_entry.join("cache-manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest["physicalLayout"],
+            serde_json::json!([
+                "__dv_row_id:INT64",
+                "__dv_base_raw_0:BYTE_ARRAY",
+                "__dv_value_0:BYTE_ARRAY",
+                "__dv_state_word_0:INT64"
+            ])
+        );
+        assert_eq!(
+            manifest["physicalMapping"],
+            serde_json::json!([
+                {"field": "__dv_row_id", "physicalKind": "rowId", "sourceIndex": null, "stateWordIndex": null},
+                {"field": "__dv_base_raw_0", "physicalKind": "baseRaw", "sourceIndex": 0, "stateWordIndex": null},
+                {"field": "__dv_value_0", "physicalKind": "normalizedText", "sourceIndex": 0, "stateWordIndex": null},
+                {"field": "__dv_state_word_0", "physicalKind": "stateWord", "sourceIndex": null, "stateWordIndex": 0}
+            ])
+        );
+
+        let columns = vec![String::from("text")];
+        let page = service
+            .read_prepared_csv_page(
+                "unicode-document",
+                "unicode-session",
+                spec.clone(),
+                0,
+                4,
+                &columns,
+            )
+            .unwrap()
+            .unwrap();
+        let expected = [
+            ("alpha", "\talpha\t"),
+            ("beta", "\nbeta\n"),
+            ("gamma", "\u{00a0}gamma\u{00a0}"),
+            ("delta", "\u{2003}delta\u{3000}"),
+        ];
+        for (value, (display, raw)) in page.rows.iter().zip(expected) {
+            assert_eq!(value[0].state, DataValueState::Valid);
+            assert_eq!(value[0].display.as_deref(), Some(display));
+            assert_eq!(value[0].raw_display.as_deref(), Some(raw));
+        }
+
+        let distinct = service
+            .distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("unicode-document"),
+                    session_id: String::from("unicode-session"),
+                    query_id: None,
+                    column_id: String::from("text"),
+                    search: None,
+                    offset: 0,
+                    limit: 20,
+                },
+                Some(spec.clone()),
+            )
+            .unwrap();
+        let distinct_values = distinct
+            .values
+            .iter()
+            .filter_map(|value| value.value.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(distinct_values.len(), 4);
+        for expected in ["alpha", "beta", "gamma", "delta"] {
+            assert!(distinct_values.contains(&expected));
+        }
+
+        let query = request(
+            "unicode-task",
+            "unicode-query",
+            QueryPlan {
+                filters: vec![QueryFilter {
+                    id: String::from("text-filter"),
+                    column_id: String::from("text"),
+                    scalar_type: QueryScalarType::Text,
+                    operator: FilterOperator::OneOf,
+                    values: vec![String::from("beta"), String::from("delta")],
+                }],
+                search: None,
+                sort: vec![QuerySort {
+                    column_id: String::from("text"),
+                    direction: QuerySortDirection::Ascending,
+                    nulls_last: true,
+                }],
+                projection: columns.clone(),
+            },
+        );
+        service.execute(query.clone(), spec).unwrap();
+        assert_eq!(
+            wait_complete(&service, &query).state,
+            QueryTaskState::Complete
+        );
+        let filtered = service
+            .read_page(ReadQueryPageRequest {
+                document_id: query.document_id.clone(),
+                session_id: query.session_id.clone(),
+                query_id: query.query_id.clone(),
+                offset: 0,
+                limit: 10,
+                columns: columns.clone(),
+            })
+            .unwrap()
+            .page;
+        assert_eq!(filtered.rows.len(), 2);
+        assert_eq!(filtered.rows[0][0].display.as_deref(), Some("beta"));
+        assert_eq!(filtered.rows[0][0].raw_display.as_deref(), Some("\nbeta\n"));
+        assert_eq!(filtered.rows[1][0].display.as_deref(), Some("delta"));
+        assert_eq!(
+            filtered.rows[1][0].raw_display.as_deref(),
+            Some("\u{2003}delta\u{3000}")
+        );
+        let copied = service
+            .read_copy_rows(
+                &query.document_id,
+                &query.session_id,
+                &query.query_id,
+                0,
+                10,
+                &columns,
+            )
+            .unwrap();
+        assert_eq!(copied.rows, filtered.rows);
     }
 
     #[test]

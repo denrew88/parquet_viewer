@@ -1,0 +1,86 @@
+{
+  "status": "PASS",
+  "measuredAt": "2026-07-24T03:42:06+0900",
+  "command": [
+    "tools\\phase15-polars-poc\\target\\release\\phase15-polars-poc.exe",
+    "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "<temporary-output>"
+  ],
+  "source": {
+    "path": ".tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "bytes": 979427914,
+    "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "logicalCpuCount": 8,
+    "rssPollIntervalMs": 20,
+    "childProcessesIncluded": true
+  },
+  "process": {
+    "wallMs": 22457.033299957402,
+    "absolutePeakRssBytes": 1099304960,
+    "rssGateBytes": 1610612736,
+    "rssGatePassed": true,
+    "stderr": ""
+  },
+  "product": {
+    "source": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "outputDirectory": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase15-polars-rust-l0b689d6",
+    "rows": 5850000,
+    "columns": 15,
+    "physicalColumns": 28,
+    "structureAndStateMs": 4266.261100000001,
+    "parquetSinkMs": 18122.7255,
+    "totalMs": 22389.0026,
+    "parquetBytes": 458057378,
+    "stateBytes": 21937584
+  },
+  "audit": {
+    "status": "PASS",
+    "checks": {
+      "parquetRows": true,
+      "parquetPhysicalColumns": true,
+      "stateMagic": true,
+      "stateShape": true,
+      "stateLength": true
+    },
+    "parquetRows": 5850000,
+    "parquetColumns": {
+      "__dv_row_id": "UInt32",
+      "row_id": "Int64",
+      "__dv_raw_row_id": "String",
+      "group_id": "Int64",
+      "__dv_raw_group_id": "String",
+      "category": "String",
+      "active": "Boolean",
+      "__dv_raw_active": "String",
+      "optional_value": "Int32",
+      "__dv_raw_optional_value": "String",
+      "event_time": "Int64",
+      "__dv_raw_event_time": "String",
+      "amount": "Float64",
+      "__dv_raw_amount": "String",
+      "label": "String",
+      "code": "String",
+      "metric_00": "Int64",
+      "__dv_raw_metric_00": "String",
+      "metric_01": "Int64",
+      "__dv_raw_metric_01": "String",
+      "metric_02": "Int64",
+      "__dv_raw_metric_02": "String",
+      "metric_03": "Int64",
+      "__dv_raw_metric_03": "String",
+      "metric_04": "Int64",
+      "__dv_raw_metric_04": "String",
+      "metric_05": "Int64",
+      "__dv_raw_metric_05": "String"
+    },
+    "stateRows": 5850000,
+    "stateColumns": 15,
+    "stateBytes": 21937584,
+    "parquetSha256": "4deeba4b8a097bedb06f204c0e1bff3a739138439e3121fa2517812d4838980a",
+    "stateSha256": "7244d592cd95685c69dbfe074e1a9d2b532ac06722a8fda6d1c83cc953d09caf"
+  }
+}

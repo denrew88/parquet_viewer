@@ -1,0 +1,20 @@
+{
+  "status": "REJECTED",
+  "reason": "Peak RSS exceeded the 1.5 GiB hard gate in every valid run.",
+  "rust": "1.88.0",
+  "polars": "0.51.0",
+  "fixtureSha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+  "rssGateBytes": 1610612736,
+  "runs": [
+    {"wallMs": 16287.0035, "productMs": 15527.7263, "peakRssBytes": 4547911680, "parity": "PASS"},
+    {"wallMs": 16632.6911, "productMs": 15861.6622, "peakRssBytes": 4547330048, "parity": "PASS"},
+    {"wallMs": 14167.1710, "productMs": 14093.4224, "peakRssBytes": 4548784128, "parity": "PASS"},
+    {"wallMs": 16423.5338, "productMs": 15125.2357, "peakRssBytes": 4550197248, "parity": "PASS"}
+  ],
+  "output": {
+    "rows": 5850000,
+    "physicalColumns": 28,
+    "parquetBytes": 436539783,
+    "stateBytes": 21937584
+  }
+}

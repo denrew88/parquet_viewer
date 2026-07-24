@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "overall": "BLOCKED",
+  "startedAtUtc": "2026-07-24T13:17:35.090Z",
+  "finishedAtUtc": "2026-07-24T13:18:37.634Z",
+  "execution": {
+    "executable": "src-tauri/target/debug/data-viewer.exe",
+    "browserMock": false,
+    "nativeRustIpc": true,
+    "url": null,
+    "title": null,
+    "devicePixelRatio": null,
+    "cdpPort": 9333,
+    "testDataRoot": ".tmp/phase13-native-data-7836-1784899055309",
+    "webViewProcesses": {
+      "exitCode": 1,
+      "error": "Get-CimInstance : �׼����� �źεǾ����ϴ�. \r\n��ġ ��:1 ����:1\r\n+ Get-CimInstance Win32_Process -Filter \"Name = 'msedgewebview2.exe'\" | ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : PermissionDenied: (:) [Get-CimInstance], CimException\r\n    + FullyQualifiedErrorId : HRESULT 0x80041003,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand"
+    },
+    "launchMode": "node-spawn"
+  },
+  "fixtures": {
+    "manifest": "artifacts/phase-13/fixture-manifest.json",
+    "bootstrap": "fixtures/phase-7/small-csv.csv",
+    "large": ".tmp/phase13-fixtures/large/boundary-5850000-low.parquet",
+    "duration": ".tmp/phase13-fixtures/small/duration-arrow.parquet"
+  },
+  "checks": [
+    {
+      "id": "NATIVE13-PREFLIGHT",
+      "status": "PASS",
+      "summary": "manifest의 585만 행 Parquet와 Arrow Duration 파일 크기·SHA-256을 확인했습니다.",
+      "details": {}
+    },
+    {
+      "id": "NATIVE13-CDP",
+      "status": "BLOCKED",
+      "summary": "small CSV bootstrap과 실행별 신규 debug data-root를 사용해도 WebView2 CDP 포트가 열리지 않아 native interaction을 실행하지 못했습니다.",
+      "details": {}
+    }
+  ],
+  "ipcCounts": null,
+  "artifacts": [
+    "artifacts/phase-15/native-phase13-results.json",
+    "artifacts/phase-15/native-phase13-smoke.md"
+  ],
+  "failure": {
+    "message": "Error: WebView2 CDP endpoint did not start: Error: browserType.connectOverCDP: connect ECONNREFUSED 127.0.0.1:9333\nCall log:\n\u001b[2m  - <ws preparing> retrieving websocket url from http://127.0.0.1:9333\u001b[22m\n",
+    "stack": "Error: WebView2 CDP endpoint did not start: Error: browserType.connectOverCDP: connect ECONNREFUSED 127.0.0.1:9333\nCall log:\n\u001b[2m  - <ws preparing> retrieving websocket url from http://127.0.0.1:9333\u001b[22m\n\n    at connectWebView (file:///C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/scripts/native_phase13_smoke.mjs:192:9)\n    at async file:///C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/scripts/native_phase13_smoke.mjs:669:13",
+    "appOutput": null
+  }
+}

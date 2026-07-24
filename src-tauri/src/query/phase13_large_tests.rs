@@ -53,6 +53,112 @@ fn fixture_path(fixture: &Value) -> PathBuf {
     path
 }
 
+fn directory_bytes(path: &Path) -> u64 {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return 0;
+    };
+    if metadata.is_file() {
+        return metadata.len();
+    }
+    std::fs::read_dir(path)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| directory_bytes(&entry.path()))
+        .sum()
+}
+
+fn collect_partial_paths(path: &Path, paths: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let child = entry.path();
+        let name = child
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if name.contains(".partial") || name == "publish.partial" {
+            paths.push(child.clone());
+        }
+        if child.is_dir() {
+            collect_partial_paths(&child, paths);
+        }
+    }
+}
+
+fn collect_query_temp_artifacts(path: &Path, paths: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let child = entry.path();
+        if child.is_dir() {
+            collect_query_temp_artifacts(&child, paths);
+            continue;
+        }
+        let name = child
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if !name.ends_with(".lock") {
+            paths.push(child);
+        }
+    }
+}
+
+fn stable_csv_cache_entries(local_data: &Path) -> Vec<PathBuf> {
+    let root = local_data.join("csv-cache-v1");
+    let mut entries = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_dir()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| !name.starts_with('.') && !name.contains(".partial"))
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries
+}
+
+fn assert_complete_csv_cache(entries: &[PathBuf]) {
+    for entry in entries {
+        for required in [
+            "prepared.parquet",
+            "states.bin",
+            "offsets.idx",
+            "cache-manifest.json",
+        ] {
+            assert!(
+                entry.join(required).is_file(),
+                "persistent CSV cache entry is incomplete: {}",
+                entry.display()
+            );
+        }
+    }
+}
+
+fn assert_no_partial_or_query_temp_artifacts(local_data: &Path) {
+    let mut partial_paths = Vec::new();
+    collect_partial_paths(&local_data.join("csv-cache-v1"), &mut partial_paths);
+    assert!(
+        partial_paths.is_empty(),
+        "partial persistent cache paths remain: {partial_paths:?}"
+    );
+
+    let mut temp_artifacts = Vec::new();
+    collect_query_temp_artifacts(&local_data.join("query-temp"), &mut temp_artifacts);
+    assert!(
+        temp_artifacts.is_empty(),
+        "query temp artifacts remain after cleanup: {temp_artifacts:?}"
+    );
+}
+
 fn service() -> (tempfile::TempDir, Arc<QueryService>) {
     let directory = tempfile::tempdir().expect("large harness temp directory");
     let service = Arc::new(
@@ -395,10 +501,13 @@ fn phase13_release_large_csv_prepared_product_paths() {
     let manifest = manifest();
     let low_fixture = fixture(&manifest, "csv-5850000-low");
     let low_path = fixture_path(low_fixture);
+    let (local_data, service) = service();
+    // The service intentionally owns its janitor/cache coordination handles
+    // for its whole lifetime. Measure the leak baseline after constructing it
+    // so only per-session/preparation handles are required to return.
     let (rss_before, handles_before) = process_snapshot().expect("initial process metrics");
     let mut peak_rss = rss_before;
     let mut temp_high_water = 0_u64;
-    let (_temp, service) = service();
     let temp_baseline = service
         .usage()
         .expect("initial query temp usage")
@@ -548,7 +657,27 @@ fn phase13_release_large_csv_prepared_product_paths() {
     let cleanup = service.clear_temp().expect("clear ready CSV temp");
     let usage_after_ready = service.usage().expect("usage after ready cleanup");
     assert_eq!(usage_after_ready.active_queries, 0);
-    assert_eq!(usage_after_ready.process_bytes, temp_baseline);
+    assert!(
+        service
+            .csv_preparation_status(document_id, session_id)
+            .expect("ready CSV preparation status after drop")
+            .is_none(),
+        "ready CSV preparation remained active after drop"
+    );
+    let ready_cache_entries = stable_csv_cache_entries(local_data.path());
+    assert_eq!(
+        ready_cache_entries.len(),
+        1,
+        "ready preparation must leave one valid persistent cache entry"
+    );
+    assert_complete_csv_cache(&ready_cache_entries);
+    assert_no_partial_or_query_temp_artifacts(local_data.path());
+    let persistent_cache_bytes_after_ready = directory_bytes(&ready_cache_entries[0]);
+    assert!(persistent_cache_bytes_after_ready > 0);
+    assert!(
+        usage_after_ready.process_bytes >= temp_baseline,
+        "persistent cache residency cannot reduce accounted process usage"
+    );
 
     let high_fixture = fixture(&manifest, "csv-5850000-high");
     let high_path = fixture_path(high_fixture);
@@ -597,8 +726,27 @@ fn phase13_release_large_csv_prepared_product_paths() {
     service
         .drop_session(cancel_document, cancel_session)
         .expect("drop cancelled CSV session");
-    service.clear_temp().expect("clear cancelled CSV temp");
+    let cancel_cleanup = service.clear_temp().expect("clear cancelled CSV temp");
     let usage_final = service.usage().expect("final CSV temp usage");
+    assert!(
+        service
+            .csv_preparation_status(cancel_document, cancel_session)
+            .expect("cancelled CSV preparation status after drop")
+            .is_none(),
+        "cancelled CSV preparation remained active after drop"
+    );
+    let final_cache_entries = stable_csv_cache_entries(local_data.path());
+    assert_eq!(
+        final_cache_entries, ready_cache_entries,
+        "cancelled preparation published or removed a persistent cache entry"
+    );
+    assert_complete_csv_cache(&final_cache_entries);
+    assert_eq!(
+        directory_bytes(&final_cache_entries[0]),
+        persistent_cache_bytes_after_ready,
+        "cancelled preparation changed persistent cache residency"
+    );
+    assert_no_partial_or_query_temp_artifacts(local_data.path());
     drop(spec);
     drop(source);
     drop(high_source);
@@ -607,7 +755,10 @@ fn phase13_release_large_csv_prepared_product_paths() {
     peak_rss = peak_rss.max(rss_after);
     assert!(peak_rss <= RSS_CAP_BYTES, "peak RSS exceeded 1.5 GiB");
     assert_eq!(usage_final.active_queries, 0);
-    assert_eq!(usage_final.process_bytes, temp_baseline);
+    assert_eq!(
+        usage_final.process_bytes, usage_after_ready.process_bytes,
+        "drop/clear/cancel introduced additional accounted storage growth"
+    );
     assert!(
         handles_after <= handles_before.saturating_add(2),
         "process handles did not return near their initial baseline"
@@ -659,9 +810,14 @@ fn phase13_release_large_csv_prepared_product_paths() {
                 "handlesAfter": handles_after,
                 "tempHighWaterBytes": temp_high_water,
                 "processTempBaselineBytes": temp_baseline,
+                "processBytesAfterReadyCleanup": usage_after_ready.process_bytes,
+                "persistentCacheBytesAfterReady": persistent_cache_bytes_after_ready,
                 "finalProcessTempBytes": usage_final.process_bytes,
+                "postCancelGrowthBytes": usage_final.process_bytes.saturating_sub(usage_after_ready.process_bytes),
+                "stablePersistentCacheEntries": final_cache_entries.len(),
                 "finalActiveQueries": usage_final.active_queries,
                 "inactiveBytesDeleted": cleanup.deleted_bytes,
+                "cancelInactiveBytesDeleted": cancel_cleanup.deleted_bytes,
             },
             "status": "PASS",
         }),
@@ -717,6 +873,212 @@ fn phase13_release_large_csv_direct_page_baseline() {
         "note": "Direct source pages use the same DataSource product path without a prepared artifact."
     });
     write_json(&output, &evidence);
+}
+
+#[test]
+#[ignore = "diagnostic stage profile for the 5.85M high-cardinality CSV"]
+fn phase14_profile_5850000_high_csv_stages() {
+    use std::io::{BufReader, Read};
+
+    let manifest = manifest();
+    let fixture = fixture(&manifest, "csv-5850000-high");
+    let path = fixture_path(fixture);
+
+    let timer_iterations = 2_000_000_u64;
+    let timer_started = Instant::now();
+    for _ in 0..timer_iterations {
+        std::hint::black_box(Instant::now());
+    }
+    let timer_call_ns = timer_started.elapsed().as_nanos() as f64 / timer_iterations as f64;
+
+    let open_started = Instant::now();
+    let mut source = DataSource::open(&path).expect("open high CSV for stage profile");
+    let open_ms = open_started.elapsed().as_secs_f64() * 1_000.0;
+    let configure_started = Instant::now();
+    source
+        .configure_csv(HeaderMode::Present)
+        .expect("configure high CSV header");
+    let configure_ms = configure_started.elapsed().as_secs_f64() * 1_000.0;
+    let spec_started = Instant::now();
+    let spec = source.query_source_spec().expect("high CSV query source");
+    let spec_ms = spec_started.elapsed().as_secs_f64() * 1_000.0;
+    let metrics_provider = Arc::clone(&spec.provider);
+    let (local_data, service) = service();
+    let document_id = "phase14-profile-high-document";
+    let session_id = "phase14-profile-high-session";
+    let prepare_started = Instant::now();
+    service
+        .prepare_csv_session(document_id, session_id, spec)
+        .expect("start high CSV stage profile");
+    let mut rows_milestones = Vec::new();
+    let mut next_milestone = 500_000_u64;
+    let ready = loop {
+        let status = service
+            .csv_preparation_status(document_id, session_id)
+            .expect("profile status")
+            .expect("profile task");
+        if status.rows_scanned >= next_milestone {
+            rows_milestones.push(json!({
+                "rows": status.rows_scanned,
+                "elapsedMs": prepare_started.elapsed().as_secs_f64() * 1_000.0,
+                "sourceReadBytes": status.source_read_bytes,
+                "cacheOutputBytes": status.cache_output_bytes
+            }));
+            next_milestone = next_milestone.saturating_add(500_000);
+        }
+        if status.state != CsvPreparationState::Preparing {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let ready_total_ms = prepare_started.elapsed().as_secs_f64() * 1_000.0;
+    assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+    let metrics = metrics_provider.preparation_metrics();
+    let ns_ms = |value: u64| value as f64 / 1_000_000.0;
+    let named = [
+        ("csvRead", metrics.profile_csv_read_ns),
+        ("valueConversion", metrics.profile_convert_ns),
+        ("stateBitmap", metrics.profile_state_ns),
+        ("arrowBuilderAppend", metrics.profile_batch_append_ns),
+        ("recordBatchFinish", metrics.profile_batch_finish_ns),
+        ("parquetBatchWrite", metrics.profile_parquet_write_ns),
+        ("parquetClose", metrics.profile_parquet_close_ns),
+        ("parquetSync", metrics.profile_parquet_sync_ns),
+        ("stateFile", metrics.profile_state_file_ns),
+        ("offsetFile", metrics.profile_offset_file_ns),
+        ("duckdbView", metrics.profile_duckdb_view_ns),
+    ];
+    let measured_stage_ns = named
+        .iter()
+        .map(|(_, value)| u128::from(*value))
+        .sum::<u128>();
+    let provider_total_ms = ns_ms(metrics.profile_total_ns);
+    let provider_residual_ms = provider_total_ms - measured_stage_ns as f64 / 1_000_000.0;
+    let post_provider_ms = ready_total_ms - provider_total_ms;
+
+    let raw_read_started = Instant::now();
+    let mut raw_reader = BufReader::with_capacity(
+        8 * 1024 * 1024,
+        std::fs::File::open(&path).expect("open raw read baseline"),
+    );
+    let mut raw_buffer = vec![0_u8; 8 * 1024 * 1024];
+    let mut raw_bytes = 0_u64;
+    loop {
+        let read = raw_reader.read(&mut raw_buffer).expect("raw read baseline");
+        if read == 0 {
+            break;
+        }
+        raw_bytes = raw_bytes.saturating_add(read as u64);
+    }
+    let raw_read_ms = raw_read_started.elapsed().as_secs_f64() * 1_000.0;
+
+    let parse_started = Instant::now();
+    let mut parse_reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_path(&path)
+        .expect("open pure CSV parse baseline");
+    let mut parse_record = csv::ByteRecord::new();
+    let mut parsed_rows = 0_u64;
+    while parse_reader
+        .read_byte_record(&mut parse_record)
+        .expect("pure CSV parse baseline")
+    {
+        parsed_rows = parsed_rows.saturating_add(1);
+    }
+    let pure_parse_ms = parse_started.elapsed().as_secs_f64() * 1_000.0;
+
+    fn collect_files(path: &Path, output: &mut Vec<Value>) {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                collect_files(&child, output);
+            } else if let Ok(metadata) = entry.metadata() {
+                output.push(json!({
+                    "path": child.to_string_lossy(),
+                    "bytes": metadata.len()
+                }));
+            }
+        }
+    }
+    let mut artifacts = Vec::new();
+    collect_files(local_data.path(), &mut artifacts);
+    let stage_values = named
+        .iter()
+        .map(|(name, value)| {
+            let elapsed_ms = ns_ms(*value);
+            json!({
+                "name": name,
+                "elapsedMs": elapsed_ms,
+                "providerPercent": elapsed_ms / provider_total_ms * 100.0,
+                "readyPercent": elapsed_ms / ready_total_ms * 100.0
+            })
+        })
+        .collect::<Vec<_>>();
+    let estimated_timer_overhead_ms = timer_call_ns * (ROWS * 8) as f64 / 1_000_000.0;
+    let output = std::env::var_os("DV_CSV_STAGE_PROFILE_OUTPUT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            repository_root().join("artifacts/phase-14/csv-high-stage-profile.json")
+        });
+    write_json(
+        &output,
+        &json!({
+            "schemaVersion": 1,
+            "fixture": {
+                "id": fixture["id"],
+                "path": path,
+                "rows": ROWS,
+                "columns": 15,
+                "bytes": fixture["bytes"],
+                "sha256": fixture["sha256"]
+            },
+            "build": "cargo test --release phase14_profile_5850000_high_csv_stages -- --ignored --nocapture --test-threads=1",
+            "setupMs": {"dataSourceOpen": open_ms, "configureHeader": configure_ms, "querySpec": spec_ms},
+            "readyTotalMs": ready_total_ms,
+            "providerTotalMs": provider_total_ms,
+            "providerResidualMs": provider_residual_ms,
+            "postProviderAndPublishMs": post_provider_ms,
+            "stageTimings": stage_values,
+            "metrics": {
+                "csvPreparationProvider": metrics.csv_preparation_provider,
+                "csvClassifierReason": metrics.csv_classifier_reason,
+                "sourceReadBytes": metrics.source_read_bytes,
+                "cacheOutputBytesBeforePersistentCopy": metrics.cache_output_bytes,
+                "peakDecodedBatchBytes": metrics.peak_decoded_batch_bytes,
+                "recordBatches": metrics.record_batches_accepted,
+                "maxBatchRows": metrics.max_accepted_batch_rows,
+                "adaptiveGrowths": metrics.adaptive_batch_growths,
+                "adaptiveShrinks": metrics.adaptive_batch_shrinks,
+                "stateBitmapBytes": metrics.state_bitmap_bytes
+            },
+            "progressMilestones": rows_milestones,
+            "baselinesAfterWarmup": {
+                "rawSequentialReadMs": raw_read_ms,
+                "rawBytes": raw_bytes,
+                "rawMiBPerSecond": raw_bytes as f64 / (1024.0 * 1024.0) / (raw_read_ms / 1000.0),
+                "pureCsvParseMs": pure_parse_ms,
+                "parsedPhysicalRows": parsed_rows,
+                "pureCsvRowsPerSecond": parsed_rows as f64 / (pure_parse_ms / 1000.0)
+            },
+            "instrumentation": {
+                "instantNowNanosecondsPerCall": timer_call_ns,
+                "estimatedWallOverheadMsForEightTimerCallsPerRow": estimated_timer_overhead_ms,
+                "note": "Per-row instrumentation affects wall time; use stage shares and the reported overhead estimate."
+            },
+            "artifacts": artifacts
+        }),
+    );
+    eprintln!(
+        "high CSV stage profile: ready={ready_total_ms:.1}ms provider={provider_total_ms:.1}ms publish+outer={post_provider_ms:.1}ms"
+    );
+    service
+        .drop_session(document_id, session_id)
+        .expect("drop profile session");
+    service.shutdown();
 }
 
 #[test]

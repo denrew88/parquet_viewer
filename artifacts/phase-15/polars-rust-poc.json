@@ -1,0 +1,86 @@
+{
+  "status": "FAIL",
+  "measuredAt": "2026-07-23T21:26:11+0900",
+  "command": [
+    "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\examples\\phase15_polars_poc.exe",
+    "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "<temporary-output>"
+  ],
+  "source": {
+    "path": ".tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "bytes": 979427914,
+    "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.14",
+    "logicalCpuCount": 8,
+    "rssPollIntervalMs": 20,
+    "childProcessesIncluded": true
+  },
+  "process": {
+    "wallMs": 16423.533800058067,
+    "absolutePeakRssBytes": 4550197248,
+    "rssGateBytes": 1610612736,
+    "rssGatePassed": false,
+    "stderr": "PREFILL CACHES\nCachePrefiller: concurrent streaming scan exec limit: 8\nasync thread count: 4\nCachePrefiller: wait for 1 scan executors\npolars-stream: updating graph state\npolars-stream: running in-memory-sink in subgraph\npolars-stream: running with-row-index in subgraph\npolars-stream: running multi-scan[csv] in subgraph\n[MultiScanTaskInit]: 1 sources, reader name: csv, ReaderCapabilities(PRE_SLICE | NEEDS_FILE_CACHE_INIT), n_readers_pre_init: 1, max_concurrent_scans: 1\n[MultiScanTaskInit]: predicate: None, skip files mask: None, predicate to reader: None\n[MultiScanTaskInit]: scan_source_idx: 0, extra_ops: ExtraOperations { row_index: None, row_index_col_idx: 18446744073709551615, pre_slice: None, include_file_paths: None, file_path_col_idx: 18446744073709551615, predicate: None }\n[MultiScanTaskInit]: Readers init: 1 / (1 total) (range: 0..1, filtered out: 0)\n[MultiScan]: Initialize source 0\n[ReaderStarter]: scan_source_idx: 0\n[ReaderStarter]: max_concurrent_scans is 1, waiting..\n[AttachReaderToBridge]: received reader (n_readers_received: 1)\n[ReaderStarter]: scan_source_idx: 0: pre_slice_to_reader: None, external_filter_mask: None, file_iceberg_schema: None\n[CsvFileReader]: project: 15 / 15, slice: None, row_index: None\n[CsvSource]: Start line splitting\nstart_reader_impl: scan_source_idx: 0, first_morsel_position: RowCounter { physical_rows: 0, deleted_rows: 0 }\nstart_reader_impl: scan_source_idx: 0, ApplyExtraOps::Noop, first_morsel_position: RowCounter { physical_rows: 0, deleted_rows: 0 }\n[ReaderStarter]: Stopping (no more readers)\n[MultiScanState]: Readers disconnected\npolars-stream: done running graph phase\npolars-stream: updating graph state\nCACHE SET: cache id: f65eca2a-5352-4592-b13a-4ad23086af03\nEXECUTE PHYS PLAN\nCACHE HIT: cache id: f65eca2a-5352-4592-b13a-4ad23086af03\nCACHE DROP: cache id: f65eca2a-5352-4592-b13a-4ad23086af03\nWriteable: try_new: local: C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase15-polars-rust-pky362v2\\prepared.parquet (canonicalize: Ok(\"\\\\\\\\?\\\\C:\\\\Users\\\\denrew88\\\\Documents\\\\Study\\\\Codex\\\\parquet_viewer\\\\.tmp\\\\phase15-polars-rust-pky362v2\\\\prepared.parquet\"))\n"
+  },
+  "product": {
+    "source": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "outputDirectory": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase15-polars-rust-pky362v2",
+    "rows": 5850000,
+    "columns": 15,
+    "physicalColumns": 28,
+    "structureAndStateMs": 2404.7809,
+    "parquetSinkMs": 12720.4446,
+    "totalMs": 15125.2357,
+    "parquetBytes": 436539783,
+    "stateBytes": 21937584
+  },
+  "audit": {
+    "status": "PASS",
+    "checks": {
+      "parquetRows": true,
+      "parquetPhysicalColumns": true,
+      "stateMagic": true,
+      "stateShape": true,
+      "stateLength": true
+    },
+    "parquetRows": 5850000,
+    "parquetColumns": {
+      "__dv_row_id": "UInt32",
+      "row_id": "Int64",
+      "__dv_raw_row_id": "String",
+      "group_id": "Int64",
+      "__dv_raw_group_id": "String",
+      "category": "String",
+      "active": "Boolean",
+      "__dv_raw_active": "String",
+      "optional_value": "Int32",
+      "__dv_raw_optional_value": "String",
+      "event_time": "Int64",
+      "__dv_raw_event_time": "String",
+      "amount": "Float64",
+      "__dv_raw_amount": "String",
+      "label": "String",
+      "code": "String",
+      "metric_00": "Int64",
+      "__dv_raw_metric_00": "String",
+      "metric_01": "Int64",
+      "__dv_raw_metric_01": "String",
+      "metric_02": "Int64",
+      "__dv_raw_metric_02": "String",
+      "metric_03": "Int64",
+      "__dv_raw_metric_03": "String",
+      "metric_04": "Int64",
+      "__dv_raw_metric_04": "String",
+      "metric_05": "Int64",
+      "__dv_raw_metric_05": "String"
+    },
+    "stateRows": 5850000,
+    "stateColumns": 15,
+    "stateBytes": 21937584,
+    "parquetSha256": "f9795f8e9de178c3ab66ba4f7581afaeddeb5e163d7f7c34a8f0fe69308f3501",
+    "stateSha256": "7244d592cd95685c69dbfe074e1a9d2b532ac06722a8fda6d1c83cc953d09caf"
+  }
+}

@@ -1,6 +1,6 @@
 # 개발 계획
 
-## 2026-07-21 최신 실행 상태
+## 2026-07-24 최신 실행 상태
 
 - Phase 0~8 제품 구현과 실행 가능한 자동 gate를 모두 실행했다.
 - frontend 266 tests, Playwright 24 tests, Rust 127 tests, format/lint/typecheck/clippy/build가 PASS했다.
@@ -41,13 +41,18 @@
   구현했다. 전체 frontend/Rust/Playwright와 실제 Tauri, release/NSIS build는 PASS했다. 다만 physical
   raw/typed cache 분리, preparation frontier, page p95 20ms와 계획된 성능 표본이 남아 완료 판정은
   BLOCKED다.
+- Phase 15는 `states.bin` 소량 반복 write와 persistent cache 재복사를 제거하고 compact-v3를
+  확정했다. Rust 1.97.1과 Polars 0.54.4 streaming helper를 기본 CSV preparation provider로 연결했으며
+  5,850,000행 high CSV 5회 median 14.701초, p95 14.931초, peak process-tree RSS 약 1.150GiB를
+  확인했다. EXE·NSIS 증가량과 dependency/license audit 뒤 사용자의 최종 연결 지시를 채택 결정으로
+  기록했다. 구현은 완료했지만 native CDP·DPI·100-cycle·fault·clean-install 필수 gate가 남아 있다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 13까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 15까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -79,6 +84,7 @@
 | Phase 12 | 완료 (2026-07-21)                                      | query/page, streaming copy, Find·reorder·tab/H5 안정화       |
 | Phase 13 | 구현 완료, 필수 performance·external native gate BLOCKED (2026-07-23) | boundary·CSV cache·직접 drag·정렬 UX·Duration·설정 안정화    |
 | Phase 14 | 구현 완료, 필수 performance·architecture gate BLOCKED (2026-07-23) | CSV 단일 scan columnar cache·Ctrl bitmap·정렬/설정/live drag UX |
+| Phase 15 | 구현 완료, 필수 native·soak gate BLOCKED (2026-07-24) | CSV 준비 병목 제거·Polars 제품 연결·compact cache 재설계 |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
@@ -96,6 +102,11 @@ Phase 12 계약은 `artifacts/phase-12/00-scope.md`부터 `40-implementation-pla
 완료했다. Phase 11의 high-cardinality 성능과 150% DPI 항목은 Phase 12 증거로 해소했다. 이전
 Phase의 clean-machine installer처럼 별도 환경이 필요한 항목은 해당 Phase 기록에서 계속 추적한다.
 Phase 13의 확정 범위는 `artifacts/phase-13/00-scope.md`이며 구현 전 Quality 계획부터 시작한다.
+Phase 15의 계획은 `artifacts/phase-15/00-scope.md`부터 `40-implementation-plan.md`까지다.
+Phase 14의 미충족 performance·architecture gate를 숨기지 않고 Phase 15에서 원인별로 승계한다.
+Polars Rust는 2026-07-24 사용자의 최종 연결 지시에 따라 제품 기본 dependency로 채택했다. 최신
+구현·성능·package 근거는 `artifacts/phase-15/50-integration.md`와 `60-dependency-package-audit.md`,
+남은 필수 gate는 `90-review.md`를 따른다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -683,3 +694,48 @@ NSIS build는 PASS했다. 최신 측정과 미충족 gate는 `artifacts/phase-14
 - Ready 이후 Ctrl navigation source read 0과 네 방향 latency/correctness gate를 만족한다.
 - sort/settings/drag/reset UI가 세 viewport와 실제 WebView2에서 동작한다.
 - 전체 frontend/Rust/E2E/release/NSIS gate가 PASS하고 HIGH/MEDIUM 결함과 필수 BLOCKED가 없다.
+
+## Phase 15. CSV 준비 경로 성능 재설계
+
+**목표:** 5,850,000행 high-cardinality CSV의 약 58.38초 준비 시간을 구성 단계별로 줄이고,
+raw·typed·empty·invalid 의미와 DuckDB query 계약을 유지하면서 bounded-memory 병렬 준비 경로를
+확정한다. 타입은 제한된 표본으로 자동 결정하며 기본 Auto 흐름에서 사용자 확인을 요구하지 않는다.
+
+**상태:** 구현 완료, 필수 native·soak gate BLOCKED (2026-07-24)
+
+측정 근거는 `artifacts/phase-14/csv-high-stage-profile.md`와
+`artifacts/phase-14/polars-high-stage-profile.md`다. 확정 범위와 비범위는
+`artifacts/phase-15/00-scope.md`, 추적 가능한 gate는 `10-test-plan.md`, 데이터 경로는
+`30-csv-polars-architecture.md`, 작업 순서는 `40-implementation-plan.md`, 최신 Polars 제품 통합의
+세부 구현과 rollback 기준은 `41-polars-product-integration-plan.md`를 따른다.
+
+### 해야 할 일
+
+- `states.bin`을 연속 buffer 또는 큰 buffered chunk로 저장해 274만 회 8-byte write 제거
+- query temp에서 persistent cache로 약 767MB를 다시 복사하지 않는 partial→atomic publish
+- bounded sample 기반 자동 타입 추론과 확인 modal 없는 Auto 흐름
+- compact typed/raw/state partition schema와 preparation frontier
+- Polars Rust minimal-feature POC의 속도·RSS·취소·parity·EXE/NSIS 크기 측정
+- Polars 0.51 POC의 약 4.55GB RSS 원인을 구 in-memory sink로 확정하고, Rust 1.97.1 + Polars 0.54.4
+  최신 streaming sink 재측정에서 8스레드 5회 wall 중앙값 12.206초·최악 12.938초·peak RSS 최악
+  1.103GiB·출력 parity PASS를 확인
+- 최신 Polars 경로를 same-EXE hard-cancel helper로 연결하고 CSV preparation provider 기본값으로
+  채택했으며 DuckDB filter/sort/query는 유지
+- Rust 1.97.1 toolchain 전환은 양쪽 252 test, Clippy, release/NSIS, EXE·DLL import와 native query/H5를
+  통과했으며 상세 결과는 `artifacts/phase-15/42-rust-1.97-migration-validation.md`에 기록함. 재부팅 뒤
+  1.97 full native smoke와 실제 5.85M×1 clipboard를 검증했다. 이후 Polars 제품 경로는 high CSV
+  5회 median 14.701초·p95 14.931초·peak RSS 약 1.150GiB를 통과하고 default feature로 연결했다.
+  linker warning 0, 최종 default-Polars native·clean install·soak/fault 증거는 남아 있음
+- source read, decoded bytes, writer queue, cache 구성, stage progress 계측
+- Phase 14의 page p95, cold 5회, fault, soak, copy와 native 증거 공백 재검증
+
+### 완료 조건
+
+- `artifacts/phase-15/10-test-plan.md`의 필수 gate가 모두 PASS다.
+- high-cardinality 5.85M cold preparation 5회 median이 15초 이하이고 p95가 20초 이하다.
+- peak RSS 1.5GiB, decoded batch 64MiB, cancel terminal 1초 상한을 지킨다.
+- direct preview와 Ready cache의 typed/raw/empty/invalid, profile 변경, page/query/copy 결과가 같다.
+- Ready page p95 20ms, warm cache Ready 1초, Ready 이후 navigation source read 0을 만족한다.
+- Polars 실행 파일·installer 증가량과 dependency audit, 사용자의 runtime dependency 채택 결정을
+  기록한다. 이 조건은 `60-dependency-package-audit.md`에서 충족했다.
+- 전체 Rust/frontend/E2E/release/native gate와 Phase 14에서 승계한 필수 증거가 PASS다.

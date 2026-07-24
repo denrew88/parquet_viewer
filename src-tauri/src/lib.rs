@@ -24,6 +24,16 @@ fn health_check() -> HealthCheckResponse {
     }
 }
 
+#[cfg(feature = "polars-csv-provider")]
+pub fn try_run_polars_csv_worker_from_args() -> bool {
+    data::csv_polars::try_run_worker_from_args()
+}
+
+#[cfg(not(feature = "polars-csv-provider"))]
+pub fn try_run_polars_csv_worker_from_args() -> bool {
+    false
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

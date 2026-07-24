@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "executable": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\deps\\data_viewer_lib-3e96957c76bf465a.exe",
+  "executableBytes": 138769920,
+  "runs": [
+    {
+      "wallMs": 13310.42220001109,
+      "readyTotalMs": 11342.848,
+      "providerTotalMs": 0.0,
+      "provider": "polars",
+      "classifierReason": null,
+      "sourceReadBytes": 1958855828,
+      "cacheOutputBytes": 406281544,
+      "peakTreeRssBytes": 1212346368,
+      "peakChildrenRssBytes": 1169756160,
+      "rssPollMs": 50,
+      "rssSamples": 193,
+      "stdoutTail": "\nrunning 1 test\ntest query::phase13_large_tests::phase14_profile_5850000_high_csv_stages ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 281 filtered out; finished in 13.22s\n\n",
+      "stderrTail": "high CSV stage profile: ready=11342.8ms provider=0.0ms publish+outer=11342.8ms\n",
+      "profilePath": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\phase-15\\product-benchmark-runs\\run-1.json",
+      "run": 1
+    }
+  ],
+  "summary": {
+    "samples": 1,
+    "readyMedianMs": 11342.848,
+    "readyP95MsFiveSampleMax": 11342.848,
+    "peakTreeRssBytes": 1212346368,
+    "allPolars": true,
+    "allClassifierReasonsEmpty": true
+  }
+}

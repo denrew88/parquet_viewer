@@ -1,5 +1,8 @@
 mod boundary;
 mod cell_state_bitmap;
+#[cfg(feature = "polars-csv-provider")]
+pub(crate) mod csv_polars;
+mod csv_prepare;
 mod csv_profile;
 mod csv_source;
 mod duration;
@@ -32,8 +35,8 @@ pub(crate) use source::{
     query_invalid_name, query_quote_identifier, query_quote_literal, query_raw_name,
 };
 pub use source::{
-    CsvHeaderConfigurable, CsvProfileConfigurable, CsvQuerySpec, CsvValidationProgress, DataSource,
-    FormatHandler, QueryExactValues, QueryInputProvider, QueryPreparationMetrics,
-    QueryPrepareContext, QuerySourceSpec, TabularSource,
+    CsvHeaderConfigurable, CsvPreparedPhysicalColumn, CsvProfileConfigurable, CsvQuerySpec,
+    CsvValidationProgress, DataSource, FormatHandler, QueryExactValues, QueryInputProvider,
+    QueryPreparationMetrics, QueryPrepareContext, QuerySourceSpec, TabularSource,
 };
 pub(crate) use value_format::format_data_value_display;

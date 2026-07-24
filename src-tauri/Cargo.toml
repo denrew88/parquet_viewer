@@ -14,11 +14,18 @@ edition = "2021"
 name = "data_viewer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[example]]
+name = "phase15_polars_poc"
+required-features = ["phase15-polars-poc"]
+
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 
 [features]
+default = ["polars-csv-provider"]
 custom-protocol = ["tauri/custom-protocol"]
+phase15-polars-poc = ["dep:polars"]
+polars-csv-provider = ["dep:polars"]
 
 [dependencies]
 arrow-array = "58.3.0"
@@ -32,6 +39,7 @@ fs2 = "0.4"
 hdf5 = { version = "=0.13.0", package = "hdf5-metno", features = ["static", "blosc-zstd"] }
 ndarray = "0.17"
 parquet = "58.3.0"
+polars = { version = "=0.54.4", default-features = false, features = ["csv", "lazy", "streaming", "parquet"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2.11.5", features = [] }

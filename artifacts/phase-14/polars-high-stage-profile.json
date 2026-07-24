@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "fixture": {
+    "path": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\.tmp\\phase13-fixtures\\large\\csv-5850000-high.csv",
+    "bytes": 979427914,
+    "rows": 5850000,
+    "columns": 15,
+    "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "polars": "1.39.3",
+    "numpy": "1.26.4",
+    "polarsThreadPoolSize": 8,
+    "logicalCpuCount": 8,
+    "physicalCpuCount": 4
+  },
+  "equivalentPipeline": {
+    "elapsedMs": 8110.464100027457,
+    "rawFrameEstimatedBytes": 891677778,
+    "artifactBytes": {
+      "prepared.parquet": 566694661,
+      "states.bin": 21937584,
+      "offsets.idx": 22880
+    },
+    "persistentBytes": 588655125,
+    "semantics": "46 columns: source row id plus normalized/raw/invalid per original column; NumPy 2-bit states; checkpoint scan; zstd1; fsync; persistent copy; full checksum; manifest"
+  },
+  "typedStreaming": {
+    "elapsedMs": 2175.0799999572337,
+    "parquetBytes": 312664768,
+    "semantics": "15 physical typed columns, streaming CSV-to-Parquet zstd1; no raw shadow, state bitmap, checkpoint, persistent copy or manifest"
+  },
+  "stages": [
+    {
+      "name": "polarsReadAllRawStrings",
+      "elapsedMs": 671.3658000808209,
+      "cpuSeconds": 4.484375,
+      "averageCoreUtilization": 6.6794808425751775
+    },
+    {
+      "name": "numpyBuildStateBitmap",
+      "elapsedMs": 905.558199970983,
+      "cpuSeconds": 1.03125,
+      "averageCoreUtilization": 1.138800355441588
+    },
+    {
+      "name": "writeAndSyncStateBitmap",
+      "elapsedMs": 15.535600017756224,
+      "cpuSeconds": 0.015625,
+      "averageCoreUtilization": 1.0057545239412444
+    },
+    {
+      "name": "numpyScanCheckpointIndex",
+      "elapsedMs": 1140.8136000391096,
+      "cpuSeconds": 1.125,
+      "averageCoreUtilization": 0.9861383138853118
+    },
+    {
+      "name": "writeAndSyncCheckpointIndex",
+      "elapsedMs": 0.8162999292835593,
+      "cpuSeconds": 0.0,
+      "averageCoreUtilization": 0.0
+    },
+    {
+      "name": "polarsExpandedParquetZstd1",
+      "elapsedMs": 4181.698199943639,
+      "cpuSeconds": 27.546875,
+      "averageCoreUtilization": 6.587485199283696
+    },
+    {
+      "name": "fsyncExpandedParquet",
+      "elapsedMs": 109.7404999891296,
+      "cpuSeconds": 0.0,
+      "averageCoreUtilization": 0.0
+    },
+    {
+      "name": "persistentCacheCopyAndSync",
+      "elapsedMs": 457.8458000905812,
+      "cpuSeconds": 0.296875,
+      "averageCoreUtilization": 0.6484169996563595
+    },
+    {
+      "name": "persistentCacheSha256",
+      "elapsedMs": 624.9072999926284,
+      "cpuSeconds": 0.625,
+      "averageCoreUtilization": 1.000148342013884
+    },
+    {
+      "name": "manifestWriteAndSync",
+      "elapsedMs": 2.182799973525107,
+      "cpuSeconds": 0.0,
+      "averageCoreUtilization": 0.0
+    },
+    {
+      "name": "polarsTypedStreamingCsvToParquet",
+      "elapsedMs": 2090.725400019437,
+      "cpuSeconds": 11.015625,
+      "averageCoreUtilization": 5.268805267252022
+    },
+    {
+      "name": "fsyncTypedParquet",
+      "elapsedMs": 84.35459993779659,
+      "cpuSeconds": 0.125,
+      "averageCoreUtilization": 1.481839758497764
+    },
+    {
+      "name": "auditOutputs",
+      "elapsedMs": 16.335300053469837,
+      "cpuSeconds": 0.03125,
+      "averageCoreUtilization": 1.9130349548346424
+    }
+  ],
+  "peakRssBytesByStage": {
+    "polarsReadAllRawStrings": 3129872384,
+    "numpyBuildStateBitmap": 3189817344,
+    "writeAndSyncStateBitmap": 2241019904,
+    "numpyScanCheckpointIndex": 3231055872,
+    "polarsExpandedParquetZstd1": 3200262144,
+    "fsyncExpandedParquet": 2478055424,
+    "persistentCacheCopyAndSync": 2479112192,
+    "persistentCacheSha256": 2494865408,
+    "polarsTypedStreamingCsvToParquet": 3413389312,
+    "fsyncTypedParquet": 3175301120
+  },
+  "audit": {
+    "result": "PASS",
+    "checks": {
+      "expandedRows": true,
+      "expandedColumns": true,
+      "typedRows": true,
+      "typedColumns": true,
+      "stateHeader": true,
+      "stateShape": true,
+      "stateBytes": true,
+      "offsetHeader": true,
+      "offsetCount": true,
+      "offsetLastRow": true,
+      "offsetLastByteInSource": true
+    },
+    "expandedSchema": {
+      "__dv_row_id": "UInt64",
+      "row_id": "String",
+      "__dv_raw_0": "String",
+      "__dv_invalid_0": "Boolean",
+      "group_id": "String",
+      "__dv_raw_1": "String",
+      "__dv_invalid_1": "Boolean",
+      "category": "String",
+      "__dv_raw_2": "String",
+      "__dv_invalid_2": "Boolean",
+      "active": "String",
+      "__dv_raw_3": "String",
+      "__dv_invalid_3": "Boolean",
+      "optional_value": "String",
+      "__dv_raw_4": "String",
+      "__dv_invalid_4": "Boolean",
+      "event_time": "String",
+      "__dv_raw_5": "String",
+      "__dv_invalid_5": "Boolean",
+      "amount": "String",
+      "__dv_raw_6": "String",
+      "__dv_invalid_6": "Boolean",
+      "label": "String",
+      "__dv_raw_7": "String",
+      "__dv_invalid_7": "Boolean",
+      "code": "String",
+      "__dv_raw_8": "String",
+      "__dv_invalid_8": "Boolean",
+      "metric_00": "String",
+      "__dv_raw_9": "String",
+      "__dv_invalid_9": "Boolean",
+      "metric_01": "String",
+      "__dv_raw_10": "String",
+      "__dv_invalid_10": "Boolean",
+      "metric_02": "String",
+      "__dv_raw_11": "String",
+      "__dv_invalid_11": "Boolean",
+      "metric_03": "String",
+      "__dv_raw_12": "String",
+      "__dv_invalid_12": "Boolean",
+      "metric_04": "String",
+      "__dv_raw_13": "String",
+      "__dv_invalid_13": "Boolean",
+      "metric_05": "String",
+      "__dv_raw_14": "String",
+      "__dv_invalid_14": "Boolean"
+    },
+    "typedSchema": {
+      "row_id": "Int64",
+      "group_id": "Int64",
+      "category": "String",
+      "active": "Boolean",
+      "optional_value": "Int32",
+      "event_time": "Int64",
+      "amount": "Float64",
+      "label": "String",
+      "code": "String",
+      "metric_00": "Int64",
+      "metric_01": "Int64",
+      "metric_02": "Int64",
+      "metric_03": "Int64",
+      "metric_04": "Int64",
+      "metric_05": "Int64"
+    },
+    "lastCheckpoint": {
+      "row": 5849088,
+      "byteOffset": 979274616
+    }
+  },
+  "totalProcessElapsedMs": 10318.019600003026,
+  "notes": [
+    "Input may be warm in the Windows file cache; CPU-heavy stage comparisons remain useful.",
+    "Checkpoint byte scan is fixture-specific because Polars does not expose CSV record byte positions.",
+    "SHA-256 substitutes for the viewer's CRC64-ECMA so both paths perform a complete persistent artifact checksum read."
+  ]
+}

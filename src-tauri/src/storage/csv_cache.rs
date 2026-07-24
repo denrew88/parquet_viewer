@@ -10,11 +10,11 @@ use fs2::FileExt;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::DataError;
+use crate::{data::CsvPreparedPhysicalColumn, domain::DataError};
 
 use super::{temp::QUERY_TEMP_SAFETY_RESERVE_BYTES, QueryTempManager};
 
-const CACHE_SCHEMA_VERSION: u32 = 2;
+const CACHE_SCHEMA_VERSION: u32 = 3;
 const MAX_CACHE_ENTRIES: usize = 16;
 const MANIFEST_NAME: &str = "cache-manifest.json";
 const PARTIAL_MARKER: &str = "publish.partial";
@@ -33,6 +33,8 @@ pub(crate) struct CsvCacheIdentity {
     pub profile_identity: String,
     pub rows: Option<u64>,
     pub columns: usize,
+    pub source_columns: usize,
+    pub physical_columns: Vec<CsvPreparedPhysicalColumn>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +50,11 @@ struct CsvCacheManifest {
     profile_identity: String,
     rows: u64,
     columns: usize,
+    source_columns: usize,
+    physical_layout: Vec<String>,
+    schema_contract: Vec<String>,
+    physical_mapping: Vec<CachedPhysicalMapping>,
+    schema_fingerprint: String,
     parquet: CachedArtifact,
     states: CachedArtifact,
     offsets: CachedArtifact,
@@ -64,6 +71,15 @@ struct CachedArtifact {
     checksum: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedPhysicalMapping {
+    field: String,
+    physical_kind: String,
+    source_index: Option<usize>,
+    state_word_index: Option<usize>,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CsvCacheAudit {
     pub hits: u64,
@@ -72,6 +88,8 @@ pub(crate) struct CsvCacheAudit {
     pub publishes: u64,
     pub evictions: u64,
     pub scrubs: u64,
+    pub relocated_bytes: u64,
+    pub copied_bytes: u64,
 }
 
 #[derive(Debug)]
@@ -86,6 +104,7 @@ pub(crate) struct CsvPersistentCache {
 #[derive(Debug)]
 pub(crate) struct CsvPersistentCacheLease {
     lock: File,
+    path: PathBuf,
 }
 
 struct CacheGlobalGuard<'a> {
@@ -199,6 +218,22 @@ impl CsvPersistentCache {
         }))
     }
 
+    pub(crate) fn has_publish_artifacts(&self, source_directory: &Path) -> Result<bool, DataError> {
+        let present = REQUIRED_FILES
+            .iter()
+            .filter(|name| source_directory.join(name).is_file())
+            .count();
+        if present == 0 {
+            return Ok(false);
+        }
+        if present != REQUIRED_FILES.len() {
+            return Err(DataError::query_failed(
+                "Prepared CSV cache artifacts are incomplete.",
+            ));
+        }
+        Ok(true)
+    }
+
     pub(crate) fn publish(
         &self,
         identity: &CsvCacheIdentity,
@@ -239,27 +274,34 @@ impl CsvPersistentCache {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let incoming = sizes.iter().copied().sum::<u64>().saturating_add(4096);
-        self.evict_to_budget_locked(incoming, Some(&key))?;
+        self.evict_relocated_to_budget_locked(incoming, sizes.iter().copied().sum(), Some(&key))?;
 
-        fs::create_dir(&destination).map_err(|error| DataError::io(&destination, error))?;
-        let partial_marker = destination.join(PARTIAL_MARKER);
+        let staging = self.root.join(format!(".{key}.partial-{}", nonce()));
+        fs::create_dir(&staging).map_err(|error| DataError::io(&staging, error))?;
+        let partial_marker = staging.join(PARTIAL_MARKER);
         fs::write(&partial_marker, nonce().to_le_bytes())
             .map_err(|error| DataError::io(&partial_marker, error))?;
+        let mut moved = Vec::new();
         let result = (|| {
             for name in REQUIRED_FILES {
                 let source = source_directory.join(name);
-                let target = destination.join(name);
-                fs::copy(&source, &target)
-                    .map(|_| ())
-                    .map_err(|error| DataError::io(&target, error))?;
-                set_read_only(&target)?;
+                let target = staging.join(name);
+                fs::rename(&source, &target).map_err(|error| DataError::io(&target, error))?;
+                moved.push(name);
             }
             let artifacts = REQUIRED_FILES
                 .iter()
-                .map(|name| CachedArtifact::capture(&destination.join(name), true))
+                .map(|name| CachedArtifact::capture(&staging.join(name), true))
                 .collect::<Result<Vec<_>, _>>()?;
-            let manifest = CsvCacheManifest::from_identity(identity, &artifacts);
-            let manifest_path = destination.join(MANIFEST_NAME);
+            let (physical_layout, schema_contract) =
+                parquet_schema_layout(&staging.join("prepared.parquet"))?;
+            let manifest = CsvCacheManifest::from_identity(
+                identity,
+                &artifacts,
+                physical_layout,
+                schema_contract,
+            );
+            let manifest_path = staging.join(MANIFEST_NAME);
             let bytes = serde_json::to_vec(&manifest)
                 .map_err(|error| DataError::query_failed(error.to_string()))?;
             let mut file = File::create(&manifest_path)
@@ -267,34 +309,44 @@ impl CsvPersistentCache {
             file.write_all(&bytes)
                 .and_then(|()| file.sync_all())
                 .map_err(|error| DataError::io(&manifest_path, error))?;
-            self.touch(&destination)?;
-            validate_entry_fast(&destination, identity)?;
+            drop(file);
             commit_check()?;
+            for name in REQUIRED_FILES {
+                set_read_only(&staging.join(name))?;
+            }
             fs::remove_file(&partial_marker)
                 .map_err(|error| DataError::io(&partial_marker, error))?;
+            fs::rename(&staging, &destination)
+                .map_err(|error| DataError::io(&destination, error))?;
+            self.touch(&destination)?;
+            validate_entry_fast(&destination, identity)?;
             Ok::<(), DataError>(())
         })();
         if let Err(error) = result {
-            let _ = fs::remove_dir_all(&destination);
+            if staging.is_dir() {
+                for name in moved.into_iter().rev() {
+                    let staged = staging.join(name);
+                    let source = source_directory.join(name);
+                    if staged.exists() {
+                        let _ = set_writable(&staged);
+                        let _ = fs::rename(&staged, &source);
+                    }
+                }
+                let _ = fs::remove_dir_all(&staging);
+            } else if destination.is_dir() {
+                let _ = self.remove_if_unleased_locked(&key, &destination);
+            }
             self.refresh_usage_locked()?;
             return Err(error);
         }
         self.refresh_usage_locked()?;
         if let Ok(mut audit) = self.audit.lock() {
             audit.publishes = audit.publishes.saturating_add(1);
+            audit.relocated_bytes = audit
+                .relocated_bytes
+                .saturating_add(sizes.iter().copied().sum());
         }
         self.lease(key)
-    }
-
-    pub(crate) fn materialize_parquet_link(
-        &self,
-        hit: &CsvCacheHit,
-        destination: &Path,
-    ) -> Result<(), DataError> {
-        let source = hit.path.join("prepared.parquet");
-        fs::hard_link(&source, destination)
-            .or_else(|_| fs::copy(&source, destination).map(|_| ()))
-            .map_err(|error| DataError::io(destination, error))
     }
 
     #[cfg(test)]
@@ -310,6 +362,7 @@ impl CsvPersistentCache {
     }
 
     fn lease(&self, key: String) -> Result<CsvPersistentCacheLease, DataError> {
+        let entry_path = self.root.join(&key);
         let path = self.lock_directory.join(format!("{key}.lock"));
         let lock = OpenOptions::new()
             .read(true)
@@ -319,7 +372,10 @@ impl CsvPersistentCache {
             .open(&path)
             .map_err(|error| DataError::io(&path, error))?;
         FileExt::lock_shared(&lock).map_err(|error| DataError::io(&path, error))?;
-        Ok(CsvPersistentCacheLease { lock })
+        Ok(CsvPersistentCacheLease {
+            lock,
+            path: entry_path,
+        })
     }
 
     fn try_exclusive_entry_lock(&self, key: &str) -> Result<Option<File>, DataError> {
@@ -381,6 +437,15 @@ impl CsvPersistentCache {
         incoming: u64,
         replacing: Option<&str>,
     ) -> Result<(), DataError> {
+        self.evict_relocated_to_budget_locked(incoming, 0, replacing)
+    }
+
+    fn evict_relocated_to_budget_locked(
+        &self,
+        incoming: u64,
+        relocating: u64,
+        replacing: Option<&str>,
+    ) -> Result<(), DataError> {
         loop {
             let entries = self.entries()?;
             let current = entries.iter().map(|entry| entry.2).sum::<u64>();
@@ -391,14 +456,16 @@ impl CsvPersistentCache {
             let free = fs2::available_space(&self.root)
                 .map_err(|error| DataError::io(&self.root, error))?;
             let projected = process
+                .saturating_sub(relocating)
                 .saturating_add(current.saturating_sub(replacing_bytes))
                 .saturating_add(incoming);
+            let additional_disk_bytes = incoming.saturating_sub(relocating);
             let replaces_existing =
                 replacing.is_some_and(|key| entries.iter().any(|entry| entry.0 == key));
             let count_ok = entries.len() + usize::from(!replaces_existing && incoming > 0)
                 <= MAX_CACHE_ENTRIES;
             if projected <= self.temp.configured_limit()
-                && free.saturating_sub(incoming) > QUERY_TEMP_SAFETY_RESERVE_BYTES
+                && free.saturating_sub(additional_disk_bytes) > QUERY_TEMP_SAFETY_RESERVE_BYTES
                 && count_ok
             {
                 self.temp.set_external_cache_bytes(current);
@@ -493,7 +560,15 @@ impl CsvPersistentCache {
 }
 
 impl CsvCacheManifest {
-    fn from_identity(identity: &CsvCacheIdentity, artifacts: &[CachedArtifact]) -> Self {
+    fn from_identity(
+        identity: &CsvCacheIdentity,
+        artifacts: &[CachedArtifact],
+        physical_layout: Vec<String>,
+        schema_contract: Vec<String>,
+    ) -> Self {
+        let physical_mapping = physical_mapping(&physical_layout, &identity.physical_columns);
+        let schema_fingerprint =
+            layout_fingerprint(&physical_layout, &schema_contract, &physical_mapping);
         Self {
             cache_schema_version: CACHE_SCHEMA_VERSION,
             application_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -505,6 +580,11 @@ impl CsvCacheManifest {
             profile_identity: identity.profile_identity.clone(),
             rows: identity.rows.unwrap_or(0),
             columns: identity.columns,
+            source_columns: identity.source_columns,
+            physical_layout,
+            schema_contract,
+            physical_mapping,
+            schema_fingerprint,
             parquet: artifacts[0].clone(),
             states: artifacts[1].clone(),
             offsets: artifacts[2].clone(),
@@ -523,6 +603,7 @@ impl CsvCacheManifest {
             && self.profile_identity == identity.profile_identity
             && identity.rows.is_none_or(|rows| self.rows == rows)
             && self.columns == identity.columns
+            && self.source_columns == identity.source_columns
     }
 }
 
@@ -561,6 +642,12 @@ impl CachedArtifact {
 impl Drop for CsvPersistentCacheLease {
     fn drop(&mut self) {
         let _ = FileExt::unlock(&self.lock);
+    }
+}
+
+impl CsvPersistentCacheLease {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -622,13 +709,21 @@ fn validate_entry_fast(
             "Cached Parquet row count does not match its manifest.",
         ));
     }
-    let expected_parquet_columns = manifest.columns.saturating_mul(3).saturating_add(1);
-    if reader
-        .metadata()
-        .file_metadata()
-        .schema_descr()
-        .num_columns()
-        != expected_parquet_columns
+    let actual_layout = parquet_layout_from_reader(&reader);
+    let actual_contract = parquet_schema_contract_from_reader(&reader);
+    let actual_mapping = physical_mapping(&actual_layout, &identity.physical_columns);
+    if actual_layout != manifest.physical_layout
+        || actual_contract != manifest.schema_contract
+        || actual_mapping != manifest.physical_mapping
+        || !physical_contract_matches(&actual_mapping, identity)
+        || layout_fingerprint(&actual_layout, &actual_contract, &actual_mapping)
+            != manifest.schema_fingerprint
+        || actual_layout
+            .first()
+            .is_none_or(|column| !column.starts_with("__dv_row_id:"))
+        || !actual_layout
+            .iter()
+            .any(|column| column.starts_with("__dv_state_word_0:"))
     {
         return Err(DataError::query_failed(
             "Cached Parquet schema does not match its manifest.",
@@ -654,6 +749,159 @@ fn validate_entry_fast(
     } else {
         Ok(EntryValidation::Fast(manifest))
     }
+}
+
+fn parquet_schema_layout(path: &Path) -> Result<(Vec<String>, Vec<String>), DataError> {
+    let reader =
+        SerializedFileReader::new(File::open(path).map_err(|error| DataError::io(path, error))?)
+            .map_err(|error| {
+                DataError::query_failed(format!("Invalid cached Parquet footer: {error}"))
+            })?;
+    Ok((
+        parquet_layout_from_reader(&reader),
+        parquet_schema_contract_from_reader(&reader),
+    ))
+}
+
+fn parquet_layout_from_reader(reader: &SerializedFileReader<File>) -> Vec<String> {
+    reader
+        .metadata()
+        .file_metadata()
+        .schema_descr()
+        .columns()
+        .iter()
+        .map(|column| format!("{}:{:?}", column.name(), column.physical_type()))
+        .collect()
+}
+
+fn parquet_schema_contract_from_reader(reader: &SerializedFileReader<File>) -> Vec<String> {
+    reader
+        .metadata()
+        .file_metadata()
+        .schema_descr()
+        .columns()
+        .iter()
+        .map(|column| {
+            format!(
+                "{}|physical={:?}|logical={:?}|converted={:?}|maxDef={}|maxRep={}",
+                column.name(),
+                column.physical_type(),
+                column.logical_type_ref(),
+                column.converted_type(),
+                column.max_def_level(),
+                column.max_rep_level()
+            )
+        })
+        .collect()
+}
+
+fn physical_mapping(
+    layout: &[String],
+    expected_values: &[CsvPreparedPhysicalColumn],
+) -> Vec<CachedPhysicalMapping> {
+    layout
+        .iter()
+        .map(|entry| {
+            let (field, _parquet_type) = entry
+                .rsplit_once(':')
+                .unwrap_or((entry.as_str(), "UNKNOWN"));
+            let field = field.to_owned();
+            let (physical_kind, source_index, state_word_index) = if field == "__dv_row_id" {
+                ("rowId", None, None)
+            } else if let Some(index) = field
+                .strip_prefix("__dv_base_raw_")
+                .and_then(|value| value.parse::<usize>().ok())
+            {
+                ("baseRaw", Some(index), None)
+            } else if let Some(index) = field
+                .strip_prefix("__dv_state_word_")
+                .and_then(|value| value.parse::<usize>().ok())
+            {
+                ("stateWord", None, Some(index))
+            } else {
+                let expected = expected_values.iter().find(|value| value.field == field);
+                (
+                    expected.map_or("unexpectedValue", |value| value.physical_kind.as_str()),
+                    expected.map(|value| value.source_index),
+                    None,
+                )
+            };
+            CachedPhysicalMapping {
+                field,
+                physical_kind: physical_kind.to_owned(),
+                source_index,
+                state_word_index,
+            }
+        })
+        .collect()
+}
+
+fn physical_contract_matches(
+    mapping: &[CachedPhysicalMapping],
+    identity: &CsvCacheIdentity,
+) -> bool {
+    let exactly_one = |predicate: &dyn Fn(&CachedPhysicalMapping) -> bool| {
+        mapping.iter().filter(|entry| predicate(entry)).count() == 1
+    };
+    if mapping.len()
+        != 1 + identity.source_columns
+            + identity.source_columns.div_ceil(32)
+            + identity.physical_columns.len()
+        || !exactly_one(&|entry| entry.physical_kind == "rowId")
+    {
+        return false;
+    }
+    for source_index in 0..identity.source_columns {
+        if !exactly_one(&|entry| {
+            entry.physical_kind == "baseRaw" && entry.source_index == Some(source_index)
+        }) {
+            return false;
+        }
+    }
+    for word_index in 0..identity.source_columns.div_ceil(32) {
+        if !exactly_one(&|entry| {
+            entry.physical_kind == "stateWord" && entry.state_word_index == Some(word_index)
+        }) {
+            return false;
+        }
+    }
+    identity.physical_columns.iter().all(|expected| {
+        exactly_one(&|entry| {
+            entry.field == expected.field
+                && entry.physical_kind == expected.physical_kind
+                && entry.source_index == Some(expected.source_index)
+        })
+    })
+}
+
+fn layout_fingerprint(
+    layout: &[String],
+    schema_contract: &[String],
+    physical_mapping: &[CachedPhysicalMapping],
+) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let values = layout
+        .iter()
+        .chain(schema_contract)
+        .map(String::as_str)
+        .chain(
+            physical_mapping
+                .iter()
+                .flat_map(|mapping| [mapping.field.as_str(), mapping.physical_kind.as_str()]),
+        );
+    for byte in values.flat_map(|value| value.bytes().chain([0])) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    for mapping in physical_mapping {
+        for index in [mapping.source_index, mapping.state_word_index] {
+            for byte in index.map_or(u64::MAX, |value| value as u64).to_le_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+    }
+    format!("fnv1a64:{hash:016x}")
 }
 
 fn scrub_entry(
@@ -766,7 +1014,7 @@ fn validate_offsets(path: &Path, rows: u64) -> Result<(), DataError> {
 fn cache_key(identity: &CsvCacheIdentity) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in format!(
-        "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}",
+        "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}|{}",
         identity.canonical_path,
         identity.file_identity,
         identity.source_bytes,
@@ -774,6 +1022,7 @@ fn cache_key(identity: &CsvCacheIdentity) -> String {
         identity.created_nanos,
         identity.profile_identity,
         identity.columns,
+        identity.source_columns,
         CACHE_SCHEMA_VERSION,
         env!("CARGO_PKG_VERSION")
     )
@@ -867,6 +1116,26 @@ fn set_read_only(path: &Path) -> Result<(), DataError> {
         .map_err(|error| DataError::io(path, error))?
         .permissions();
     permissions.set_readonly(true);
+    fs::set_permissions(path, permissions).map_err(|error| DataError::io(path, error))
+}
+
+fn set_writable(path: &Path) -> Result<(), DataError> {
+    let mut permissions = fs::metadata(path)
+        .map_err(|error| DataError::io(path, error))?
+        .permissions();
+    #[cfg(windows)]
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(permissions.mode() | 0o200);
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+    }
     fs::set_permissions(path, permissions).map_err(|error| DataError::io(path, error))
 }
 
@@ -992,6 +1261,11 @@ fn nonce() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use arrow_array::{RecordBatch, StringArray, UInt64Array};
+    use arrow_schema::{DataType, Field, Schema};
+    use parquet::{arrow::ArrowWriter, file::properties::WriterProperties};
 
     const CHILD_MODE: &str = "DV_CSV_CACHE_LOCK_CHILD_MODE";
     const CHILD_ROOT: &str = "DV_CSV_CACHE_LOCK_CHILD_ROOT";
@@ -1028,6 +1302,18 @@ mod tests {
                 fs::write(&ready, b"ready").unwrap();
                 wait_for_path(&release);
             }
+            "publish-cache" => {
+                let source = root.join(format!("child-publish-source-{}", std::process::id()));
+                write_publish_artifacts(&source);
+                let lease = cache
+                    .publish(&publish_identity(), &source, || {
+                        fs::write(&ready, b"ready").unwrap();
+                        wait_for_path(&release);
+                        Ok(())
+                    })
+                    .unwrap();
+                assert!(lease.path().join(MANIFEST_NAME).is_file());
+            }
             "lease" => {
                 let _lease = cache.lease(String::from("entry-00")).unwrap();
                 fs::write(&ready, b"ready").unwrap();
@@ -1059,6 +1345,66 @@ mod tests {
             .unwrap()
     }
 
+    fn publish_identity() -> CsvCacheIdentity {
+        CsvCacheIdentity {
+            canonical_path: String::from("C:/fixtures/direct-publish.csv"),
+            file_identity: String::from("fixture-identity"),
+            source_bytes: 42,
+            modified_nanos: Some(100),
+            created_nanos: Some(50),
+            profile_identity: String::from("profile-v1"),
+            rows: Some(1),
+            columns: 1,
+            source_columns: 1,
+            physical_columns: Vec::new(),
+        }
+    }
+
+    fn write_publish_artifacts(path: &Path) -> u64 {
+        fs::create_dir_all(path).unwrap();
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__dv_row_id", DataType::UInt64, false),
+            Field::new("__dv_base_raw_0", DataType::Utf8, false),
+            Field::new("__dv_state_word_0", DataType::UInt64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(UInt64Array::from(vec![0])) as Arc<dyn arrow_array::Array>,
+                Arc::new(StringArray::from(vec![Some("value")])),
+                Arc::new(UInt64Array::from(vec![0])),
+            ],
+        )
+        .unwrap();
+        let parquet_path = path.join("prepared.parquet");
+        let mut writer = ArrowWriter::try_new(
+            File::create(&parquet_path).unwrap(),
+            schema,
+            Some(WriterProperties::builder().build()),
+        )
+        .unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+        let states_path = path.join("states.bin");
+        let mut states = File::create(&states_path).unwrap();
+        states.write_all(b"DVST\x01\0\0\0").unwrap();
+        states.write_all(&1_u64.to_le_bytes()).unwrap();
+        states.write_all(&1_u64.to_le_bytes()).unwrap();
+        states.write_all(&0_u64.to_le_bytes()).unwrap();
+        states.sync_all().unwrap();
+        let offsets_path = path.join("offsets.idx");
+        let mut offsets = File::create(&offsets_path).unwrap();
+        offsets.write_all(b"DVOF\x01\0\0\0").unwrap();
+        offsets.write_all(&1_u64.to_le_bytes()).unwrap();
+        offsets.write_all(&0_u64.to_le_bytes()).unwrap();
+        offsets.write_all(&1_u64.to_le_bytes()).unwrap();
+        offsets.sync_all().unwrap();
+        REQUIRED_FILES
+            .iter()
+            .map(|name| fs::metadata(path.join(name)).unwrap().len())
+            .sum()
+    }
+
     #[test]
     fn crc64_ecma_checksum_matches_the_standard_check_vector() {
         let directory = tempfile::tempdir().unwrap();
@@ -1068,6 +1414,107 @@ mod tests {
             content_checksum(&path).unwrap(),
             "crc64-ecma:6c40df5f0b497347"
         );
+    }
+
+    #[test]
+    fn same_volume_publish_relocates_without_copy_and_rolls_back_before_commit() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let source = local_data.path().join("query-artifacts");
+        let expected_bytes = write_publish_artifacts(&source);
+        let identity = publish_identity();
+        let stable = cache.root.join(cache_key(&identity));
+
+        let failure = cache
+            .publish(&identity, &source, || {
+                Err(DataError::query_failed("injected commit failure"))
+            })
+            .unwrap_err();
+        assert!(failure.message.contains("injected commit failure"));
+        assert!(REQUIRED_FILES
+            .iter()
+            .all(|name| source.join(name).is_file()));
+        assert!(cache.entry_paths().is_empty());
+        assert!(fs::read_dir(&cache.root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".partial")));
+
+        let mut observed_precommit = false;
+        let lease = cache
+            .publish(&identity, &source, || {
+                assert!(!stable.exists(), "stable key must be absent before commit");
+                let partials = fs::read_dir(&cache.root)
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .filter(|path| {
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .is_some_and(|name| name.contains(".partial"))
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(partials.len(), 1);
+                assert!(partials[0].join(PARTIAL_MARKER).is_file());
+                assert!(partials[0].join(MANIFEST_NAME).is_file());
+                assert!(REQUIRED_FILES
+                    .iter()
+                    .all(|name| partials[0].join(name).is_file()));
+                observed_precommit = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(observed_precommit);
+        assert_eq!(lease.path(), stable);
+        assert!(
+            stable.is_dir(),
+            "stable key appears only at directory rename"
+        );
+        assert!(fs::read_dir(&cache.root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".partial")));
+        assert!(REQUIRED_FILES
+            .iter()
+            .all(|name| lease.path().join(name).is_file()));
+        assert!(REQUIRED_FILES
+            .iter()
+            .all(|name| !source.join(name).exists()));
+        let audit = cache.audit();
+        assert_eq!(audit.publishes, 1);
+        assert_eq!(audit.relocated_bytes, expected_bytes);
+        assert_eq!(audit.copied_bytes, 0);
+        let hit = cache
+            .lookup(&identity)
+            .unwrap()
+            .expect("published cache hit");
+        assert_eq!(hit.path, lease.path());
+
+        let replacement_source = local_data.path().join("replacement-query-artifacts");
+        write_publish_artifacts(&replacement_source);
+        let mut replacement_identity = identity.clone();
+        replacement_identity.profile_identity = String::from("profile-v2");
+        let replacement_stable = cache.root.join(cache_key(&replacement_identity));
+        let rename_failure = cache
+            .publish(&replacement_identity, &replacement_source, || {
+                fs::create_dir(&replacement_stable).unwrap();
+                fs::write(replacement_stable.join("rename-blocker"), b"occupied").unwrap();
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(rename_failure.code, crate::domain::DataErrorCode::Io);
+        assert!(REQUIRED_FILES
+            .iter()
+            .all(|name| replacement_source.join(name).is_file()));
+        assert!(fs::read_dir(&cache.root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".partial")));
+        assert!(validate_entry(&stable, &identity).is_ok());
+        assert_eq!(hit.path, stable);
+        fs::remove_file(replacement_stable.join("rename-blocker")).unwrap();
+        fs::remove_dir(&replacement_stable).unwrap();
     }
 
     #[test]
@@ -1188,5 +1635,81 @@ mod tests {
         assert!(cache.root.join("entry-00").exists());
         fs::write(&lease_release, b"release").unwrap();
         assert!(lease_child.wait().unwrap().success());
+    }
+
+    #[test]
+    fn concurrent_process_publishers_commit_once_and_active_valid_lease_blocks_eviction() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = Arc::new(CsvPersistentCache::open(local_data.path(), temp).unwrap());
+        let child_ready = local_data.path().join("publish-cache.ready");
+        let child_release = local_data.path().join("publish-cache.release");
+        let mut child = spawn_lock_child(
+            "publish-cache",
+            local_data.path(),
+            &child_ready,
+            &child_release,
+        );
+        wait_for_path(&child_ready);
+
+        let parent_source = local_data.path().join("parent-publish-source");
+        write_publish_artifacts(&parent_source);
+        let parent_cache = Arc::clone(&cache);
+        let parent_identity = publish_identity();
+        let parent_commit_calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let worker_commit_calls = Arc::clone(&parent_commit_calls);
+        let (attempted_sender, attempted_receiver) = std::sync::mpsc::channel();
+        let (done_sender, done_receiver) = std::sync::mpsc::channel();
+        let publisher = std::thread::spawn(move || {
+            attempted_sender.send(()).unwrap();
+            let result = parent_cache.publish(&parent_identity, &parent_source, || {
+                worker_commit_calls.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                Ok(())
+            });
+            done_sender.send(result).unwrap();
+        });
+        attempted_receiver
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+        assert!(done_receiver
+            .recv_timeout(std::time::Duration::from_millis(100))
+            .is_err());
+        assert!(!cache.root.join(cache_key(&publish_identity())).exists());
+
+        fs::write(&child_release, b"release").unwrap();
+        assert!(child.wait().unwrap().success());
+        let parent_lease = done_receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        publisher.join().unwrap();
+        assert_eq!(
+            parent_commit_calls.load(std::sync::atomic::Ordering::Acquire),
+            0
+        );
+        assert_eq!(cache.audit().publishes, 0);
+        assert!(REQUIRED_FILES.iter().all(|name| local_data
+            .path()
+            .join("parent-publish-source")
+            .join(name)
+            .is_file()));
+        let stable = parent_lease.path().to_path_buf();
+        assert!(validate_entry(&stable, &publish_identity()).is_ok());
+
+        {
+            let _global = cache.lock_global().unwrap();
+            for index in 0..MAX_CACHE_ENTRIES {
+                let path = cache.root.join(format!("newer-entry-{index:02}"));
+                fs::create_dir(&path).unwrap();
+                fs::write(path.join("payload"), [index as u8]).unwrap();
+                cache.touch(&path).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+        cache
+            .evict_to_budget(1, Some("new-entry"))
+            .expect("the active valid generation must be skipped during eviction");
+        assert!(stable.is_dir());
+        assert!(validate_entry(&stable, &publish_identity()).is_ok());
     }
 }

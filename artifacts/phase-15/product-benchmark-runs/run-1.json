@@ -1,0 +1,228 @@
+{
+  "artifacts": [
+    {
+      "bytes": 0,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\.cache.lock"
+    },
+    {
+      "bytes": 0,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\.locks\\6c5eb7c25bd0f4f1.lock"
+    },
+    {
+      "bytes": 13839,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\6c5eb7c25bd0f4f1\\cache-manifest.json"
+    },
+    {
+      "bytes": 16,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\6c5eb7c25bd0f4f1\\last-access"
+    },
+    {
+      "bytes": 22880,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\6c5eb7c25bd0f4f1\\offsets.idx"
+    },
+    {
+      "bytes": 384321080,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\6c5eb7c25bd0f4f1\\prepared.parquet"
+    },
+    {
+      "bytes": 21937584,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\csv-cache-v1\\6c5eb7c25bd0f4f1\\states.bin"
+    },
+    {
+      "bytes": 0,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\query-temp\\.janitor.lock"
+    },
+    {
+      "bytes": 7219,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\query-temp\\5892-18c53a4263aa5a10-1\\b62ac82655103da1\\e6764a009587732d\\manifest.json"
+    },
+    {
+      "bytes": 274432,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\query-temp\\5892-18c53a4263aa5a10-1\\b62ac82655103da1\\e6764a009587732d\\prepared.duckdb"
+    },
+    {
+      "bytes": 9,
+      "path": "C:\\Users\\denrew88\\AppData\\Local\\Temp\\.tmpuUsYn3\\query-temp\\5892-18c53a4263aa5a10-1\\owner.lock"
+    }
+  ],
+  "baselinesAfterWarmup": {
+    "parsedPhysicalRows": 5850001,
+    "pureCsvParseMs": 1466.5920999999998,
+    "pureCsvRowsPerSecond": 3988839.8416983155,
+    "rawBytes": 979427914,
+    "rawMiBPerSecond": 4211.525308702099,
+    "rawSequentialReadMs": 221.78549999999998
+  },
+  "build": "cargo test --release phase14_profile_5850000_high_csv_stages -- --ignored --nocapture --test-threads=1",
+  "fixture": {
+    "bytes": 979427914,
+    "columns": 15,
+    "id": "csv-5850000-high",
+    "path": "C:/Users/denrew88/Documents/Study/Codex/parquet_viewer/.tmp/phase13-fixtures/large/csv-5850000-high.csv",
+    "rows": 5850000,
+    "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd"
+  },
+  "instrumentation": {
+    "estimatedWallOverheadMsForEightTimerCallsPerRow": 1074.11148,
+    "instantNowNanosecondsPerCall": 22.9511,
+    "note": "Per-row instrumentation affects wall time; use stage shares and the reported overhead estimate."
+  },
+  "metrics": {
+    "adaptiveGrowths": 0,
+    "adaptiveShrinks": 0,
+    "cacheOutputBytesBeforePersistentCopy": 406281544,
+    "csvClassifierReason": null,
+    "csvPreparationProvider": "polars",
+    "maxBatchRows": 0,
+    "peakDecodedBatchBytes": 0,
+    "recordBatches": 0,
+    "sourceReadBytes": 1958855828,
+    "stateBitmapBytes": 21937560
+  },
+  "postProviderAndPublishMs": 12074.8528,
+  "progressMilestones": [
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 362.5009,
+      "rows": 507904,
+      "sourceReadBytes": 84511802
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 704.2302000000001,
+      "rows": 1007616,
+      "sourceReadBytes": 167779065
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 1045.1442,
+      "rows": 1503232,
+      "sourceReadBytes": 250850422
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 1386.1650000000002,
+      "rows": 2007040,
+      "sourceReadBytes": 335295846
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 1738.415,
+      "rows": 2506752,
+      "sourceReadBytes": 419054349
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 2089.4807,
+      "rows": 3018752,
+      "sourceReadBytes": 504872688
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 2450.2859,
+      "rows": 3514368,
+      "sourceReadBytes": 587943585
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 2800.3817,
+      "rows": 4009984,
+      "sourceReadBytes": 671016309
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 3142.4411999999998,
+      "rows": 4505600,
+      "sourceReadBytes": 754087690
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 3494.9521,
+      "rows": 5009408,
+      "sourceReadBytes": 838533288
+    },
+    {
+      "cacheOutputBytes": 0,
+      "elapsedMs": 3856.8194,
+      "rows": 5505024,
+      "sourceReadBytes": 921604707
+    }
+  ],
+  "providerResidualMs": 0.0,
+  "providerTotalMs": 0.0,
+  "readyTotalMs": 12074.8528,
+  "schemaVersion": 1,
+  "setupMs": {
+    "configureHeader": 79.2259,
+    "dataSourceOpen": 85.7187,
+    "querySpec": 0.4806
+  },
+  "stageTimings": [
+    {
+      "elapsedMs": 0.0,
+      "name": "csvRead",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "valueConversion",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "stateBitmap",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "arrowBuilderAppend",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "recordBatchFinish",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "parquetBatchWrite",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "parquetClose",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "parquetSync",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "stateFile",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "offsetFile",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    },
+    {
+      "elapsedMs": 0.0,
+      "name": "duckdbView",
+      "providerPercent": null,
+      "readyPercent": 0.0
+    }
+  ]
+}

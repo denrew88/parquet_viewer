@@ -1,6 +1,6 @@
 {
   "cancel": {
-    "elapsedMs": 307.8845,
+    "elapsedMs": 102.69340000000001,
     "fixtureId": "csv-5850000-high",
     "fixtureSha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
     "terminal": "cancelled"
@@ -8,11 +8,11 @@
   "copyOneColumn64000Rows": {
     "implementation": "parameterized contiguous __dv_row_id range",
     "latencyMs": [
-      72.7811,
-      80.5053,
-      67.7437,
-      83.37459999999999,
-      104.7566
+      91.63010000000001,
+      87.6574,
+      84.251,
+      84.6514,
+      90.3738
     ],
     "offsets": [
       0,
@@ -21,35 +21,17 @@
       3200000,
       5786000
     ],
-    "p95Ms": 104.7566,
-    "rowsPerSecondAtP95": 610940.0266904423
-  },
-  "directCsvPageBaseline": {
-    "fixtureId": "csv-5850000-low",
-    "fixtureSha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
-    "latencyMs": [
-      1.0544,
-      330.46950000000004,
-      1783.4368
-    ],
-    "note": "Direct source pages use the same DataSource product path without a prepared artifact.",
-    "offsets": [
-      0,
-      986803,
-      5849800
-    ],
-    "p95Ms": 1783.4368,
-    "preparedP95Ms": 7.6482,
-    "preparedSpeedupAtRecordedP95": 233.18386025470045
+    "p95Ms": 91.63010000000001,
+    "rowsPerSecondAtP95": 698460.4404011344
   },
   "filteredSortedQuery": {
-    "boundaryElapsedMs": 23.6494,
+    "boundaryElapsedMs": 5.581799999999999,
     "boundaryExpectedTarget": 60,
-    "elapsedMs": 658.4339,
+    "elapsedMs": 840.0942,
     "pageLatencyMs": [
-      25.0336,
-      18.1087,
-      21.8106
+      72.4614,
+      51.9166,
+      43.2004
     ],
     "resultRows": 2925000
   },
@@ -57,11 +39,11 @@
   "fixtureSha256": "64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0",
   "page": {
     "latencyMs": [
-      7.6482,
-      3.7304,
-      5.4346000000000005,
-      4.744,
-      4.7032
+      29.6525,
+      29.7789,
+      30.9774,
+      29.411199999999997,
+      33.5163
     ],
     "offsets": [
       0,
@@ -70,30 +52,35 @@
       2925000,
       5849800
     ],
-    "p95Ms": 7.6482
+    "p95Ms": 33.5163
   },
   "prepare": {
-    "elapsedMs": 151500.2361,
+    "elapsedMs": 11600.0163,
     "rows": 5850000,
-    "rowsPerSecond": 38613.80120977911
+    "rowsPerSecond": 504309.63618559745
   },
   "profile": "release ignored prepared CSV product-path integration/performance",
   "resource": {
+    "cancelInactiveBytesDeleted": 0,
     "finalActiveQueries": 0,
-    "finalProcessTempBytes": 10,
-    "handlesAfter": 134,
-    "handlesBefore": 132,
+    "finalProcessTempBytes": 174342352,
+    "handlesAfter": 157,
+    "handlesBefore": 155,
     "inactiveBytesDeleted": 0,
+    "persistentCacheBytesAfterReady": 174342342,
+    "postCancelGrowthBytes": 0,
+    "processBytesAfterReadyCleanup": 174342352,
     "processTempBaselineBytes": 10,
-    "rssAfterBytes": 28360704,
-    "rssBeforeBytes": 8720384,
+    "rssAfterBytes": 27918336,
+    "rssBeforeBytes": 10235904,
     "rssCapBytes": 1572864000,
-    "sampledPeakRssBytes": 676880384,
-    "tempHighWaterBytes": 459288586
+    "sampledPeakRssBytes": 52834304,
+    "stablePersistentCacheEntries": 1,
+    "tempHighWaterBytes": 174624001
   },
   "schemaVersion": 1,
   "sourceBoundary": {
-    "elapsedMs": 4.3904,
+    "elapsedMs": 0.4326,
     "expectedTarget": 96
   },
   "status": "PASS"

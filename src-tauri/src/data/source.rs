@@ -46,6 +46,12 @@ pub struct QueryPrepareContext<'a> {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueryPreparationMetrics {
+    /// Selected CSV artifact builder. Kept internal to backend diagnostics;
+    /// frontend DTOs do not depend on provider implementation details.
+    pub csv_preparation_provider: Option<&'static str>,
+    /// Stable classifier reason when the Rust path is selected before any
+    /// Polars work or partial artifact is started.
+    pub csv_classifier_reason: Option<&'static str>,
     /// Bytes consumed by this provider's preparation reader. It is not a
     /// process-wide or source-lifetime I/O counter.
     pub source_read_bytes: u64,
@@ -58,6 +64,37 @@ pub struct QueryPreparationMetrics {
     pub adaptive_batch_growths: u64,
     pub adaptive_batch_shrinks: u64,
     pub parquet_close_budget_checks: u64,
+    #[cfg(test)]
+    pub profile_total_ns: u64,
+    #[cfg(test)]
+    pub profile_csv_read_ns: u64,
+    #[cfg(test)]
+    pub profile_convert_ns: u64,
+    #[cfg(test)]
+    pub profile_state_ns: u64,
+    #[cfg(test)]
+    pub profile_batch_append_ns: u64,
+    #[cfg(test)]
+    pub profile_batch_finish_ns: u64,
+    #[cfg(test)]
+    pub profile_parquet_write_ns: u64,
+    #[cfg(test)]
+    pub profile_parquet_close_ns: u64,
+    #[cfg(test)]
+    pub profile_parquet_sync_ns: u64,
+    #[cfg(test)]
+    pub profile_state_file_ns: u64,
+    #[cfg(test)]
+    pub profile_offset_file_ns: u64,
+    #[cfg(test)]
+    pub profile_duckdb_view_ns: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CsvPreparedPhysicalColumn {
+    pub source_index: usize,
+    pub field: String,
+    pub physical_kind: String,
 }
 
 pub trait QueryInputProvider: Debug + Send + Sync {
@@ -76,9 +113,27 @@ pub trait QueryInputProvider: Debug + Send + Sync {
         None
     }
 
+    /// Resolved physical value columns for a prepared CSV artifact. This is
+    /// deliberately structured so cache validation never reparses an opaque
+    /// identity string or guesses an Auto target from a Parquet primitive.
+    fn csv_prepared_physical_columns(&self) -> Vec<CsvPreparedPhysicalColumn> {
+        Vec::new()
+    }
+
+    fn csv_source_column_count(&self) -> Option<usize> {
+        None
+    }
+
     /// Extra read-only database path required by a reusable provider wrapper.
     fn prepared_artifact_path(&self) -> Option<&Path> {
         None
+    }
+
+    /// Builds the compatibility view exposed to the query engine for a
+    /// prepared Parquet artifact. Providers may keep a compact physical
+    /// layout while preserving the stable `dv_source` SQL contract.
+    fn prepared_view_sql(&self, parquet_literal: &str) -> String {
+        format!("SELECT * FROM read_parquet({parquet_literal})")
     }
 
     /// Source-order navigation accelerated by a provider-owned state index.

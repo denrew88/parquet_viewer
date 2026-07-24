@@ -11,6 +11,7 @@ use crate::domain::{
 
 const CELLS_PER_WORD: usize = 32;
 const EVEN_BITS: u64 = 0x5555_5555_5555_5555;
+const FILE_WRITE_CHUNK_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -71,21 +72,31 @@ impl CellStateBitmap {
 
     pub(crate) fn write_file(&self, path: &Path) -> Result<u64, DataError> {
         let mut file = std::fs::File::create(path).map_err(|error| DataError::io(path, error))?;
-        file.write_all(b"DVST\x01\0\0\0")
-            .and_then(|()| file.write_all(&self.rows.to_le_bytes()))
-            .and_then(|()| file.write_all(&(self.columns.len() as u64).to_le_bytes()))
+        self.write_to(&mut file)
             .map_err(|error| DataError::io(path, error))?;
-        for column in &self.columns {
-            for word in column {
-                file.write_all(&word.to_le_bytes())
-                    .map_err(|error| DataError::io(path, error))?;
-            }
-        }
         file.sync_all()
             .map_err(|error| DataError::io(path, error))?;
         file.metadata()
             .map(|metadata| metadata.len())
             .map_err(|error| DataError::io(path, error))
+    }
+
+    fn write_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+        let mut chunk = Vec::with_capacity(FILE_WRITE_CHUNK_BYTES);
+        chunk.extend_from_slice(b"DVST\x01\0\0\0");
+        chunk.extend_from_slice(&self.rows.to_le_bytes());
+        chunk.extend_from_slice(&(self.columns.len() as u64).to_le_bytes());
+        for word in self.columns.iter().flatten() {
+            if chunk.len() + std::mem::size_of::<u64>() > FILE_WRITE_CHUNK_BYTES {
+                writer.write_all(&chunk)?;
+                chunk.clear();
+            }
+            chunk.extend_from_slice(&word.to_le_bytes());
+        }
+        if !chunk.is_empty() {
+            writer.write_all(&chunk)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn read_file(
@@ -443,6 +454,24 @@ fn valid_rows_mask(rows: u64, word_index: usize) -> u32 {
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct CountingWriter {
+        bytes: Vec<u8>,
+        writes: Vec<usize>,
+    }
+
+    impl Write for CountingWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.writes.push(buffer.len());
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
     fn request(row: u64, direction: DataBoundaryDirection) -> BoundarySearchRequest {
         BoundarySearchRequest {
             row,
@@ -488,6 +517,125 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn large_bitmap_is_written_in_contiguous_chunks_with_exact_file_parity() {
+        let rows = 5_850_000_u64;
+        let columns = 15_usize;
+        let words_per_column = rows.div_ceil(CELLS_PER_WORD as u64) as usize;
+        let mut packed = Vec::with_capacity(columns);
+        for column in 0..columns {
+            packed.push(
+                (0..words_per_column)
+                    .map(|word| {
+                        (word as u64)
+                            .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                            .rotate_left(column as u32)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+        let bitmap = CellStateBitmap {
+            columns: packed,
+            rows,
+        };
+        let mut counted = CountingWriter::default();
+        bitmap.write_to(&mut counted).unwrap();
+
+        let expected_bytes = 24 + bitmap.payload_bytes();
+        assert_eq!(counted.bytes.len(), expected_bytes);
+        assert!(
+            counted.writes.len() <= expected_bytes.div_ceil(FILE_WRITE_CHUNK_BYTES) + 1,
+            "large bitmap unexpectedly used {} writes",
+            counted.writes.len()
+        );
+        assert!(counted.writes.iter().all(|bytes| *bytes > 8));
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("states.bin");
+        assert_eq!(bitmap.write_file(&path).unwrap(), expected_bytes as u64);
+        assert_eq!(std::fs::read(&path).unwrap(), counted.bytes);
+        let restored = CellStateBitmap::read_file(&path, rows, columns).unwrap();
+        assert_eq!(restored.rows, bitmap.rows);
+        assert_eq!(restored.columns, bitmap.columns);
+    }
+
+    #[test]
+    fn dvst_v1_golden_bytes_fix_header_endianness_column_order_and_padding() {
+        let mut bitmap = CellStateBitmap::new(2);
+        bitmap
+            .push_row(&[DataValueState::Valid, DataValueState::Null])
+            .unwrap();
+        bitmap
+            .push_row(&[DataValueState::Empty, DataValueState::Invalid])
+            .unwrap();
+        bitmap
+            .push_row(&[DataValueState::Invalid, DataValueState::Valid])
+            .unwrap();
+        let mut writer = CountingWriter::default();
+        bitmap.write_to(&mut writer).unwrap();
+
+        let mut golden = Vec::new();
+        golden.extend_from_slice(b"DVST\x01\0\0\0");
+        golden.extend_from_slice(&3_u64.to_le_bytes());
+        golden.extend_from_slice(&2_u64.to_le_bytes());
+        golden.extend_from_slice(&0x38_u64.to_le_bytes());
+        golden.extend_from_slice(&0x0d_u64.to_le_bytes());
+        assert_eq!(writer.bytes, golden);
+        assert_eq!(writer.writes, vec![golden.len()]);
+        assert_eq!(
+            writer.bytes[31], 0,
+            "unused high padding bits must stay zero"
+        );
+        assert_eq!(
+            writer.bytes[39], 0,
+            "unused high padding bits must stay zero"
+        );
+    }
+
+    #[test]
+    fn truncated_dimension_mismatch_and_trailing_bytes_are_typed_rejections() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("states.bin");
+        let mut bitmap = CellStateBitmap::new(2);
+        bitmap
+            .push_row(&[DataValueState::Valid, DataValueState::Empty])
+            .unwrap();
+        bitmap
+            .push_row(&[DataValueState::Invalid, DataValueState::Null])
+            .unwrap();
+        bitmap.write_file(&path).unwrap();
+        let original = std::fs::read(&path).unwrap();
+
+        std::fs::write(&path, &original[..original.len() - 1]).unwrap();
+        assert_eq!(
+            CellStateBitmap::read_file(&path, 2, 2).unwrap_err().code,
+            crate::domain::DataErrorCode::Io
+        );
+
+        let mut wrong_rows = original.clone();
+        wrong_rows[8..16].copy_from_slice(&3_u64.to_le_bytes());
+        std::fs::write(&path, wrong_rows).unwrap();
+        assert_eq!(
+            CellStateBitmap::read_file(&path, 2, 2).unwrap_err().code,
+            crate::domain::DataErrorCode::QueryFailed
+        );
+        let mut wrong_columns = original.clone();
+        wrong_columns[16..24].copy_from_slice(&3_u64.to_le_bytes());
+        std::fs::write(&path, wrong_columns).unwrap();
+        assert_eq!(
+            CellStateBitmap::read_file(&path, 2, 2).unwrap_err().code,
+            crate::domain::DataErrorCode::QueryFailed
+        );
+
+        let mut trailing = original;
+        trailing.push(0xaa);
+        std::fs::write(&path, trailing).unwrap();
+        assert_eq!(
+            CellStateBitmap::read_file(&path, 2, 2).unwrap_err().code,
+            crate::domain::DataErrorCode::QueryFailed
+        );
     }
 
     #[test]
