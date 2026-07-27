@@ -488,6 +488,10 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
     cancelQuery: vi.fn().mockRejectedValue(new Error("query unavailable")),
     getQueryTempUsage: vi.fn().mockResolvedValue({
       processBytes: 0,
+      queryTempBytes: 0,
+      csvCacheBytes: 0,
+      csvCacheEntries: 0,
+      csvCachePath: "C:\\AppData\\Data Viewer\\csv-cache-v1",
       limitBytes: defaultAppSettings().queryTempLimitBytes,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 0,
@@ -502,6 +506,10 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
       cleanupFailures: [],
       remainingUsage: {
         processBytes: 0,
+        queryTempBytes: 0,
+        csvCacheBytes: 0,
+        csvCacheEntries: 0,
+        csvCachePath: "",
         limitBytes: defaultAppSettings().queryTempLimitBytes,
         availableBytes: 20 * 1024 ** 3,
         activeQueries: 0,
@@ -510,6 +518,15 @@ function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
         hardCapBytes: 10 * 1024 ** 3,
         freeBytes: 20 * 1024 ** 3,
       },
+    }),
+    clearCsvCache: vi.fn().mockResolvedValue({
+      deletedBytes: 0,
+      deletedEntries: 0,
+      skippedActiveBytes: 0,
+      skippedActiveEntries: 0,
+      cleanupFailures: [],
+      remainingCacheBytes: 0,
+      remainingCacheEntries: 0,
     }),
     getDataFileStatus: vi.fn().mockResolvedValue(summary),
     cancelDataFileTask: vi.fn().mockResolvedValue(summary),
@@ -991,6 +1008,8 @@ describe("App", () => {
           selectDataFile: vi.fn().mockResolvedValue(auditedCsv),
           readPage,
           configureCsv,
+          prepareCsvSession: vi.fn().mockResolvedValue(csvPreparationStatus("preparing")),
+          getCsvPreparationStatus: vi.fn().mockResolvedValue(csvPreparationStatus("preparing")),
         })}
       />,
     );
@@ -1002,7 +1021,8 @@ describe("App", () => {
     );
     expect(csvCells[1]).toHaveAttribute("title", "line one\nline two");
     expect(screen.getByLabelText("empty string")).toHaveTextContent('""');
-    expect(screen.getByText("Calculating CSV row count")).toBeInTheDocument();
+    expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
+    expect(screen.queryByText("Calculating CSV row count")).not.toBeInTheDocument();
     expect(screen.getByText("Showing rows 1-1; total calculating")).toBeInTheDocument();
     expect(screen.getByLabelText("Current file summary")).toHaveTextContent("CSV");
 
@@ -1047,6 +1067,7 @@ describe("App", () => {
         backend={backend({
           selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
           readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession: vi.fn().mockResolvedValue(csvPreparationStatus("cancelled")),
           cancelDataFileTask,
         })}
       />,
@@ -1054,7 +1075,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open file" }));
     expect(await screen.findByText("Kim, Mina")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel scan" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel scan" }));
     await waitFor(() =>
       expect(screen.queryByText("Calculating CSV row count")).not.toBeInTheDocument(),
     );
@@ -1068,7 +1089,16 @@ describe("App", () => {
     const prepareCsvSession = vi.fn().mockResolvedValue(csvPreparationStatus("preparing"));
     const getCsvPreparationStatus = vi
       .fn()
-      .mockResolvedValue(csvPreparationStatus("ready", { rowsScanned: 1_000, elapsedMs: 900 }));
+      .mockResolvedValueOnce(
+        csvPreparationStatus("preparing", {
+          rowsScanned: 500,
+          sourceReadBytes: 8_192,
+          elapsedMs: 700,
+        }),
+      )
+      .mockResolvedValueOnce(
+        csvPreparationStatus("ready", { rowsScanned: 1_000, elapsedMs: 1_400 }),
+      );
     render(
       <App
         backend={backend({
@@ -1082,14 +1112,89 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open file" }));
     expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
-    expect(screen.getByText("125 / 1,000 rows · 0.3s")).toBeInTheDocument();
+    expect(screen.getByText("125 / 1,000 rows · 2.0 KB of 16.0 KB · 0.3s")).toBeInTheDocument();
+    const preparationProgress = screen.getByRole("progressbar", {
+      name: "CSV preparation progress",
+    });
+    expect(preparationProgress).toHaveAttribute("max", "16384");
+    expect(preparationProgress).toHaveAttribute("value", "2048");
     expect(prepareCsvSession).toHaveBeenCalledWith("legacy-csv-session", "csv-session");
     await waitFor(() => expect(getCsvPreparationStatus).toHaveBeenCalledTimes(1), {
       timeout: 1_500,
     });
     await waitFor(() =>
+      expect(screen.getByRole("progressbar", { name: "CSV preparation progress" })).toHaveAttribute(
+        "value",
+        "8192",
+      ),
+    );
+    await waitFor(() => expect(getCsvPreparationStatus).toHaveBeenCalledTimes(2), {
+      timeout: 1_500,
+    });
+    await waitFor(() =>
       expect(screen.queryByText("Preparing CSV for fast queries")).not.toBeInTheDocument(),
     );
+  });
+
+  it("P15-WARM-003 refreshes an immediate Ready cache hit without banners or polling", async () => {
+    const prepareCsvSession = vi.fn().mockResolvedValue(
+      csvPreparationStatus("ready", {
+        rowsScanned: 5_850_000,
+        totalRows: 5_850_000,
+        navigationFrontierRow: 5_850_000,
+      }),
+    );
+    const getCsvPreparationStatus = vi.fn();
+    const readySummary: FileSummary = {
+      ...csvSummary(),
+      rowCount: 5_850_000,
+      rowCountStatus: {
+        ...csvSummary().rowCountStatus,
+        state: "complete",
+        rowsScanned: 5_850_000,
+        bytesScanned: 100,
+      },
+    };
+    const getDataFileStatus = vi.fn().mockResolvedValue(readySummary);
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(csvSummary()),
+          readPage: vi.fn().mockResolvedValue(csvPage),
+          prepareCsvSession,
+          getCsvPreparationStatus,
+          getDataFileStatus,
+        })}
+      />,
+    );
+
+    const warmUiFrames: string[] = [];
+    const observer = new MutationObserver(() => {
+      const content = document.body.textContent ?? "";
+      if (
+        content.includes("Preparing CSV for fast queries") ||
+        content.includes("Calculating CSV row count")
+      ) {
+        warmUiFrames.push(content);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByText("Kim, Mina")).toBeInTheDocument();
+    expect(await screen.findByText("Showing rows 1-1 of 5,850,000")).toBeInTheDocument();
+    expect(getDataFileStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Preparing CSV for fast queries")).not.toBeInTheDocument();
+    expect(screen.queryByText("Calculating CSV row count")).not.toBeInTheDocument();
+    expect(screen.queryByText(/total calculating/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("progressbar", { name: "CSV preparation progress" }),
+    ).not.toBeInTheDocument();
+
+    await new Promise((resolve) => window.setTimeout(resolve, 850));
+    observer.disconnect();
+    expect(warmUiFrames).toHaveLength(0);
+    expect(getCsvPreparationStatus).not.toHaveBeenCalled();
+    expect(getDataFileStatus).toHaveBeenCalledTimes(1);
   });
 
   it("shows preparation failure reason and supports Retry, Cancel, and Dismiss", async () => {
@@ -2800,8 +2905,12 @@ describe("App", () => {
   });
 
   it("QRY-015 displays and clears process query temporary storage", async () => {
-    const getQueryTempUsage = vi.fn().mockResolvedValue({
+    const initialUsage = {
       processBytes: 128 * 1024 * 1024,
+      queryTempBytes: 128 * 1024 * 1024,
+      csvCacheBytes: 0,
+      csvCacheEntries: 0,
+      csvCachePath: "C:\\AppData\\Data Viewer\\csv-cache-v1",
       limitBytes: 10 * 1024 ** 3,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 1,
@@ -2809,13 +2918,21 @@ describe("App", () => {
       safetyReserveBytes: 5 * 1024 ** 3,
       hardCapBytes: 10 * 1024 ** 3,
       freeBytes: 20 * 1024 ** 3,
-    });
+    };
+    const getQueryTempUsage = vi
+      .fn()
+      .mockResolvedValueOnce(initialUsage)
+      .mockResolvedValue({ ...initialUsage, processBytes: 0, queryTempBytes: 0 });
     const clearQueryTemp = vi.fn().mockResolvedValue({
       deletedBytes: 128 * 1024 * 1024,
       orphanFailureCount: 0,
       cleanupFailures: [],
       remainingUsage: {
         processBytes: 0,
+        queryTempBytes: 0,
+        csvCacheBytes: 0,
+        csvCacheEntries: 0,
+        csvCachePath: "",
         limitBytes: 10 * 1024 ** 3,
         availableBytes: 20 * 1024 ** 3,
         activeQueries: 1,
@@ -2827,15 +2944,75 @@ describe("App", () => {
     });
     render(<App backend={backend({ getQueryTempUsage, clearQueryTemp })} />);
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByText(/128.0 MiB used/)).toBeInTheDocument();
+    const queryStorage = (
+      await screen.findByRole("heading", {
+        name: "Query temporary data",
+      })
+    ).closest("section")!;
+    expect(within(queryStorage).getByText("128.0 MiB", { selector: "strong" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear inactive query data" }));
     await waitFor(() => expect(clearQueryTemp).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/0 B used/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(queryStorage).getByText("0 B", { selector: "strong" })).toBeInTheDocument(),
+    );
     expect(
       screen.getByText(
-        "Inactive query data cleared. 134,217,728 bytes deleted; 0 bytes remain in use.",
+        "Inactive query data cleared. 134,217,728 bytes deleted; 0 query temporary bytes remain in use. Reusable CSV cache was kept.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("P15-STORAGE-003/004 clears only inactive CSV cache and reports skipped entries", async () => {
+    const initialUsage = {
+      processBytes: 576 * 1024 * 1024,
+      queryTempBytes: 64 * 1024 * 1024,
+      csvCacheBytes: 512 * 1024 * 1024,
+      csvCacheEntries: 2,
+      csvCachePath: "C:\\AppData\\Data Viewer\\csv-cache-v1",
+      limitBytes: 10 * 1024 ** 3,
+      availableBytes: 20 * 1024 ** 3,
+      activeQueries: 1,
+      estimatedTempBytes: null,
+      safetyReserveBytes: 5 * 1024 ** 3,
+      hardCapBytes: 10 * 1024 ** 3,
+      freeBytes: 20 * 1024 ** 3,
+    };
+    const getQueryTempUsage = vi
+      .fn()
+      .mockResolvedValueOnce(initialUsage)
+      .mockResolvedValueOnce({
+        ...initialUsage,
+        processBytes: 320 * 1024 * 1024,
+        csvCacheBytes: 256 * 1024 * 1024,
+        csvCacheEntries: 1,
+      });
+    const clearQueryTemp = vi.fn();
+    const clearCsvCache = vi.fn().mockResolvedValue({
+      deletedBytes: 256 * 1024 * 1024,
+      deletedEntries: 1,
+      skippedActiveBytes: 256 * 1024 * 1024,
+      skippedActiveEntries: 1,
+      cleanupFailures: [],
+      remainingCacheBytes: 256 * 1024 * 1024,
+      remainingCacheEntries: 1,
+    });
+    render(<App backend={backend({ getQueryTempUsage, clearQueryTemp, clearCsvCache })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByText("512.0 MiB · 2 items")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear inactive CSV cache" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clear inactive CSV cache" }));
+    await waitFor(() => expect(clearCsvCache).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getQueryTempUsage).toHaveBeenCalledTimes(2));
+    expect(clearQueryTemp).not.toHaveBeenCalled();
+    expect(await screen.findByText("256.0 MiB · 1 item")).toBeInTheDocument();
+    const result = screen.getByText(/CSV cache clear finished/);
+    expect(result).toHaveTextContent("268,435,456 bytes in 1 item deleted");
+    expect(result).toHaveTextContent("268,435,456 bytes in 1 active item was skipped");
+    expect(result).toHaveTextContent("Source CSV files were not changed");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Clear inactive CSV cache" })).toHaveFocus(),
+    );
   });
 
   it("changes the default copy preset without copying immediately", async () => {

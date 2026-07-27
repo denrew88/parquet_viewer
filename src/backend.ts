@@ -354,6 +354,10 @@ export interface FindQueryMatchResponse {
 
 export interface QueryTempUsage {
   processBytes: number;
+  queryTempBytes: number;
+  csvCacheBytes: number;
+  csvCacheEntries: number;
+  csvCachePath: string;
   limitBytes: number;
   availableBytes: number;
   activeQueries: number;
@@ -368,6 +372,16 @@ export interface QueryTempCleanupResult {
   orphanFailureCount: number;
   cleanupFailures: string[];
   remainingUsage: QueryTempUsage;
+}
+
+export interface CsvCacheCleanupResult {
+  deletedBytes: number;
+  deletedEntries: number;
+  skippedActiveBytes: number;
+  skippedActiveEntries: number;
+  cleanupFailures: string[];
+  remainingCacheBytes: number;
+  remainingCacheEntries: number;
 }
 
 export interface ColumnSchema {
@@ -657,6 +671,7 @@ export interface BackendAdapter {
   ): Promise<QueryStatusResponse>;
   getQueryTempUsage(): Promise<QueryTempUsage>;
   clearQueryTemp(): Promise<QueryTempCleanupResult>;
+  clearCsvCache(): Promise<CsvCacheCleanupResult>;
   getDataFileStatus(
     documentId: string,
     sessionId: string,
@@ -1708,6 +1723,10 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
     !item ||
     !exactObjectKeys(item, [
       "processBytes",
+      "queryTempBytes",
+      "csvCacheBytes",
+      "csvCacheEntries",
+      "csvCachePath",
       "limitBytes",
       "availableBytes",
       "activeQueries",
@@ -1717,6 +1736,11 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
       "freeBytes",
     ]) ||
     !isNonNegativeInteger(item.processBytes) ||
+    !isNonNegativeInteger(item.queryTempBytes) ||
+    !isNonNegativeInteger(item.csvCacheBytes) ||
+    !isNonNegativeInteger(item.csvCacheEntries) ||
+    typeof item.csvCachePath !== "string" ||
+    item.processBytes !== item.queryTempBytes + item.csvCacheBytes ||
     !isNonNegativeInteger(item.limitBytes) ||
     item.limitBytes === 0 ||
     !isNonNegativeInteger(item.availableBytes) ||
@@ -1729,6 +1753,41 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
     throw new DataViewerError("InvalidResponse", "The query temporary-storage usage is invalid.");
   }
   return item as unknown as QueryTempUsage;
+}
+
+export function parseCsvCacheCleanupResult(value: unknown): CsvCacheCleanupResult {
+  const item = record(value);
+  const cleanupFailures = stringArray(item?.cleanupFailures);
+  if (
+    !item ||
+    !exactObjectKeys(item, [
+      "deletedBytes",
+      "deletedEntries",
+      "skippedActiveBytes",
+      "skippedActiveEntries",
+      "cleanupFailures",
+      "remainingCacheBytes",
+      "remainingCacheEntries",
+    ]) ||
+    !isNonNegativeInteger(item.deletedBytes) ||
+    !isNonNegativeInteger(item.deletedEntries) ||
+    !isNonNegativeInteger(item.skippedActiveBytes) ||
+    !isNonNegativeInteger(item.skippedActiveEntries) ||
+    !cleanupFailures ||
+    !isNonNegativeInteger(item.remainingCacheBytes) ||
+    !isNonNegativeInteger(item.remainingCacheEntries)
+  ) {
+    throw new DataViewerError("InvalidResponse", "The CSV cache cleanup result is invalid.");
+  }
+  return {
+    deletedBytes: item.deletedBytes,
+    deletedEntries: item.deletedEntries,
+    skippedActiveBytes: item.skippedActiveBytes,
+    skippedActiveEntries: item.skippedActiveEntries,
+    cleanupFailures,
+    remainingCacheBytes: item.remainingCacheBytes,
+    remainingCacheEntries: item.remainingCacheEntries,
+  };
 }
 
 export function parseQueryTempCleanupResult(value: unknown): QueryTempCleanupResult {
@@ -3138,6 +3197,9 @@ export const tauriBackend: BackendAdapter = {
   async clearQueryTemp() {
     return validatedInvoke("clear_query_temp", undefined, parseQueryTempCleanupResult);
   },
+  async clearCsvCache() {
+    return validatedInvoke("clear_csv_cache", undefined, parseCsvCacheCleanupResult);
+  },
   async getDataFileStatus(documentId, sessionId) {
     return validatedInvoke(
       "get_data_file_status",
@@ -4107,17 +4169,18 @@ export const browserMockBackend: BackendAdapter = {
     if (!browserCsvStates.has(sessionId)) {
       throw new DataViewerError("UnsupportedFormat", "The current file is not CSV.");
     }
+    const coldProgress = browserScenario() === "csv-progress";
     const status: CsvPreparationStatus = {
       documentId,
       sessionId,
-      state: "ready",
-      rowsScanned: 3,
-      totalRows: 3,
-      sourceReadBytes: 0,
-      totalBytes: 0,
-      cacheOutputBytes: 0,
-      navigationFrontierRow: 3,
-      elapsedMs: 1,
+      state: coldProgress ? "preparing" : "ready",
+      rowsScanned: coldProgress ? 250 : 3,
+      totalRows: coldProgress ? 1_000 : 3,
+      sourceReadBytes: coldProgress ? 2_048 : 0,
+      totalBytes: coldProgress ? 8_192 : 0,
+      cacheOutputBytes: coldProgress ? 1_024 : 0,
+      navigationFrontierRow: coldProgress ? 0 : 3,
+      elapsedMs: coldProgress ? 250 : 1,
       error: null,
     };
     browserCsvPreparations.set(sessionId, status);
@@ -4125,7 +4188,23 @@ export const browserMockBackend: BackendAdapter = {
   },
   async getCsvPreparationStatus(documentId, sessionId) {
     const status = browserCsvPreparations.get(sessionId);
-    return status?.documentId === documentId ? status : null;
+    if (!status || status.documentId !== documentId) return null;
+    if (browserScenario() !== "csv-progress" || status.state !== "preparing") return status;
+    const ready = new URLSearchParams(window.location.search).get("csvReady") === "1";
+    const sourceReadBytes = ready
+      ? status.totalBytes
+      : Math.min(status.totalBytes - 1, status.sourceReadBytes + 1_024);
+    const next: CsvPreparationStatus = {
+      ...status,
+      state: ready ? "ready" : "preparing",
+      rowsScanned: ready ? 1_000 : 625,
+      sourceReadBytes,
+      cacheOutputBytes: ready ? 6_144 : 3_072,
+      navigationFrontierRow: ready ? 1_000 : 0,
+      elapsedMs: ready ? 1_700 : 900,
+    };
+    browserCsvPreparations.set(sessionId, next);
+    return next;
   },
   async cancelCsvPreparation(documentId, sessionId) {
     const status = browserCsvPreparations.get(sessionId);
@@ -4362,6 +4441,10 @@ export const browserMockBackend: BackendAdapter = {
   async getQueryTempUsage() {
     return {
       processBytes: 0,
+      queryTempBytes: 0,
+      csvCacheBytes: 0,
+      csvCacheEntries: 0,
+      csvCachePath: "Browser mock (no persistent cache)",
       limitBytes: browserSettings.queryTempLimitBytes,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 0,
@@ -4377,6 +4460,17 @@ export const browserMockBackend: BackendAdapter = {
       orphanFailureCount: 0,
       cleanupFailures: [],
       remainingUsage: await browserMockBackend.getQueryTempUsage(),
+    };
+  },
+  async clearCsvCache() {
+    return {
+      deletedBytes: 0,
+      deletedEntries: 0,
+      skippedActiveBytes: 0,
+      skippedActiveEntries: 0,
+      cleanupFailures: [],
+      remainingCacheBytes: 0,
+      remainingCacheEntries: 0,
     };
   },
   async getDataFileStatus(_documentId, sessionId) {

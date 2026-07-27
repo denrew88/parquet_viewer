@@ -33,6 +33,14 @@ CSV 준비 엔진으로 적합한지를 bounded-memory 제품 조건에서 검�
 - Polars Rust minimal-feature POC와 현재 Rust 개선 경로의 동일 fixture 비교
 - 시간, source/cache byte, RSS, CPU, 취소, fault, lifecycle, EXE·NSIS 증가량 계측
 - Phase 14 미충족 cold 5회, page p95, byte audit, frontier, full copy와 native 회귀
+- persistent CSV cache의 사용량·저장 위치·항목 수를 Settings에 명시하고, 원본 파일에는 영향을
+  주지 않는 비활성 cache 삭제 기능 제공
+- query temporary data와 재사용 가능한 CSV cache를 사용량 및 삭제 동작에서 분리
+- 유효한 warm cache hit에서는 원본 재스캔, preparation 진행 UI와 row-count 계산 UI를 모두 생략하고
+  복원된 행 수 상태를 즉시 `Complete`로 게시
+- 이전 release가 앱 버전을 포함한 hash key로 저장한 호환 compact-v3 entry도 bounded manifest 탐색으로
+  재사용해 업데이트 직후 false cold-preparation UI를 방지
+- cache clear와 open/publish가 경합해도 다른 process나 활성 session의 lease를 삭제하지 않는 계약
 
 ## 4. 비범위
 
@@ -65,6 +73,12 @@ CSV 준비 엔진으로 적합한지를 bounded-memory 제품 조건에서 검�
   보존한다. 원문은 raw 보기·복사에서 손실 없이 사용할 수 있다.
 - 준비 진행률은 `구조 검사`, `변환·cache 작성`, `검증·게시` 단계를 구분한다.
 - 준비 실패·취소 시 원본은 변경하지 않고 partial artifact를 제거하며 direct preview는 유지한다.
+- Settings는 CSV cache가 app-local-data의 `csv-cache-v1`에 보존되어 다음 열기를 빠르게 한다는 점,
+  현재 크기·항목 수·실제 경로와 삭제 후 다음 열기에서 다시 준비된다는 점을 표시한다.
+- `Clear inactive query data`와 `Clear inactive CSV cache`는 별도 동작이다. CSV cache 삭제는 확인 후
+  비활성 항목만 제거하고, 삭제·건너뜀·실패 결과를 이번 실행의 결과로 명확히 알린다.
+- cache hit의 backend 응답이 `Ready`이면 준비/취소 UI와 polling을 시작하지 않는다. 최초 open summary의
+  임시 `calculating` 상태도 cache 복원 직후 갱신해 행 수 UI가 남거나 깜빡이지 않게 한다.
 
 ## 7. 선행 승인
 

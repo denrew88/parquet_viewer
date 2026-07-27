@@ -1,7 +1,67 @@
 import { expect, test } from "@playwright/test";
 import { openMockFile } from "./helpers";
 
+test("shows byte progress for cold CSV preparation and removes it at Ready", async ({
+  page,
+}, testInfo) => {
+  const artifactName = {
+    "desktop-compact": "compact",
+    "desktop-minimum": "minimum",
+    "desktop-wide": "wide",
+  }[testInfo.project.name];
+  if (!artifactName) throw new Error(`Unexpected Playwright project: ${testInfo.project.name}`);
+  await page.goto("/");
+  await openMockFile(page, "csv-progress", "quoted-multiline.csv");
+  const progress = page.getByRole("progressbar", { name: "CSV preparation progress" });
+  const preparationCard = page.locator(".csv-preparation");
+  await expect(progress).toBeVisible();
+  await expect(progress).toHaveAttribute("max", "8192");
+  const initialValue = Number(await progress.getAttribute("value"));
+  expect(initialValue).toBeGreaterThan(0);
+  const geometry = await progress.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      top: bounds.top,
+      bottom: bounds.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(geometry.width).toBeGreaterThan(200);
+  expect(geometry.height).toBeGreaterThanOrEqual(5);
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+  const cardHitTarget = await preparationCard.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const topmost = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + 2);
+    return {
+      cardContainsTarget: topmost !== null && element.contains(topmost),
+      targetClass: topmost?.getAttribute("class") ?? null,
+      targetTag: topmost?.tagName ?? null,
+    };
+  });
+  expect(cardHitTarget.cardContainsTarget, JSON.stringify(cardHitTarget)).toBe(true);
+  const progressScreenshot = await page.screenshot({
+    path: `artifacts/phase-15/ui/csv-progress-${artifactName}.png`,
+  });
+  await testInfo.attach(`csv-cold-progress-${testInfo.project.name}`, {
+    body: progressScreenshot,
+    contentType: "image/png",
+  });
+  await expect
+    .poll(async () => Number(await progress.getAttribute("value")))
+    .toBeGreaterThan(initialValue);
+  await page.evaluate(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("csvReady", "1");
+    window.history.replaceState(null, "", url);
+  });
+  await expect(progress).toHaveCount(0, { timeout: 2_500 });
+});
+
 test("opens multiple browserMock documents and retains independent view tabs", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "No file open" })).toBeVisible();
   await expect(page.getByText("No files open")).toBeVisible();
@@ -111,12 +171,15 @@ test("runs explicit find, cycles sort, and applies a column filter popover", asy
   await expect(sort).toBeVisible();
 });
 
-test("validates application settings and temporary-storage controls", async ({ page }) => {
+test("validates application settings and storage controls", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/0 B used/)).toBeVisible();
+  await expect(dialog.getByText(/Total app-managed storage:/)).toContainText("0 B");
+  await expect(dialog.getByRole("heading", { name: "Query temporary data" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Reusable CSV cache" })).toBeVisible();
+  await expect(dialog.getByText("Browser mock (no persistent cache)")).toBeVisible();
   await expect(dialog.getByText(/20\.00 GiB available on disk/)).toBeVisible();
 
   const limit = dialog.getByRole("spinbutton", { name: "Query temporary storage limit" });
@@ -139,6 +202,12 @@ test("validates application settings and temporary-storage controls", async ({ p
   await limit.fill("0.125");
   await dialog.getByRole("button", { name: "Clear inactive query data" }).click();
   await expect(dialog.getByText(/Inactive query data cleared/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Clear inactive CSV cache" }).click();
+  await expect(dialog.getByText("Clear inactive CSV cache?")).toBeVisible();
+  await dialog.getByRole("button", { name: "Confirm clear inactive CSV cache" }).click();
+  await expect(dialog.getByText(/CSV cache clear finished/)).toContainText(
+    "Source CSV files were not changed",
+  );
   await dialog.getByRole("button", { name: "All Text" }).click();
   await expect(dialog.getByText(/Keep every column as text/)).toBeVisible();
   await dialog.getByRole("button", { name: "Apply" }).click();

@@ -65,3 +65,15 @@ fail-closed로 바꾸는 후속 보완이 필요하다.
 그 외 남은 항목은 제품 코드를 임의로 PASS 처리하지 않는다. WebView2 CDP, 150% DPI, clean install은
 해당 환경에서 다시 실행하고, 성능·fault·soak는 계획의 표본 수와 원시 artifact를 채운 뒤에만 Phase를
 `완료`로 전환한다.
+
+## 2026-07-27 persistent cache 후속 리뷰
+
+최초 후속 리뷰에서 발견한 두 건은 구현과 회귀 테스트로 해소했다.
+
+- MEDIUM: 이전 release가 application version을 포함해 계산한 on-disk key를 새 lookup이 찾지 못하던 문제는
+  제품 소유 entry의 bounded manifest 탐색으로 보완했다. 호환 legacy cache hit 테스트가 통과했다.
+- LOW/MEDIUM: CSV cache 삭제 뒤 query temporary 사용량이 stale할 수 있던 문제는 삭제 완료 후 전체 storage
+  usage 재조회로 보완했다. 프런트엔드 호출 횟수와 갱신 표시 테스트가 통과했다.
+
+필수 native·soak·fault gate가 남아 있으므로 전체 Phase 판정은 계속 `BLOCKED`다. 다만 사용자가 보고한
+"이미 캐싱됐는데 다시 캐싱 UI가 나타나는" 코드 경로와 application update 호환성 결함은 해소됐다.

@@ -26,7 +26,7 @@ use crate::{
     },
     query::{CsvPreparationStatus, QueryService},
     storage::SettingsStore,
-    storage::{QueryTempCleanupResult, QueryTempUsage},
+    storage::{CsvCacheCleanupResult, QueryTempCleanupResult, QueryTempUsage},
 };
 
 const MAX_PAGE_ROWS: usize = 200;
@@ -1640,6 +1640,14 @@ pub fn clear_query_temp(
     state: State<'_, AppState>,
 ) -> Result<QueryTempCleanupResult, DataError> {
     state.query_service(&app)?.clear_temp()
+}
+
+#[tauri::command]
+pub fn clear_csv_cache(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CsvCacheCleanupResult, DataError> {
+    state.query_service(&app)?.clear_csv_cache()
 }
 
 #[tauri::command]

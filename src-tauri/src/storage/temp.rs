@@ -25,6 +25,10 @@ const JANITOR_LOCK_NAME: &str = ".janitor.lock";
 #[serde(rename_all = "camelCase")]
 pub struct QueryTempUsage {
     pub process_bytes: u64,
+    pub query_temp_bytes: u64,
+    pub csv_cache_bytes: u64,
+    pub csv_cache_entries: usize,
+    pub csv_cache_path: String,
     pub limit_bytes: u64,
     pub available_bytes: u64,
     pub active_queries: usize,
@@ -38,6 +42,10 @@ impl Default for QueryTempUsage {
     fn default() -> Self {
         Self {
             process_bytes: 0,
+            query_temp_bytes: 0,
+            csv_cache_bytes: 0,
+            csv_cache_entries: 0,
+            csv_cache_path: String::new(),
             limit_bytes: QUERY_TEMP_HARD_CAP_BYTES,
             available_bytes: 0,
             active_queries: 0,
@@ -153,10 +161,14 @@ impl QueryTempManager {
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
         let free_bytes = fs2::available_space(&self.process_directory)
             .map_err(|error| temp_io(&self.process_directory, error))?;
-        let process_bytes = directory_bytes(&self.process_directory)?;
+        let query_temp_bytes = directory_bytes(&self.process_directory)?;
+        let csv_cache_bytes = self.external_cache_bytes.load(Ordering::Acquire);
         Ok(QueryTempUsage {
-            process_bytes: process_bytes
-                .saturating_add(self.external_cache_bytes.load(Ordering::Acquire)),
+            process_bytes: query_temp_bytes.saturating_add(csv_cache_bytes),
+            query_temp_bytes,
+            csv_cache_bytes,
+            csv_cache_entries: 0,
+            csv_cache_path: String::new(),
             limit_bytes: self.limit_bytes.load(Ordering::Acquire),
             available_bytes: free_bytes,
             active_queries: self.active_queries.load(Ordering::Acquire),
@@ -486,6 +498,10 @@ mod tests {
     fn temp_usage_wire_separates_estimate_reserve_cap_and_free_space() {
         let usage = QueryTempUsage {
             process_bytes: 100,
+            query_temp_bytes: 60,
+            csv_cache_bytes: 40,
+            csv_cache_entries: 2,
+            csv_cache_path: "C:/cache".to_owned(),
             limit_bytes: 200,
             available_bytes: 300,
             active_queries: 1,
@@ -500,6 +516,10 @@ mod tests {
         assert_eq!(json["hardCapBytes"], QUERY_TEMP_HARD_CAP_BYTES);
         assert_eq!(json["freeBytes"], 300);
         assert_eq!(json["availableBytes"], 300);
+        assert_eq!(json["queryTempBytes"], 60);
+        assert_eq!(json["csvCacheBytes"], 40);
+        assert_eq!(json["csvCacheEntries"], 2);
+        assert_eq!(json["csvCachePath"], "C:/cache");
     }
 
     #[test]

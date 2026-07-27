@@ -42,6 +42,9 @@
 - 구현 중 문서를 계속 고치지 않고 계약 변경 또는 최종 결과가 확정됐을 때 묶어서 갱신한다.
 - benchmark 원본은 artifact에 저장하고 대화와 통합 문서에는 측정값과 판정만 요약한다.
 - 생성 cache, 임시 fixture, 중간 screenshot은 최종 증거가 아니면 정리한다.
+- 기본 release 빌드는 빠른 후속 빌드를 위해 Cargo release 중간 산출물을 유지한다. 사용자가 요청한 때에만
+  `npm run clean:release`로 정리한다. release 빌드 후에는 `npm run clean:temp`를 실행해 workspace
+  `.tmp`의 64MiB 이상 생성 항목이 누적되지 않게 한다.
 
 ## 절약보다 우선하는 경우
 

@@ -159,6 +159,23 @@ direct source로 안전하게 fallback한다. session 교체, tab close, process
 작업을 정리하며 다른 generation이나 process의 artifact를 재사용하거나 삭제하지 않는다. 연속 page와
 copy는 거대한 row ID `IN (...)` 목록을 만들지 않고 bounded contiguous range로 조회한다.
 
+cold preparation은 source read byte와 전체 source byte를 사용한 실제 progress bar, 진행 행 수와 경과
+시간을 하나의 preparation UI에 표시한다. 유효한 warm cache hit는 이 UI를 한 frame도 표시하지 않는다.
+
+prepared source의 persistent CSV cache는 운영체제의 app-local-data 아래 제품이 소유한
+`csv-cache-v1`에 저장한다. Settings에서 query temporary data와 구분된 cache 크기, 항목 수와 실제 경로를
+표시하고 사용자가 확인 후 비활성 cache를 삭제할 수 있게 한다. 삭제 요청은 frontend가 경로를 지정하지
+않으며 backend가 고정된 cache root 안에서만 수행한다. 활성 session이나 다른 process가 lease한 항목은
+삭제하지 않고 건너뛴 결과를 보고하며 원본 CSV는 어떤 경우에도 변경하지 않는다.
+
+유효한 cache hit는 원본 scan과 preparation worker를 시작하지 않고 복원된 row count와 index 상태까지
+원자적으로 `Complete`로 게시한다. frontend는 즉시 `Ready` 응답에 preparation progress, Cancel 또는
+row-count 계산 UI를 표시하거나 polling하지 않는다. cache compatibility는 cache schema와 artifact layout으로
+판정하며 application version 문자열만 바뀐 경우에는 호환 cache를 불필요하게 무효화하지 않는다.
+이전 release가 application version을 포함한 directory key로 저장한 compact-v3 cache도 bounded entry
+scan과 manifest 검증으로 찾아 재사용한다. 따라서 업데이트 직후에도 호환 cache는 cold preparation UI를
+다시 띄우지 않는다.
+
 UTF-8과 UTF-8 BOM을 기본 지원한다. 지원하지 않는 encoding은 깨진 문자열로 표시하지
 말고 명확한 오류를 반환한다. 다른 encoding 지원은 별도 요구사항으로 추가한다.
 

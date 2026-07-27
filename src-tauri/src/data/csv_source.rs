@@ -1882,6 +1882,13 @@ impl QueryInputProvider for CsvQueryProvider {
                 .map(|metadata| metadata.len().saturating_sub(24))
                 .unwrap_or(0);
         }
+        let mut index = self.index_state.lock().map_err(|_| {
+            DataError::query_failed("CSV row count state is unavailable during cache restore.")
+        })?;
+        index.status.state = RowCountState::Complete;
+        index.status.rows_scanned = rows;
+        index.status.bytes_scanned = index.status.total_bytes;
+        index.status.message = None;
         Ok(())
     }
 
@@ -4651,6 +4658,67 @@ mod tests {
             assert!(std::time::Instant::now() < deadline);
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn restoring_prepared_state_publishes_complete_shared_row_count() {
+        let directory = tempfile::tempdir().unwrap();
+        let states_path = directory.path().join("states.bin");
+        let mut bitmap = CellStateBitmap::new(1);
+        bitmap.push_row(&[DataValueState::Valid]).unwrap();
+        bitmap.push_row(&[DataValueState::Empty]).unwrap();
+        bitmap.write_file(&states_path).unwrap();
+        let columns = vec![ColumnSchema {
+            name: String::from("value"),
+            logical_type: String::from("Utf8"),
+            nullable: true,
+            physical_type: String::from("BYTE_ARRAY"),
+        }];
+        let state = Arc::new(Mutex::new(IndexState {
+            status: RowCountStatus {
+                state: RowCountState::Calculating,
+                rows_scanned: 0,
+                bytes_scanned: 0,
+                total_bytes: 123,
+                generation: 7,
+                message: Some(String::from("calculating")),
+            },
+            checkpoints: Vec::new(),
+            structure_issue_count: 0,
+            structure_issues: Vec::new(),
+            max_columns: 1,
+        }));
+        let provider = CsvQueryProvider {
+            path: directory.path().join("source.csv"),
+            columns: columns.clone(),
+            spec: CsvQuerySpec {
+                header_used: true,
+                profile: default_profile(CsvProfileMode::Auto, 7, &columns),
+            },
+            checkpoints: Mutex::new(Vec::new()),
+            states: Mutex::new(None),
+            metrics: Mutex::new(QueryPreparationMetrics::default()),
+            index_state: Arc::clone(&state),
+            index_cancel: Arc::new(AtomicBool::new(false)),
+            preparation_takeover: Arc::new(AtomicBool::new(false)),
+            expected_columns: 1,
+            unsafe_headers: false,
+            polars_value_compatible: AtomicBool::new(true),
+            index_generation: 7,
+            deferred_index_worker: true,
+            fallback_index_started: AtomicBool::new(false),
+        };
+
+        provider.restore_prepared_state(&states_path, 2, 1).unwrap();
+
+        let status = state.lock().unwrap().status.clone();
+        assert_eq!(status.state, RowCountState::Complete);
+        assert_eq!(status.rows_scanned, 2);
+        assert_eq!(status.bytes_scanned, 123);
+        assert_eq!(status.generation, 7);
+        assert_eq!(status.message, None);
+        assert_eq!(provider.preparation_metrics().navigation_frontier_row, 2);
+        assert!(provider.states.lock().unwrap().is_some());
     }
 
     #[test]

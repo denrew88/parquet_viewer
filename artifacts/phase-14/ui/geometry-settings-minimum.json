@@ -12,5 +12,71 @@
     "preview": "11px",
     "bodyScrollWidth": 800,
     "bodyClientWidth": 800
-  }
+  },
+  "selectArrowGeometry": [
+    {
+      "label": "Integer grouping",
+      "width": 108,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Floating notation",
+      "width": 108,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Decimal grouping",
+      "width": 108,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Date display format",
+      "width": 116,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Timestamp preset",
+      "width": 108,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Duration preset",
+      "width": 113,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Boolean display format",
+      "width": 113,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    },
+    {
+      "label": "Binary display encoding",
+      "width": 108,
+      "paddingRight": 30,
+      "backgroundImage": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356666a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+      "backgroundPosition": "calc(100% - 9px) 50%",
+      "appearance": "none"
+    }
+  ]
 }

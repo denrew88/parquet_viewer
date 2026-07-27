@@ -212,4 +212,69 @@ describe("AppSettingsDialog", () => {
     expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
+
+  it("P15-STORAGE-002/010 explains CSV cache storage and confirms clear with focus", async () => {
+    const user = userEvent.setup();
+    const onClearCsvCache = vi.fn();
+    renderDialog({
+      tempUsage: {
+        processBytes: 640 * 1024 * 1024,
+        queryTempBytes: 128 * 1024 * 1024,
+        csvCacheBytes: 512 * 1024 * 1024,
+        csvCacheEntries: 3,
+        csvCachePath:
+          "C:\\Users\\viewer\\AppData\\Local\\Data Viewer\\csv-cache-v1\\a-very-long-cache-segment",
+        limitBytes: 10 * 1024 ** 3,
+        availableBytes: 20 * 1024 ** 3,
+        activeQueries: 1,
+        estimatedTempBytes: null,
+        safetyReserveBytes: 5 * 1024 ** 3,
+        hardCapBytes: 10 * 1024 ** 3,
+        freeBytes: 20 * 1024 ** 3,
+      },
+      onClearCsvCache,
+    });
+
+    expect(screen.getByRole("heading", { name: "Query temporary data" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reusable CSV cache" })).toBeInTheDocument();
+    expect(screen.getByText("512.0 MiB · 3 items")).toBeInTheDocument();
+    expect(screen.getByText(/a-very-long-cache-segment/)).toHaveAttribute(
+      "title",
+      expect.stringContaining("csv-cache-v1"),
+    );
+    expect(screen.getByText(/Source CSV files are never changed/)).toBeInTheDocument();
+
+    const clear = screen.getByRole("button", { name: "Clear inactive CSV cache" });
+    await user.click(clear);
+    const confirm = screen.getByRole("button", {
+      name: "Confirm clear inactive CSV cache",
+    });
+    expect(confirm).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Cancel cache clear" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Clear inactive CSV cache" })).toHaveFocus(),
+    );
+    expect(onClearCsvCache).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Clear inactive CSV cache" }));
+    await user.click(screen.getByRole("button", { name: "Confirm clear inactive CSV cache" }));
+    expect(onClearCsvCache).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables storage actions and announces the current CSV cache operation", () => {
+    renderDialog({
+      csvCacheClearing: true,
+      csvCacheClearMessage: "One inactive cache item was removed.",
+      onClearCsvCache: vi.fn(),
+      onClearTemp: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "Clearing CSV cache..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear inactive query data" })).toBeDisabled();
+    expect(screen.getByText("One inactive cache item was removed.")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
 });

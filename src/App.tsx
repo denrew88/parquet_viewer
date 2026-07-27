@@ -412,25 +412,61 @@ function DataView({
       csvPreparation.requestError)
       ? csvPreparation
       : null;
-  const hasNotices = summary.rowCountStatus.state === "calculating" || invalidValues.length > 0;
+  const restoredRowCount =
+    csvPreparation?.status?.state === "ready" &&
+    csvPreparation.status.totalRows !== null &&
+    csvPreparation.status.totalRows >= page.offset + page.rows.length
+      ? csvPreparation.status.totalRows
+      : null;
+  const displayedSummary =
+    restoredRowCount !== null && summary.rowCountStatus.state === "calculating"
+      ? {
+          ...summary,
+          rowCount: restoredRowCount,
+          rowCountStatus: {
+            ...summary.rowCountStatus,
+            state: "complete" as const,
+            rowsScanned: restoredRowCount,
+          },
+        }
+      : summary;
+  const displayedPage =
+    restoredRowCount !== null && page.totalRows === null
+      ? {
+          ...page,
+          totalRows: restoredRowCount,
+          hasMore: page.offset + page.rows.length < restoredRowCount,
+        }
+      : page;
+  const preparationOwnsRowCount =
+    summary.format === "csv" &&
+    !csvPreparation?.requestError &&
+    (csvPreparation === null ||
+      csvPreparation.action === "starting" ||
+      csvPreparation.status === null ||
+      csvPreparation.status.state === "preparing" ||
+      csvPreparation.status.state === "ready");
+  const showRowCountNotice =
+    displayedSummary.rowCountStatus.state === "calculating" && !preparationOwnsRowCount;
+  const hasNotices = showRowCountNotice || invalidValues.length > 0;
   return (
     <div className={`data-view${hasNotices ? " data-view--notices" : ""}`}>
       {hasNotices && (
         <div className="data-view__notices">
-          {summary.rowCountStatus.state === "calculating" && (
+          {showRowCountNotice && (
             <div className="csv-progress" role="status" aria-live="polite">
               <LoaderCircle aria-hidden="true" />
               <div>
                 <strong>Calculating CSV row count</strong>
                 <span>
-                  {formatBytes(summary.rowCountStatus.bytesScanned)} of{" "}
-                  {formatBytes(summary.rowCountStatus.totalBytes)} scanned
+                  {formatBytes(displayedSummary.rowCountStatus.bytesScanned)} of{" "}
+                  {formatBytes(displayedSummary.rowCountStatus.totalBytes)} scanned
                 </span>
               </div>
               <progress
                 aria-label="CSV scan progress"
-                max={summary.rowCountStatus.totalBytes || 1}
-                value={summary.rowCountStatus.bytesScanned}
+                max={displayedSummary.rowCountStatus.totalBytes || 1}
+                value={displayedSummary.rowCountStatus.bytesScanned}
               />
               <button disabled={isCancelling} onClick={onCancel} type="button">
                 <X aria-hidden="true" />
@@ -466,30 +502,42 @@ function DataView({
           {visibleCsvPreparation.status?.state === "preparing" && (
             <LoaderCircle aria-hidden="true" />
           )}
-          <div>
-            <strong>
-              {visibleCsvPreparation.status?.state === "preparing"
-                ? "Preparing CSV for fast queries"
-                : visibleCsvPreparation.status?.state === "cancelled"
-                  ? "CSV preparation cancelled"
-                  : "CSV preparation failed"}
-            </strong>
-            {visibleCsvPreparation.status?.state === "preparing" ? (
-              <span>
-                {visibleCsvPreparation.status.rowsScanned.toLocaleString()}
-                {visibleCsvPreparation.status.totalRows === null
-                  ? " rows"
-                  : ` / ${visibleCsvPreparation.status.totalRows.toLocaleString()} rows`}
-                {` · ${(visibleCsvPreparation.status.elapsedMs / 1_000).toFixed(1)}s`}
-              </span>
-            ) : (
-              <span>
-                {visibleCsvPreparation.requestError ??
-                  (visibleCsvPreparation.status?.error
-                    ? `${visibleCsvPreparation.status.error.code}: ${visibleCsvPreparation.status.error.message}`
-                    : null) ??
-                  "The preparation task did not complete."}
-              </span>
+          <div className="csv-preparation__body">
+            <div className="csv-preparation__summary">
+              <strong>
+                {visibleCsvPreparation.status?.state === "preparing"
+                  ? "Preparing CSV for fast queries"
+                  : visibleCsvPreparation.status?.state === "cancelled"
+                    ? "CSV preparation cancelled"
+                    : "CSV preparation failed"}
+              </strong>
+              {visibleCsvPreparation.status?.state === "preparing" ? (
+                <span>
+                  {visibleCsvPreparation.status.rowsScanned.toLocaleString()}
+                  {visibleCsvPreparation.status.totalRows === null
+                    ? " rows"
+                    : ` / ${visibleCsvPreparation.status.totalRows.toLocaleString()} rows`}
+                  {` · ${formatBytes(visibleCsvPreparation.status.sourceReadBytes)} of ${formatBytes(visibleCsvPreparation.status.totalBytes)} · ${(visibleCsvPreparation.status.elapsedMs / 1_000).toFixed(1)}s`}
+                </span>
+              ) : (
+                <span>
+                  {visibleCsvPreparation.requestError ??
+                    (visibleCsvPreparation.status?.error
+                      ? `${visibleCsvPreparation.status.error.code}: ${visibleCsvPreparation.status.error.message}`
+                      : null) ??
+                    "The preparation task did not complete."}
+                </span>
+              )}
+            </div>
+            {visibleCsvPreparation.status?.state === "preparing" && (
+              <progress
+                aria-label="CSV preparation progress"
+                max={visibleCsvPreparation.status.totalBytes || 1}
+                value={Math.min(
+                  visibleCsvPreparation.status.sourceReadBytes,
+                  visibleCsvPreparation.status.totalBytes || 1,
+                )}
+              />
             )}
           </div>
           {visibleCsvPreparation.status?.state === "preparing" ? (
@@ -544,7 +592,7 @@ function DataView({
         onOpenCopySettings={onOpenCopySettings}
         onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
         onReadError={onReadError}
-        page={page}
+        page={displayedPage}
         queryActive={Boolean(queryState?.queryId)}
         queryId={queryState?.queryId ?? undefined}
         queryPlan={queryState?.draftPlan}
@@ -560,7 +608,7 @@ function DataView({
           })
         }
         resultKey={queryState ? resultKey(queryState.sessionId, queryState.queryId) : undefined}
-        summary={summary}
+        summary={displayedSummary}
       />
     </div>
   );
@@ -1127,8 +1175,11 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   >({});
   const [queryTempUsage, setQueryTempUsage] = useState<QueryTempUsage | null>(null);
   const [queryTempLoading, setQueryTempLoading] = useState(false);
+  const [queryTempClearing, setQueryTempClearing] = useState(false);
+  const [csvCacheClearing, setCsvCacheClearing] = useState(false);
   const [queryTempError, setQueryTempError] = useState<string | null>(null);
   const [queryTempClearMessage, setQueryTempClearMessage] = useState<string | null>(null);
+  const [csvCacheClearMessage, setCsvCacheClearMessage] = useState<string | null>(null);
   const documentsRef = useRef(documents);
   documentsRef.current = documents;
   const queryStatesRef = useRef(queryStates);
@@ -1297,6 +1348,35 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             dismissed: false,
           },
         }));
+        if (status.state === "ready") {
+          void backend.getDataFileStatus(documentId, sessionId).then(
+            (raw) => {
+              if (!isCurrent()) return;
+              const response = normalizedSummaryResponse(raw, documentId);
+              if (
+                response.documentId !== documentId ||
+                response.sessionId !== sessionId ||
+                response.summary.sessionId !== sessionId
+              )
+                return;
+              updateDocument(viewerDocumentId, (current) => ({
+                ...current,
+                summary: response.summary,
+                page:
+                  current.page && response.summary.rowCount !== null
+                    ? {
+                        ...current.page,
+                        totalRows: response.summary.rowCount,
+                        hasMore:
+                          current.page.offset + current.page.rows.length <
+                          response.summary.rowCount,
+                      }
+                    : current.page,
+              }));
+            },
+            () => undefined,
+          );
+        }
         return true;
       };
 
@@ -1317,7 +1397,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         }
       }, fail);
     },
-    [backend, clearCsvPreparationTask],
+    [backend, clearCsvPreparationTask, updateDocument],
   );
 
   const csvPreparationIdentityKey = documents
@@ -1506,6 +1586,20 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   useEffect(() => {
     const timers = documents.flatMap((document) => {
       const currentSummary = document.summary;
+      const preparation = csvPreparationStates[document.id];
+      const currentPreparation =
+        preparation?.documentId === document.documentId &&
+        preparation.sessionId === document.sessionId
+          ? preparation
+          : null;
+      const preparationOwnsRowCount =
+        currentSummary?.format === "csv" &&
+        !currentPreparation?.requestError &&
+        (currentPreparation === null ||
+          currentPreparation.action === "starting" ||
+          currentPreparation.status === null ||
+          currentPreparation.status.state === "preparing" ||
+          currentPreparation.status.state === "ready");
       if (
         !document.documentId ||
         !document.sessionId ||
@@ -1513,7 +1607,8 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         !hasCapability(currentSummary, "backgroundRowCount") ||
         document.isConfiguringCsv ||
         document.isCancellingCsv ||
-        currentSummary.rowCountStatus.state !== "calculating"
+        currentSummary.rowCountStatus.state !== "calculating" ||
+        preparationOwnsRowCount
       )
         return [];
       const generation = currentSummary.rowCountStatus.generation;
@@ -1545,7 +1640,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       ];
     });
     return () => timers.forEach(window.clearTimeout);
-  }, [backend, documents, updateDocument]);
+  }, [backend, csvPreparationStates, documents, updateDocument]);
 
   const applyOpenResponse = useCallback(
     (response: OpenDataResponse, request: OpenDataRequest) => {
@@ -3255,6 +3350,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     setQueryTempLoading(true);
     setQueryTempError(null);
     setQueryTempClearMessage(null);
+    setCsvCacheClearMessage(null);
     void backend.getQueryTempUsage().then(
       (usage) => {
         setQueryTempUsage(usage);
@@ -3269,26 +3365,68 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   }
 
   function clearQueryTemp() {
-    if (queryTempLoading) return;
-    setQueryTempLoading(true);
+    if (queryTempLoading || queryTempClearing || csvCacheClearing) return;
+    setQueryTempClearing(true);
     setQueryTempError(null);
     setQueryTempClearMessage(null);
     void backend.clearQueryTemp().then(
       (result) => {
-        setQueryTempUsage(result.remainingUsage);
         setQueryTempClearMessage(
-          `Inactive query data cleared. ${result.deletedBytes.toLocaleString()} bytes deleted; ${result.remainingUsage.processBytes.toLocaleString()} bytes remain in use.`,
+          `Inactive query data cleared. ${result.deletedBytes.toLocaleString()} bytes deleted; ${result.remainingUsage.queryTempBytes.toLocaleString()} query temporary bytes remain in use. Reusable CSV cache was kept.`,
         );
         if (result.orphanFailureCount > 0) {
           setQueryTempError(
             `${result.orphanFailureCount.toLocaleString()} inactive item${result.orphanFailureCount === 1 ? "" : "s"} could not be removed. ${result.cleanupFailures.join(" ")}`,
           );
         }
-        setQueryTempLoading(false);
+        void backend.getQueryTempUsage().then(
+          (usage) => {
+            setQueryTempUsage(usage);
+            setQueryTempClearing(false);
+          },
+          (error: unknown) => {
+            setQueryTempError(toOpenFileError(error).message);
+            setQueryTempClearing(false);
+          },
+        );
       },
       (error: unknown) => {
         setQueryTempError(toOpenFileError(error).message);
-        setQueryTempLoading(false);
+        setQueryTempClearing(false);
+      },
+    );
+  }
+
+  function clearCsvCache() {
+    if (queryTempLoading || queryTempClearing || csvCacheClearing) return;
+    setCsvCacheClearing(true);
+    setQueryTempError(null);
+    setCsvCacheClearMessage(null);
+    void backend.clearCsvCache().then(
+      (result) => {
+        const failures = result.cleanupFailures.length;
+        setCsvCacheClearMessage(
+          `CSV cache clear finished. ${result.deletedBytes.toLocaleString()} bytes in ${result.deletedEntries.toLocaleString()} ${result.deletedEntries === 1 ? "item" : "items"} deleted; ${result.skippedActiveBytes.toLocaleString()} bytes in ${result.skippedActiveEntries.toLocaleString()} active ${result.skippedActiveEntries === 1 ? "item was" : "items were"} skipped; ${result.remainingCacheBytes.toLocaleString()} bytes in ${result.remainingCacheEntries.toLocaleString()} ${result.remainingCacheEntries === 1 ? "item" : "items"} remain. Source CSV files were not changed.${failures > 0 ? ` ${failures.toLocaleString()} cleanup ${failures === 1 ? "failure" : "failures"}: ${result.cleanupFailures.join(" ")}` : ""}`,
+        );
+        if (failures > 0) {
+          setQueryTempError(
+            `${failures.toLocaleString()} CSV cache ${failures === 1 ? "item could" : "items could"} not be removed.`,
+          );
+        }
+        void backend.getQueryTempUsage().then(
+          (usage) => {
+            setQueryTempUsage(usage);
+            setCsvCacheClearing(false);
+          },
+          (error: unknown) => {
+            setQueryTempError(toOpenFileError(error).message);
+            setCsvCacheClearing(false);
+          },
+        );
+      },
+      (error: unknown) => {
+        setQueryTempError(toOpenFileError(error).message);
+        setCsvCacheClearing(false);
       },
     );
   }
@@ -3731,9 +3869,13 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           saveError={settingsSaveError}
           tempUsage={queryTempUsage}
           tempUsageError={queryTempError}
-          tempClearMessage={queryTempClearMessage}
+          queryTempClearMessage={queryTempClearMessage}
+          csvCacheClearMessage={csvCacheClearMessage}
           tempUsageLoading={queryTempLoading}
+          queryTempClearing={queryTempClearing}
+          csvCacheClearing={csvCacheClearing}
           onClearTemp={clearQueryTemp}
+          onClearCsvCache={clearCsvCache}
         />
       )}
       {copySettingsOpen && (

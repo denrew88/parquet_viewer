@@ -162,6 +162,12 @@ test("blank-first multi-sort keeps incomplete rows as UI draft", async ({ page }
 test("display formats expose primary controls and one inline detail accordion", async ({
   page,
 }, testInfo) => {
+  const artifactName = {
+    "desktop-compact": "compact",
+    "desktop-minimum": "minimum",
+    "desktop-wide": "wide",
+  }[testInfo.project.name];
+  if (!artifactName) throw new Error(`Unexpected Playwright project: ${testInfo.project.name}`);
   await page.getByRole("button", { name: "Settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings" });
   const title = dialog.getByRole("heading", { name: "Settings", exact: true });
@@ -179,8 +185,39 @@ test("display formats expose primary controls and one inline detail accordion", 
   ]) {
     await expect(dialog.getByRole("combobox", { name })).toBeVisible();
   }
+  const selectArrowGeometry = await dialog
+    .locator(".display-format-row select")
+    .evaluateAll((selects) =>
+      selects.map((select) => {
+        const style = getComputedStyle(select);
+        const bounds = select.getBoundingClientRect();
+        return {
+          label: select.getAttribute("aria-label"),
+          width: bounds.width,
+          paddingRight: Number.parseFloat(style.paddingRight),
+          backgroundImage: style.backgroundImage,
+          backgroundPosition: style.backgroundPosition,
+          appearance: style.appearance,
+        };
+      }),
+    );
+  expect(selectArrowGeometry.length).toBeGreaterThan(0);
+  expect(
+    selectArrowGeometry.every(
+      (item) =>
+        item.paddingRight >= 28 &&
+        item.width >= 108 &&
+        item.backgroundImage !== "none" &&
+        item.backgroundPosition.includes("9px") &&
+        item.appearance === "none",
+    ),
+  ).toBe(true);
   await expect(dialog.getByRole("button", { name: /All formats/i })).toHaveCount(0);
+  await section.evaluate((element) => element.scrollIntoView({ block: "start" }));
   await capture(page, "settings-inline", testInfo);
+  await dialog.screenshot({
+    path: `artifacts/phase-15/ui/display-formats-${artifactName}.png`,
+  });
 
   const timestampToggle = dialog.getByRole("button", { name: /(?:Show|Hide) Timestamp details/i });
   const durationToggle = dialog.getByRole("button", { name: /(?:Show|Hide) Duration details/i });
@@ -219,7 +256,7 @@ test("display formats expose primary controls and one inline detail accordion", 
   expect(typography.bodyScrollWidth).toBeLessThanOrEqual(typography.bodyClientWidth + 1);
   await expectInsideViewport(dialog);
   await capture(page, "settings-accordion", testInfo);
-  await saveGeometry(testInfo, "settings", { typography });
+  await saveGeometry(testInfo, "settings", { typography, selectArrowGeometry });
 });
 
 test("column drag floats mounted cells, live-reflows peers, and restores source order", async ({

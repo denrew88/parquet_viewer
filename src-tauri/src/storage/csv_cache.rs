@@ -92,6 +92,26 @@ pub(crate) struct CsvCacheAudit {
     pub copied_bytes: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CsvCacheUsage {
+    pub bytes: u64,
+    pub entries: usize,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CsvCacheCleanupResult {
+    pub deleted_bytes: u64,
+    pub deleted_entries: usize,
+    pub skipped_active_bytes: u64,
+    pub skipped_active_entries: usize,
+    pub cleanup_failures: Vec<String>,
+    pub remaining_cache_bytes: u64,
+    pub remaining_cache_entries: usize,
+}
+
 #[derive(Debug)]
 pub(crate) struct CsvPersistentCache {
     root: PathBuf,
@@ -176,46 +196,87 @@ impl CsvPersistentCache {
     ) -> Result<Option<CsvCacheHit>, DataError> {
         let _global = self.lock_global()?;
         self.refresh_usage_locked()?;
-        let key = cache_key(identity);
-        let path = self.root.join(&key);
-        if !path.is_dir() {
-            self.record_miss();
-            return Ok(None);
-        }
-        if path.join(PARTIAL_MARKER).is_file() {
-            self.record_corruption();
-            self.remove_if_unleased_locked(&key, &path)?;
-            self.record_miss();
-            return Ok(None);
-        }
-        let validated = validate_entry_fast(&path, identity);
-        let manifest = match validated.and_then(|validation| match validation {
-            EntryValidation::Fast(manifest) => Ok(manifest),
-            EntryValidation::NeedsScrub(manifest) => {
-                self.record_scrub();
-                scrub_entry(&path, identity, manifest)
-            }
-        }) {
-            Ok(manifest) => manifest,
-            Err(_) => {
+        for (key, path) in self.compatible_lookup_candidates_locked(identity)? {
+            if path.join(PARTIAL_MARKER).is_file() {
                 self.record_corruption();
                 self.remove_if_unleased_locked(&key, &path)?;
-                self.record_miss();
-                return Ok(None);
+                continue;
             }
-        };
-        self.touch(&path)?;
-        // Acquire the shared entry lease while the global lock still covers
-        // validation, so another process cannot evict between the two steps.
-        let lease = self.lease(key)?;
-        if let Ok(mut audit) = self.audit.lock() {
-            audit.hits = audit.hits.saturating_add(1);
+            let validated = validate_entry_fast(&path, identity);
+            let manifest = match validated.and_then(|validation| match validation {
+                EntryValidation::Fast(manifest) => Ok(manifest),
+                EntryValidation::NeedsScrub(manifest) => {
+                    self.record_scrub();
+                    scrub_entry(&path, identity, manifest)
+                }
+            }) {
+                Ok(manifest) => manifest,
+                Err(_) => {
+                    self.record_corruption();
+                    self.remove_if_unleased_locked(&key, &path)?;
+                    continue;
+                }
+            };
+            self.touch(&path)?;
+            // Acquire the shared entry lease while the global lock still covers
+            // validation, so another process cannot evict between the two steps.
+            let lease = self.lease(key)?;
+            if let Ok(mut audit) = self.audit.lock() {
+                audit.hits = audit.hits.saturating_add(1);
+            }
+            return Ok(Some(CsvCacheHit {
+                path,
+                rows: manifest.rows,
+                lease,
+            }));
         }
-        Ok(Some(CsvCacheHit {
-            path,
-            rows: manifest.rows,
-            lease,
-        }))
+        self.record_miss();
+        Ok(None)
+    }
+
+    fn compatible_lookup_candidates_locked(
+        &self,
+        identity: &CsvCacheIdentity,
+    ) -> Result<Vec<(String, PathBuf)>, DataError> {
+        let current_key = cache_key(identity);
+        let current_path = self.root.join(&current_key);
+        let mut candidates = Vec::new();
+        if current_path.is_dir() {
+            candidates.push((current_key.clone(), current_path));
+        }
+
+        // compact-v3 initially included the application version in the directory
+        // hash. Discover those bounded (max 16) entries by their manifest so an
+        // application update does not show a false cold-preparation state.
+        let mut compatible_legacy = Vec::new();
+        for (key, path) in self.owned_entry_paths()? {
+            if key == current_key {
+                continue;
+            }
+            let manifest_path = path.join(MANIFEST_NAME);
+            let Ok(bytes) = fs::read(&manifest_path) else {
+                continue;
+            };
+            let Ok(manifest) = serde_json::from_slice::<CsvCacheManifest>(&bytes) else {
+                continue;
+            };
+            if !manifest.matches(identity) {
+                continue;
+            }
+            let access = fs::metadata(path.join("last-access"))
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_nanos());
+            compatible_legacy.push((key, path, access));
+        }
+        compatible_legacy.sort_by_key(|candidate| std::cmp::Reverse(candidate.2));
+        candidates.extend(
+            compatible_legacy
+                .into_iter()
+                .map(|(key, path, _)| (key, path)),
+        );
+        Ok(candidates)
     }
 
     pub(crate) fn has_publish_artifacts(&self, source_directory: &Path) -> Result<bool, DataError> {
@@ -359,6 +420,92 @@ impl CsvPersistentCache {
         self.entries()
             .map(|entries| entries.into_iter().map(|entry| entry.3).collect())
             .unwrap_or_default()
+    }
+
+    pub(crate) fn usage(&self) -> Result<CsvCacheUsage, DataError> {
+        let _global = self.lock_global()?;
+        self.usage_locked()
+    }
+
+    pub(crate) fn clear_inactive(&self) -> Result<CsvCacheCleanupResult, DataError> {
+        let _global = self.lock_global()?;
+        let mut result = CsvCacheCleanupResult::default();
+
+        for (key, path) in self.owned_entry_paths()? {
+            let bytes = match directory_bytes(&path) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    result
+                        .cleanup_failures
+                        .push(format!("{}: {}", path.display(), error.message));
+                    continue;
+                }
+            };
+            let lock = match self.try_exclusive_entry_lock(&key) {
+                Ok(Some(lock)) => lock,
+                Ok(None) => {
+                    result.skipped_active_bytes = result.skipped_active_bytes.saturating_add(bytes);
+                    result.skipped_active_entries = result.skipped_active_entries.saturating_add(1);
+                    continue;
+                }
+                Err(error) => {
+                    result
+                        .cleanup_failures
+                        .push(format!("{}: {}", path.display(), error.message));
+                    continue;
+                }
+            };
+
+            match fs::remove_dir_all(&path) {
+                Ok(()) => {
+                    result.deleted_bytes = result.deleted_bytes.saturating_add(bytes);
+                    result.deleted_entries = result.deleted_entries.saturating_add(1);
+                }
+                Err(error) => result
+                    .cleanup_failures
+                    .push(format!("{}: {error}", path.display())),
+            }
+            if let Err(error) = FileExt::unlock(&lock) {
+                result.cleanup_failures.push(format!(
+                    "{}: failed to release the CSV cache entry lock: {error}",
+                    path.display()
+                ));
+            }
+            if !path.exists() {
+                let _ = fs::remove_file(self.lock_directory.join(format!("{key}.lock")));
+            }
+        }
+
+        if let Err(error) = self.refresh_usage_locked() {
+            result.cleanup_failures.push(format!(
+                "{}: failed to refresh CSV cache budget usage: {}",
+                self.root.display(),
+                error.message
+            ));
+        }
+        let remaining = self.owned_entry_paths()?;
+        result.remaining_cache_entries = remaining.len();
+        for (_, path) in remaining {
+            match directory_bytes(&path) {
+                Ok(bytes) => {
+                    result.remaining_cache_bytes =
+                        result.remaining_cache_bytes.saturating_add(bytes);
+                }
+                Err(error) => {
+                    let prefix = format!("{}:", path.display());
+                    if !result
+                        .cleanup_failures
+                        .iter()
+                        .any(|failure| failure.starts_with(&prefix))
+                    {
+                        result
+                            .cleanup_failures
+                            .push(format!("{} {}", prefix, error.message));
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
 
     fn lease(&self, key: String) -> Result<CsvPersistentCacheLease, DataError> {
@@ -529,6 +676,44 @@ impl CsvPersistentCache {
         Ok(output)
     }
 
+    fn owned_entries(&self) -> Result<Vec<(String, u64, PathBuf)>, DataError> {
+        self.owned_entry_paths()?
+            .into_iter()
+            .map(|(key, path)| Ok((key, directory_bytes(&path)?, path)))
+            .collect()
+    }
+
+    fn owned_entry_paths(&self) -> Result<Vec<(String, PathBuf)>, DataError> {
+        let mut output = Vec::new();
+        for entry in fs::read_dir(&self.root).map_err(|error| DataError::io(&self.root, error))? {
+            let entry = entry.map_err(|error| DataError::io(&self.root, error))?;
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .map_err(|error| DataError::io(&path, error))?;
+            if !file_type.is_dir() {
+                continue;
+            }
+            let Some(key) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !is_stable_cache_key(&key) {
+                continue;
+            }
+            output.push((key, path));
+        }
+        Ok(output)
+    }
+
+    fn usage_locked(&self) -> Result<CsvCacheUsage, DataError> {
+        let entries = self.owned_entries()?;
+        Ok(CsvCacheUsage {
+            bytes: entries.iter().map(|entry| entry.1).sum(),
+            entries: entries.len(),
+            path: self.root.to_string_lossy().into_owned(),
+        })
+    }
+
     pub(crate) fn refresh_usage(&self) -> Result<(), DataError> {
         let _global = self.lock_global()?;
         self.refresh_usage_locked()
@@ -594,7 +779,6 @@ impl CsvCacheManifest {
 
     fn matches(&self, identity: &CsvCacheIdentity) -> bool {
         self.cache_schema_version == CACHE_SCHEMA_VERSION
-            && self.application_version == env!("CARGO_PKG_VERSION")
             && self.canonical_path == identity.canonical_path
             && self.file_identity == identity.file_identity
             && self.source_bytes == identity.source_bytes
@@ -1014,6 +1198,29 @@ fn validate_offsets(path: &Path, rows: u64) -> Result<(), DataError> {
 fn cache_key(identity: &CsvCacheIdentity) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in format!(
+        "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}",
+        identity.canonical_path,
+        identity.file_identity,
+        identity.source_bytes,
+        identity.modified_nanos,
+        identity.created_nanos,
+        identity.profile_identity,
+        identity.columns,
+        identity.source_columns,
+        CACHE_SCHEMA_VERSION
+    )
+    .bytes()
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+#[cfg(test)]
+fn legacy_versioned_cache_key(identity: &CsvCacheIdentity, application_version: &str) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in format!(
         "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}|{}",
         identity.canonical_path,
         identity.file_identity,
@@ -1024,7 +1231,7 @@ fn cache_key(identity: &CsvCacheIdentity) -> String {
         identity.columns,
         identity.source_columns,
         CACHE_SCHEMA_VERSION,
-        env!("CARGO_PKG_VERSION")
+        application_version
     )
     .bytes()
     {
@@ -1032,6 +1239,13 @@ fn cache_key(identity: &CsvCacheIdentity) -> String {
         hash = hash.wrapping_mul(0x1000_0000_01b3);
     }
     format!("{hash:016x}")
+}
+
+fn is_stable_cache_key(key: &str) -> bool {
+    key.len() == 16
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn directory_bytes(path: &Path) -> Result<u64, DataError> {
@@ -1319,6 +1533,11 @@ mod tests {
                 fs::write(&ready, b"ready").unwrap();
                 wait_for_path(&release);
             }
+            "published-lease" => {
+                let _lease = cache.lease(cache_key(&publish_identity())).unwrap();
+                fs::write(&ready, b"ready").unwrap();
+                wait_for_path(&release);
+            }
             _ => panic!("unknown child cache lock mode"),
         }
     }
@@ -1515,6 +1734,189 @@ mod tests {
         assert_eq!(hit.path, stable);
         fs::remove_file(replacement_stable.join("rename-blocker")).unwrap();
         fs::remove_dir(&replacement_stable).unwrap();
+    }
+
+    #[test]
+    fn cache_usage_and_clear_report_active_deleted_and_remaining_entries() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let source = local_data.path().join("clear-artifacts");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        let usage = cache.usage().unwrap();
+        assert!(usage.bytes > 0);
+        assert_eq!(usage.entries, 1);
+        assert_eq!(usage.path, cache.root.to_string_lossy());
+
+        let unrelated = cache.root.join("source-files-must-never-be-cleared");
+        fs::create_dir(&unrelated).unwrap();
+        fs::write(unrelated.join("source.csv"), b"source-data").unwrap();
+        let active = cache.clear_inactive().unwrap();
+        assert_eq!(active.deleted_bytes, 0);
+        assert_eq!(active.deleted_entries, 0);
+        assert_eq!(active.skipped_active_bytes, usage.bytes);
+        assert_eq!(active.skipped_active_entries, 1);
+        assert!(active.cleanup_failures.is_empty());
+        assert_eq!(active.remaining_cache_bytes, usage.bytes);
+        assert_eq!(active.remaining_cache_entries, 1);
+        assert!(lease.path().is_dir());
+        assert!(unrelated.join("source.csv").is_file());
+
+        drop(lease);
+        let deleted = cache.clear_inactive().unwrap();
+        assert_eq!(deleted.deleted_bytes, usage.bytes);
+        assert_eq!(deleted.deleted_entries, 1);
+        assert_eq!(deleted.skipped_active_bytes, 0);
+        assert_eq!(deleted.skipped_active_entries, 0);
+        assert!(deleted.cleanup_failures.is_empty());
+        assert_eq!(deleted.remaining_cache_bytes, 0);
+        assert_eq!(deleted.remaining_cache_entries, 0);
+        assert!(unrelated.join("source.csv").is_file());
+
+        let repeated = cache.clear_inactive().unwrap();
+        assert_eq!(repeated, CsvCacheCleanupResult::default());
+    }
+
+    #[test]
+    fn usage_and_clear_include_app_owned_corrupt_entries_without_a_manifest() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let corrupt = cache.root.join("0123456789abcdef");
+        fs::create_dir(&corrupt).unwrap();
+        fs::write(corrupt.join("orphaned-artifact"), b"cache-bytes").unwrap();
+
+        let usage = cache.usage().unwrap();
+        assert_eq!(usage.bytes, 11);
+        assert_eq!(usage.entries, 1);
+        let cleared = cache.clear_inactive().unwrap();
+        assert_eq!(cleared.deleted_bytes, 11);
+        assert_eq!(cleared.deleted_entries, 1);
+        assert_eq!(cleared.remaining_cache_bytes, 0);
+        assert_eq!(cleared.remaining_cache_entries, 0);
+        assert!(!corrupt.exists());
+    }
+
+    #[test]
+    fn cache_clear_records_entry_lock_failures_and_leaves_the_entry_intact() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let source = local_data.path().join("failure-artifacts");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        let entry = lease.path().to_path_buf();
+        let key = cache_key(&publish_identity());
+        drop(lease);
+
+        let lock_path = cache.lock_directory.join(format!("{key}.lock"));
+        fs::remove_file(&lock_path).unwrap();
+        fs::create_dir(&lock_path).unwrap();
+        let result = cache.clear_inactive().unwrap();
+        assert_eq!(result.deleted_entries, 0);
+        assert_eq!(result.skipped_active_entries, 0);
+        assert_eq!(result.cleanup_failures.len(), 1);
+        assert_eq!(result.remaining_cache_entries, 1);
+        assert!(entry.is_dir());
+
+        fs::remove_dir(&lock_path).unwrap();
+        let retry = cache.clear_inactive().unwrap();
+        assert_eq!(retry.deleted_entries, 1);
+        assert!(retry.cleanup_failures.is_empty());
+        assert_eq!(retry.remaining_cache_entries, 0);
+    }
+
+    #[test]
+    fn cache_clear_skips_an_entry_leased_by_another_process() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let source = local_data.path().join("subprocess-clear-artifacts");
+        write_publish_artifacts(&source);
+        drop(
+            cache
+                .publish(&publish_identity(), &source, || Ok(()))
+                .unwrap(),
+        );
+
+        let ready = local_data.path().join("clear-lease.ready");
+        let release = local_data.path().join("clear-lease.release");
+        let mut child = spawn_lock_child("published-lease", local_data.path(), &ready, &release);
+        wait_for_path(&ready);
+        let skipped = cache.clear_inactive().unwrap();
+        assert_eq!(skipped.deleted_entries, 0);
+        assert_eq!(skipped.skipped_active_entries, 1);
+        assert_eq!(skipped.remaining_cache_entries, 1);
+
+        fs::write(&release, b"release").unwrap();
+        assert!(child.wait().unwrap().success());
+        let deleted = cache.clear_inactive().unwrap();
+        assert_eq!(deleted.deleted_entries, 1);
+        assert_eq!(deleted.remaining_cache_entries, 0);
+    }
+
+    #[test]
+    fn manifest_application_version_does_not_invalidate_compatible_cache_layout() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let source = local_data.path().join("version-artifacts");
+        write_publish_artifacts(&source);
+        drop(
+            cache
+                .publish(&publish_identity(), &source, || Ok(()))
+                .unwrap(),
+        );
+        let entry = cache.root.join(cache_key(&publish_identity()));
+        let manifest_path = entry.join(MANIFEST_NAME);
+        let mut manifest: CsvCacheManifest =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest.application_version = String::from("999.0.0-test");
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+        assert!(manifest.matches(&publish_identity()));
+        let hit = cache
+            .lookup(&publish_identity())
+            .unwrap()
+            .expect("application version alone must not invalidate the cache");
+        assert_eq!(hit.path, entry);
+
+        manifest.cache_schema_version = CACHE_SCHEMA_VERSION + 1;
+        assert!(!manifest.matches(&publish_identity()));
+        manifest.cache_schema_version = CACHE_SCHEMA_VERSION;
+        let mut changed_profile = publish_identity();
+        changed_profile.profile_identity = String::from("different-profile");
+        assert!(!manifest.matches(&changed_profile));
+    }
+
+    #[test]
+    fn legacy_versioned_key_is_discovered_without_repreparing() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        let identity = publish_identity();
+        let source = local_data.path().join("legacy-version-artifacts");
+        write_publish_artifacts(&source);
+        drop(cache.publish(&identity, &source, || Ok(())).unwrap());
+
+        let current_entry = cache.root.join(cache_key(&identity));
+        let legacy_key = legacy_versioned_cache_key(&identity, "0.0.legacy");
+        let legacy_entry = cache.root.join(&legacy_key);
+        fs::rename(&current_entry, &legacy_entry).unwrap();
+
+        let hit = cache
+            .lookup(&identity)
+            .unwrap()
+            .expect("compatible cache under the old application-version key must be reused");
+        assert_eq!(hit.path, legacy_entry);
+        assert_eq!(cache.audit().hits, 1);
+        assert_eq!(cache.audit().misses, 0);
+        assert!(!current_entry.exists());
     }
 
     #[test]

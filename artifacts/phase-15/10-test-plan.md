@@ -147,7 +147,34 @@ limit으로 판정한다.
 | `P15-BYTE-003` | preparing 중 direct foreground page/raw | 별도 계수하되 structure/conversion full scan 재시작 0 |
 | `P15-BYTE-004` | Ready page/query/copy/navigation | 각 동작의 원본 CSV read 0 |
 
-## 8. 회귀와 최종 증거
+## 8. persistent CSV cache 관리와 warm-hit UX gate
+
+| ID | 검증 | 완료 기준 |
+| --- | --- | --- |
+| `P15-STORAGE-001` | storage usage DTO | query temporary byte, persistent CSV cache byte·항목 수·경로, 전체 사용량과 limit이 혼동 없이 분리됨 |
+| `P15-STORAGE-002` | Settings 설명 | cache 목적·실제 경로·삭제 효과와 원본 비변경을 표시하며 긴 경로가 세 viewport에서 잘리지 않음 |
+| `P15-STORAGE-003` | 독립 삭제 | query temporary clear는 CSV cache를 지우지 않고 CSV cache clear는 query temporary data를 지우지 않음 |
+| `P15-STORAGE-004` | 비활성 cache clear | 정상·빈 cache·반복 삭제가 성공하고 삭제 byte·항목·남은 사용량이 정확함 |
+| `P15-STORAGE-005` | active lease 보호 | 같은 process와 다른 process에서 사용 중인 항목을 건너뛰고 skipped 항목·byte를 보고함 |
+| `P15-STORAGE-006` | open/publish/clear race | partial·valid entry 손상, source 삭제·변경과 use-after-delete가 없음 |
+| `P15-STORAGE-007` | 다중 process clear | global serialization 아래 중복 삭제나 다른 process cache 손상이 없음 |
+| `P15-STORAGE-008` | 부분 삭제 실패 | 성공·건너뜀·실패와 remaining usage를 실제 결과대로 구분함 |
+| `P15-STORAGE-009` | 삭제 경계 | frontend가 임의 경로를 전달하지 않고 app-owned `csv-cache-v1` 밖과 원본 파일은 변경하지 않음 |
+| `P15-STORAGE-010` | Settings interaction | 확인·취소·disabled·focus·live result가 동작하고 1440×900, 1024×768, 800×600 geometry/screenshot PASS |
+| `P15-STORAGE-011` | installed native | 설치 앱의 실제 app-local-data 경로, 사용량과 비활성 cache 삭제 PASS |
+| `P15-WARM-001` | process restart cache hit | 즉시 `Ready`, source read 0, publish/miss 0, row count `Complete` |
+| `P15-WARM-002` | 중복 prepare | 같은 identity 요청은 하나로 합쳐지고 worker·poll이 중복되지 않음 |
+| `P15-WARM-003` | immediate Ready UI | preparation spinner·Cancel·poll과 `Calculating CSV row count`가 DOM에 한 번도 나타나지 않음 |
+| `P15-WARM-004` | release high CSV 10회 reopen | cache hit p95 1초 이하, 준비 UI 0회, entry 수 증가 0, artifact hash 불변 |
+| `P15-WARM-005` | release 다중 process | 같은 cache를 두 process가 열어도 source 재준비·손상 없이 hit |
+| `P15-WARM-006` | application update compatibility | 같은 cache schema/layout은 앱 버전만 달라져도 재사용하고, 이전 version 포함 on-disk key도 bounded manifest 탐색으로 source scan·준비 UI 없이 hit하며, incompatible schema는 한 번 재작성 후 hit |
+| `P15-WARM-010` | cold/warm progress 분리 | cold preparation은 byte 기반 progress bar가 표시·증가하고 warm Ready는 progress DOM과 flash가 0 |
+| `P15-UI-001` | display format select arrow geometry | 세 viewport에서 선택 텍스트와 28px 이상 분리된 단일 화살표가 표시되고 clipping·overlap 0 |
+| `P15-WARM-007` | 정확한 invalidation | source identity, header/profile, cache schema/layout 변경에서만 miss |
+| `P15-WARM-008` | hit restore 실패 | full preparation처럼 위장하지 않고 actionable terminal error 또는 명시적 안전 fallback을 제공 |
+| `P15-WARM-009` | clear 후 lifecycle | 삭제 뒤 첫 reopen만 다시 준비하고 다음 reopen은 UI 없는 hit |
+
+## 9. 회귀와 최종 증거
 
 - Rust format, clippy `-D warnings`, 관련/전체 test
 - frontend format, lint, typecheck, Vitest 전체
@@ -161,7 +188,7 @@ limit으로 판정한다.
 Phase 14에서 남은 Windows clipboard full-copy, 150% DPI와 installer 실행 증거도 계속 추적한다.
 외부 환경 때문에 실행하지 못한 항목은 숨기지 않고 `BLOCKED`로 남긴다.
 
-## 9. 최종 Phase gate
+## 10. 최종 Phase gate
 
 | ID | 계층·담당 | 필수 결과 |
 | --- | --- | --- |

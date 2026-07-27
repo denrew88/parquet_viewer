@@ -77,12 +77,16 @@ export interface AppSettingsDialogProps {
   saveError?: string | null;
   tempUsage?: QueryTempUsage | null;
   tempUsageError?: string | null;
-  tempClearMessage?: string | null;
+  queryTempClearMessage?: string | null;
+  csvCacheClearMessage?: string | null;
   tempUsageLoading?: boolean;
+  queryTempClearing?: boolean;
+  csvCacheClearing?: boolean;
   onApply(settings: AppSettings): void;
   onCancel(): void;
   onOpenCopySettings(): void;
   onClearTemp?(): void;
+  onClearCsvCache?(): void;
 }
 
 export function AppSettingsDialog({
@@ -92,14 +96,25 @@ export function AppSettingsDialog({
   saveError = null,
   tempUsage = null,
   tempUsageError = null,
-  tempClearMessage = null,
+  queryTempClearMessage = null,
+  csvCacheClearMessage = null,
   tempUsageLoading = false,
+  queryTempClearing = false,
+  csvCacheClearing = false,
   onApply,
   onCancel,
   onOpenCopySettings,
   onClearTemp,
+  onClearCsvCache,
 }: AppSettingsDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const csvCacheClearButtonRef = useRef<HTMLButtonElement>(null);
+  const csvCacheConfirmButtonRef = useRef<HTMLButtonElement>(null);
+  const queryTempClearButtonRef = useRef<HTMLButtonElement>(null);
+  const wasCsvCacheClearing = useRef(false);
+  const wasQueryTempClearing = useRef(false);
+  const wasConfirmingCsvCacheClear = useRef(false);
+  const [confirmingCsvCacheClear, setConfirmingCsvCacheClear] = useState(false);
   const [csvMode, setCsvMode] = useState(initialSettings.csvDefaultParsingMode);
   const [queryLimitGiB, setQueryLimitGiB] = useState(
     String(initialSettings.queryTempLimitBytes / GIB),
@@ -164,8 +179,31 @@ export function AppSettingsDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (confirmingCsvCacheClear) {
+      csvCacheConfirmButtonRef.current?.focus();
+    } else if (wasConfirmingCsvCacheClear.current) {
+      csvCacheClearButtonRef.current?.focus();
+    }
+    wasConfirmingCsvCacheClear.current = confirmingCsvCacheClear;
+  }, [confirmingCsvCacheClear]);
+
+  useEffect(() => {
+    if (wasCsvCacheClearing.current && !csvCacheClearing) {
+      csvCacheClearButtonRef.current?.focus();
+    }
+    wasCsvCacheClearing.current = csvCacheClearing;
+  }, [csvCacheClearing]);
+
+  useEffect(() => {
+    if (wasQueryTempClearing.current && !queryTempClearing) {
+      queryTempClearButtonRef.current?.focus();
+    }
+    wasQueryTempClearing.current = queryTempClearing;
+  }, [queryTempClearing]);
+
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key === "Escape" && !isSaving) {
+    if (event.key === "Escape" && !isSaving && !queryTempClearing && !csvCacheClearing) {
       event.preventDefault();
       onCancel();
       return;
@@ -204,7 +242,7 @@ export function AppSettingsDialog({
           <button
             aria-label="Close settings"
             className="dialog-icon-button"
-            disabled={isSaving}
+            disabled={isSaving || queryTempClearing || csvCacheClearing}
             onClick={onCancel}
             title="Close settings"
             type="button"
@@ -636,8 +674,8 @@ export function AppSettingsDialog({
             <div className="settings-section__heading">
               <Database aria-hidden="true" />
               <div>
-                <h3 id="storage-heading">Temporary storage</h3>
-                <p>Maximum disk space available to query processing in this application process.</p>
+                <h3 id="storage-heading">Storage</h3>
+                <p>Query working data and reusable CSV cache are managed separately.</p>
               </div>
             </div>
             <label className="settings-number-field">
@@ -664,34 +702,146 @@ export function AppSettingsDialog({
             >
               {queryLimitError ?? "Allowed range: 64 MiB to 10 GiB."}
             </p>
-            <div className="query-temp-usage" aria-live="polite">
-              {tempUsageLoading ? (
-                <span role="status">
-                  <LoaderCircle aria-hidden="true" /> Reading temporary storage
-                </span>
-              ) : tempUsageError ? (
-                <span role="alert">{tempUsageError}</span>
-              ) : tempUsage ? (
-                <>
-                  <span>
-                    {formatStorage(tempUsage.processBytes)} used ·{" "}
-                    {tempUsage.activeQueries.toLocaleString()} active
-                  </span>
-                  <span>{formatStorage(tempUsage.availableBytes)} available on disk</span>
-                  <span>
-                    {formatStorage(tempUsage.safetyReserveBytes)} safety reserve ·{" "}
-                    {formatStorage(tempUsage.hardCapBytes)} hard cap
-                  </span>
-                </>
-              ) : null}
-              {tempClearMessage ? <span role="status">{tempClearMessage}</span> : null}
-              <button
-                disabled={tempUsageLoading || !onClearTemp}
-                onClick={onClearTemp}
-                type="button"
-              >
-                Clear inactive query data
-              </button>
+            {tempUsageLoading ? (
+              <div className="storage-loading" role="status">
+                <LoaderCircle aria-hidden="true" /> Reading storage usage
+              </div>
+            ) : tempUsageError ? (
+              <p className="storage-error" role="alert">
+                {tempUsageError}
+              </p>
+            ) : null}
+            {tempUsage ? (
+              <p className="storage-total">
+                Total app-managed storage: <strong>{formatStorage(tempUsage.processBytes)}</strong>
+              </p>
+            ) : null}
+            <div className="storage-groups">
+              <section aria-labelledby="query-temp-storage-heading" className="storage-group">
+                <div className="storage-group__summary">
+                  <div>
+                    <h4 id="query-temp-storage-heading">Query temporary data</h4>
+                    <p>Working files created for active filter and sort operations.</p>
+                  </div>
+                  <strong>{tempUsage ? formatStorage(tempUsage.queryTempBytes) : "—"}</strong>
+                </div>
+                {tempUsage ? (
+                  <div className="storage-facts">
+                    <span>{tempUsage.activeQueries.toLocaleString()} active queries</span>
+                    <span>{formatStorage(tempUsage.availableBytes)} available on disk</span>
+                    <span>
+                      {formatStorage(tempUsage.safetyReserveBytes)} safety reserve ·{" "}
+                      {formatStorage(tempUsage.hardCapBytes)} hard cap
+                    </span>
+                  </div>
+                ) : null}
+                <p className="storage-consequence">
+                  Clearing removes inactive query working files only. Reusable CSV cache is kept.
+                </p>
+                <div className="storage-action">
+                  <button
+                    disabled={
+                      tempUsageLoading || queryTempClearing || csvCacheClearing || !onClearTemp
+                    }
+                    onClick={onClearTemp}
+                    ref={queryTempClearButtonRef}
+                    type="button"
+                  >
+                    {queryTempClearing ? (
+                      <>
+                        <LoaderCircle aria-hidden="true" /> Clearing query data...
+                      </>
+                    ) : (
+                      "Clear inactive query data"
+                    )}
+                  </button>
+                </div>
+                <div aria-live="polite" aria-atomic="true" className="storage-result">
+                  {queryTempClearMessage ? (
+                    <span role="status">{queryTempClearMessage}</span>
+                  ) : null}
+                </div>
+              </section>
+
+              <section aria-labelledby="csv-cache-storage-heading" className="storage-group">
+                <div className="storage-group__summary">
+                  <div>
+                    <h4 id="csv-cache-storage-heading">Reusable CSV cache</h4>
+                    <p>
+                      Prepared CSV data is kept between app launches to make later opens faster.
+                    </p>
+                  </div>
+                  <strong>
+                    {tempUsage
+                      ? `${formatStorage(tempUsage.csvCacheBytes)} · ${tempUsage.csvCacheEntries.toLocaleString()} ${tempUsage.csvCacheEntries === 1 ? "item" : "items"}`
+                      : "—"}
+                  </strong>
+                </div>
+                <div className="storage-path">
+                  <span>Location</span>
+                  <code title={tempUsage?.csvCachePath}>{tempUsage?.csvCachePath ?? "—"}</code>
+                </div>
+                <p className="storage-consequence">
+                  Clearing removes inactive prepared data. Source CSV files are never changed, but
+                  the next open may need to prepare them again. Cache entries in active use are
+                  skipped.
+                </p>
+                {confirmingCsvCacheClear ? (
+                  <div
+                    aria-labelledby="csv-cache-confirmation-title"
+                    className="storage-confirmation"
+                    role="group"
+                  >
+                    <strong id="csv-cache-confirmation-title">Clear inactive CSV cache?</strong>
+                    <span>Source files stay unchanged. The next open may take longer.</span>
+                    <div>
+                      <button
+                        onClick={() => {
+                          setConfirmingCsvCacheClear(false);
+                        }}
+                        type="button"
+                      >
+                        Cancel cache clear
+                      </button>
+                      <button
+                        onClick={() => {
+                          setConfirmingCsvCacheClear(false);
+                          onClearCsvCache?.();
+                        }}
+                        ref={csvCacheConfirmButtonRef}
+                        type="button"
+                      >
+                        Confirm clear inactive CSV cache
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="storage-action">
+                    <button
+                      disabled={
+                        tempUsageLoading ||
+                        queryTempClearing ||
+                        csvCacheClearing ||
+                        !onClearCsvCache
+                      }
+                      onClick={() => setConfirmingCsvCacheClear(true)}
+                      ref={csvCacheClearButtonRef}
+                      type="button"
+                    >
+                      {csvCacheClearing ? (
+                        <>
+                          <LoaderCircle aria-hidden="true" /> Clearing CSV cache...
+                        </>
+                      ) : (
+                        "Clear inactive CSV cache"
+                      )}
+                    </button>
+                  </div>
+                )}
+                <div aria-live="polite" aria-atomic="true" className="storage-result">
+                  {csvCacheClearMessage ? <span role="status">{csvCacheClearMessage}</span> : null}
+                </div>
+              </section>
             </div>
           </section>
         </div>
@@ -703,12 +853,18 @@ export function AppSettingsDialog({
         )}
 
         <footer className="settings-dialog__actions">
-          <button disabled={isSaving} onClick={onCancel} type="button">
+          <button
+            disabled={isSaving || queryTempClearing || csvCacheClearing}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             disabled={
               isSaving ||
+              queryTempClearing ||
+              csvCacheClearing ||
               queryLimitError !== null ||
               copyMaxCellsError !== null ||
               copyMaxBytesError !== null

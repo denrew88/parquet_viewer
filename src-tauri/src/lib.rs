@@ -67,6 +67,7 @@ pub fn run() {
             commands::cancel_data_boundary_navigation,
             commands::get_query_temp_usage,
             commands::clear_query_temp,
+            commands::clear_csv_cache,
             commands::select_data_file,
             commands::select_data_file_paths,
             commands::open_data_file,

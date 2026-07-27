@@ -49,3 +49,12 @@ thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
+
+# Keep lightweight line information for this workspace while preventing large
+# native dependencies such as DuckDB and Polars from producing multi-GiB debug
+# symbols in target/debug/deps.
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = 0

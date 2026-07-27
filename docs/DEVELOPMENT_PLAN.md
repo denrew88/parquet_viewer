@@ -727,6 +727,10 @@ raw·typed·empty·invalid 의미와 DuckDB query 계약을 유지하면서 boun
   5회 median 14.701초·p95 14.931초·peak RSS 약 1.150GiB를 통과하고 default feature로 연결했다.
   linker warning 0, 최종 default-Polars native·clean install·soak/fault 증거는 남아 있음
 - source read, decoded bytes, writer queue, cache 구성, stage progress 계측
+- Settings에 query temporary data와 persistent CSV cache의 사용량을 분리해 표시하고, 경로·항목 수·삭제
+  영향을 설명하는 비활성 CSV cache 삭제 기능 제공
+- warm cache 복원 시 row count/index 상태를 `Complete`로 함께 게시해 preparation/row-count UI와 polling이
+  나타나지 않도록 하고 release 재열기 회귀 검증
 - Phase 14의 page p95, cold 5회, fault, soak, copy와 native 증거 공백 재검증
 
 ### 완료 조건
@@ -736,6 +740,10 @@ raw·typed·empty·invalid 의미와 DuckDB query 계약을 유지하면서 boun
 - peak RSS 1.5GiB, decoded batch 64MiB, cancel terminal 1초 상한을 지킨다.
 - direct preview와 Ready cache의 typed/raw/empty/invalid, profile 변경, page/query/copy 결과가 같다.
 - Ready page p95 20ms, warm cache Ready 1초, Ready 이후 navigation source read 0을 만족한다.
+- persistent cache 사용량·경로·삭제 결과가 Settings에서 명확하고 active lease와 app-owned 경계를 지킨다.
+- 같은 cache schema/layout의 warm hit는 앱 버전과 무관하게 source scan 및 준비 UI 없이 즉시 Ready다.
+- 이전 release의 version 포함 directory key로 남은 호환 compact-v3 entry도 manifest로 발견해 즉시
+  재사용하며, cache 삭제 뒤 storage 사용량은 backend에서 전체 snapshot을 다시 조회한다.
 - Polars 실행 파일·installer 증가량과 dependency audit, 사용자의 runtime dependency 채택 결정을
   기록한다. 이 조건은 `60-dependency-package-audit.md`에서 충족했다.
 - 전체 Rust/frontend/E2E/release/native gate와 Phase 14에서 승계한 필수 증거가 PASS다.

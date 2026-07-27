@@ -24,6 +24,7 @@ import {
   parseDistinctValuesResponse,
   parseFindQueryMatchResponse,
   parseFindBoundaryResponse,
+  parseCsvCacheCleanupResult,
   parseQueryTempCleanupResult,
   parseQueryTempUsage,
   parseOpenDataRequest,
@@ -807,6 +808,10 @@ describe("backend adapters", () => {
       .mockResolvedValueOnce({ ...validQueryStatus(), state: "cancelled" })
       .mockResolvedValueOnce({
         processBytes: 10,
+        queryTempBytes: 6,
+        csvCacheBytes: 4,
+        csvCacheEntries: 1,
+        csvCachePath: "C:\\cache",
         limitBytes: 1_000,
         availableBytes: 20_000,
         activeQueries: 0,
@@ -821,6 +826,10 @@ describe("backend adapters", () => {
         cleanupFailures: [],
         remainingUsage: {
           processBytes: 0,
+          queryTempBytes: 0,
+          csvCacheBytes: 0,
+          csvCacheEntries: 0,
+          csvCachePath: "C:\\cache",
           limitBytes: 1_000,
           availableBytes: 20_010,
           activeQueries: 0,
@@ -829,6 +838,15 @@ describe("backend adapters", () => {
           hardCapBytes: 10_000,
           freeBytes: 20_010,
         },
+      })
+      .mockResolvedValueOnce({
+        deletedBytes: 4,
+        deletedEntries: 1,
+        skippedActiveBytes: 0,
+        skippedActiveEntries: 0,
+        cleanupFailures: [],
+        remainingCacheBytes: 0,
+        remainingCacheEntries: 0,
       });
 
     await tauriBackend.executeQuery(executeRequest);
@@ -855,6 +873,8 @@ describe("backend adapters", () => {
     expect(invokeMock).toHaveBeenLastCalledWith("get_query_temp_usage", undefined);
     await tauriBackend.clearQueryTemp();
     expect(invokeMock).toHaveBeenLastCalledWith("clear_query_temp", undefined);
+    await tauriBackend.clearCsvCache();
+    expect(invokeMock).toHaveBeenLastCalledWith("clear_csv_cache", undefined);
   });
 
   it("PAGE-002 rejects missing, empty, duplicate, and oversized query projections", async () => {
@@ -952,6 +972,17 @@ describe("backend adapters", () => {
       }),
     ).toThrow(DataViewerError);
     expect(() => parseQueryTempUsage({ processBytes: -1 })).toThrow(DataViewerError);
+    expect(() =>
+      parseCsvCacheCleanupResult({
+        deletedBytes: 10,
+        deletedEntries: 1,
+        skippedActiveBytes: 0,
+        skippedActiveEntries: 0,
+        cleanupFailures: [],
+        remainingCacheBytes: -1,
+        remainingCacheEntries: 0,
+      }),
+    ).toThrow(DataViewerError);
     expect(() =>
       parseQueryTempCleanupResult({
         deletedBytes: 10,

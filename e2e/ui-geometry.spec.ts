@@ -44,6 +44,12 @@ test("keeps primary UI, dialogs, and query popovers unclipped", async ({ page },
   await settingsDialog.screenshot({
     path: `artifacts/phase-10/ui/settings-${artifactName}.png`,
   });
+  await settingsDialog
+    .getByRole("heading", { name: "Reusable CSV cache" })
+    .scrollIntoViewIfNeeded();
+  await settingsDialog.screenshot({
+    path: `artifacts/phase-15/ui/storage-${artifactName}.png`,
+  });
   await settingsDialog.press("Escape");
 
   await page.getByRole("button", { name: "Close quoted-multiline.csv" }).click();

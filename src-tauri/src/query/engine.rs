@@ -34,8 +34,8 @@ use crate::{
         COPY_MAX_BATCH_CELLS, COPY_MAX_BATCH_ESTIMATED_BYTES,
     },
     storage::{
-        CsvCacheIdentity, CsvPersistentCache, CsvPersistentCacheLease, QueryTempCleanupResult,
-        QueryTempLease, QueryTempManager, QueryTempUsage,
+        CsvCacheCleanupResult, CsvCacheIdentity, CsvPersistentCache, CsvPersistentCacheLease,
+        QueryTempCleanupResult, QueryTempLease, QueryTempManager, QueryTempUsage,
     },
 };
 
@@ -1528,12 +1528,24 @@ impl QueryService {
     }
 
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
-        self.csv_cache.refresh_usage()?;
-        self.temp.usage()
+        let cache = self.csv_cache.usage()?;
+        self.temp.set_external_cache_bytes(cache.bytes);
+        let mut usage = self.temp.usage()?;
+        usage.csv_cache_bytes = cache.bytes;
+        usage.csv_cache_entries = cache.entries;
+        usage.csv_cache_path = cache.path;
+        usage.process_bytes = usage.query_temp_bytes.saturating_add(usage.csv_cache_bytes);
+        Ok(usage)
     }
 
     pub fn clear_temp(&self) -> Result<QueryTempCleanupResult, DataError> {
-        self.temp.clear_inactive()
+        let mut result = self.temp.clear_inactive()?;
+        result.remaining_usage = self.usage()?;
+        Ok(result)
+    }
+
+    pub fn clear_csv_cache(&self) -> Result<CsvCacheCleanupResult, DataError> {
+        self.csv_cache.clear_inactive()
     }
 
     pub fn shutdown(&self) {

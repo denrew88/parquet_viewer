@@ -138,5 +138,6 @@ npm run test:native:smoke
 
 `scripts/native_cdp_smoke.mjs`는 실제 Rust IPC와 WebView2를 사용해 CSV profile, sort/filter,
 grid selection과 Windows clipboard를 검증한다. 시작 시 app settings snapshot을 읽고 성공이나
-실패와 무관하게 종료 전에 원래 값을 복원한다. 최종 배포 빌드는 일반 `npm run tauri -- build`로
-다시 만들고 `remote-debugging-port`가 없는지 확인한다.
+실패와 무관하게 종료 전에 원래 값을 복원한다. 최종 배포 빌드는 `npm run release`로 다시 만들고
+`remote-debugging-port`가 없는지 확인한다. 이 명령은 EXE와 NSIS installer를 보존한 뒤 Cargo의
+Release 중간 산출물을 정리한다.

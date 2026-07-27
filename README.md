@@ -91,14 +91,19 @@ python scripts/audit_phase7_security.py
 실행 파일만 빌드:
 
 ```powershell
-npm run tauri build -- --no-bundle
+npm run release:exe
 ```
 
 NSIS installer 빌드:
 
 ```powershell
-npm run tauri build
+npm run release
 ```
+
+두 명령은 빌드가 성공한 뒤 Cargo의 Release 중간 산출물을 정리하고 최종 `data-viewer.exe`,
+`THIRD_PARTY_NOTICES.md`와 최신 NSIS installer만 복원한다. 이미 빌드된 최종 산출물을 보존한 채
+중간 산출물만 정리하려면 `npm run clean:release`를 사용한다. `npm run tauri -- build`는 반복 검증을
+위한 저수준 명령이며, 다음 빌드 속도를 위해 `target/release`의 Cargo cache를 유지한다.
 
 설치본은 CSV·Parquet file association을 등록한다. clean VM 설치·제거, Explorer 더블클릭, 실제 Excel paste는 배포 전 별도 native gate로 확인해야 한다.
 
