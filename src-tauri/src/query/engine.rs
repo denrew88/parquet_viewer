@@ -4,7 +4,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc, Condvar, Mutex, OnceLock,
+        Arc, Condvar, Mutex,
     },
 };
 
@@ -123,7 +123,7 @@ struct QueryLimiter {
     changed: Condvar,
 }
 
-struct QueryPermit(&'static QueryLimiter);
+struct QueryPermit(Arc<QueryLimiter>);
 struct CsvPreparationPermit(Arc<QueryLimiter>);
 
 struct QueryBudgetMonitor {
@@ -608,6 +608,7 @@ pub struct QueryService {
     occupancy: Arc<Mutex<QueryOccupancyCache>>,
     query_epochs: Mutex<HashMap<(String, String), Arc<AtomicU64>>>,
     execute_gate: Mutex<()>,
+    query_limiter: Arc<QueryLimiter>,
     next_distinct_id: AtomicU64,
     next_csv_preparation_id: AtomicU64,
     csv_preparation_limiter: Arc<QueryLimiter>,
@@ -630,6 +631,7 @@ impl QueryService {
             occupancy: Arc::new(Mutex::new(QueryOccupancyCache::default())),
             query_epochs: Mutex::new(HashMap::new()),
             execute_gate: Mutex::new(()),
+            query_limiter: query_limiter(),
             next_distinct_id: AtomicU64::new(1),
             next_csv_preparation_id: AtomicU64::new(1),
             csv_preparation_limiter: csv_preparation_limiter(),
@@ -1260,8 +1262,6 @@ impl QueryService {
         };
         let generation = epoch.fetch_add(1, Ordering::AcqRel).saturating_add(1);
         self.drop_session_results(&request.document_id, &request.session_id, true)?;
-        let source =
-            self.source_with_ready_csv_artifact(&request.document_id, &request.session_id, source)?;
         let projected = projected_columns(&source, &request.plan.projection);
         let status = QueryStatus {
             document_id: request.document_id.clone(),
@@ -1509,8 +1509,7 @@ impl QueryService {
             .query_epochs
             .lock()
             .map_err(|_| registry_error())?
-            .get(&(document_id.to_owned(), session_id.to_owned()))
-            .cloned()
+            .remove(&(document_id.to_owned(), session_id.to_owned()))
         {
             epoch.fetch_add(1, Ordering::AcqRel);
         }
@@ -1524,6 +1523,11 @@ impl QueryService {
             cancel_csv_preparation_task(&task);
             wait_csv_preparation_worker(&task, std::time::Duration::from_secs(3))?;
         }
+        self.wait_session_query_tasks(document_id, session_id, std::time::Duration::from_secs(3))?;
+        // A cancelled worker can race the first cleanup and publish its
+        // terminal status while it exits. Clear that stale session state only
+        // after every matching worker has left the active task registry.
+        self.drop_session_results(document_id, session_id, false)?;
         Ok(())
     }
 
@@ -1663,13 +1667,141 @@ impl QueryService {
         Ok(source)
     }
 
+    /// Reuses an in-flight reusable CSV preparation instead of starting a
+    /// second full source scan. Query workers remain queued while they wait so
+    /// they do not occupy a DuckDB query permit. Cancelling a query only stops
+    /// that waiter; it never cancels or otherwise mutates the shared CSV
+    /// preparation.
+    fn source_after_csv_preparation(
+        &self,
+        document_id: &str,
+        session_id: &str,
+        mut source: QuerySourceSpec,
+        query_task: Option<&QueryTask>,
+    ) -> Result<QuerySourceSpec, DataError> {
+        let Some(identity) = source.provider.reusable_source_identity() else {
+            return Ok(source);
+        };
+        let key = (document_id.to_owned(), session_id.to_owned());
+
+        loop {
+            if query_wait_cancelled(query_task) {
+                return Err(DataError::task_cancelled());
+            }
+            let task = self
+                .csv_preparations
+                .lock()
+                .map_err(|_| registry_error())?
+                .get(&key)
+                .cloned();
+            let Some(task) = task else {
+                return Ok(source);
+            };
+            if task.identity != identity {
+                return Ok(source);
+            }
+            if source_fingerprint(&source.path)? != task.source_fingerprint {
+                cancel_csv_preparation_task(&task);
+                if let Ok(mut artifact) = task.artifact.lock() {
+                    artifact.take();
+                }
+                return Ok(source);
+            }
+
+            let state = {
+                let mut status = task.status.lock().map_err(|_| registry_error())?;
+                while status.state == CsvPreparationState::Preparing {
+                    if query_wait_cancelled(query_task) {
+                        return Err(DataError::task_cancelled());
+                    }
+                    let (next, _) = task
+                        .terminal
+                        .wait_timeout(status, std::time::Duration::from_millis(25))
+                        .map_err(|_| registry_error())?;
+                    status = next;
+                }
+                status.state
+            };
+
+            if query_wait_cancelled(query_task) {
+                return Err(DataError::task_cancelled());
+            }
+            let current = self
+                .csv_preparations
+                .lock()
+                .map_err(|_| registry_error())?
+                .get(&key)
+                .cloned();
+            let Some(current) = current else {
+                // A session drop removes the preparation before cancelling it.
+                // Do not begin an untracked direct scan for that stale session.
+                return Err(DataError::task_cancelled());
+            };
+            if !Arc::ptr_eq(&current, &task) {
+                if current.identity == identity {
+                    continue;
+                }
+                return Ok(source);
+            }
+            if source_fingerprint(&source.path)? != task.source_fingerprint {
+                cancel_csv_preparation_task(&task);
+                if let Ok(mut artifact) = task.artifact.lock() {
+                    artifact.take();
+                }
+                return Ok(source);
+            }
+            if state != CsvPreparationState::Ready {
+                // Failed or explicitly cancelled reusable preparation falls
+                // back to the existing direct query/distinct path.
+                return Ok(source);
+            }
+            let artifact = task
+                .artifact
+                .lock()
+                .map_err(|_| registry_error())?
+                .as_ref()
+                .cloned();
+            if let Some(artifact) = artifact {
+                source.total_rows = Some(artifact.row_count);
+                source.provider = Arc::new(PreparedQueryProvider {
+                    inner: Arc::clone(&artifact.provider),
+                    columns: source.columns.clone(),
+                    artifact,
+                });
+            }
+            return Ok(source);
+        }
+    }
+
     fn run_query(
         &self,
         request: ExecuteQueryRequest,
         source: QuerySourceSpec,
         task: Arc<QueryTask>,
     ) {
-        let Some(_permit) = acquire_query_permit(&task.cancel) else {
+        let source = match self.source_after_csv_preparation(
+            &request.document_id,
+            &request.session_id,
+            source,
+            Some(&task),
+        ) {
+            Ok(source) => source,
+            Err(error)
+                if task.cancel.load(Ordering::Acquire)
+                    || task.epoch.load(Ordering::Acquire) != task.generation
+                    || error.code == DataErrorCode::TaskCancelled =>
+            {
+                set_task_state(&task, QueryTaskState::Cancelled, None);
+                self.finish_task(&request, &task);
+                return;
+            }
+            Err(error) => {
+                set_task_state(&task, QueryTaskState::Failed, Some(error));
+                self.finish_task(&request, &task);
+                return;
+            }
+        };
+        let Some(_permit) = acquire_query_permit(&self.query_limiter, &task.cancel) else {
             set_task_state(&task, QueryTaskState::Cancelled, None);
             self.finish_task(&request, &task);
             return;
@@ -1858,6 +1990,36 @@ impl QueryService {
         }
     }
 
+    fn wait_session_query_tasks(
+        &self,
+        document_id: &str,
+        session_id: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(), DataError> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let has_matching_task = self
+                .tasks
+                .lock()
+                .map_err(|_| registry_error())?
+                .values()
+                .any(|task| {
+                    task.status.lock().is_ok_and(|status| {
+                        status.document_id == document_id && status.session_id == session_id
+                    })
+                });
+            if !has_matching_task {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(DataError::query_failed(
+                    "Timed out while closing the session query workers.",
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     fn result(
         &self,
         document_id: &str,
@@ -1881,8 +2043,12 @@ impl QueryService {
         request: DistinctValuesRequest,
         source: QuerySourceSpec,
     ) -> Result<DistinctValuesResponse, DataError> {
-        let source =
-            self.source_with_ready_csv_artifact(&request.document_id, &request.session_id, source)?;
+        let source = self.source_after_csv_preparation(
+            &request.document_id,
+            &request.session_id,
+            source,
+            None,
+        )?;
         if !source
             .columns
             .iter()
@@ -2910,6 +3076,8 @@ fn read_prepared_csv_values(
                 let raw = row.get::<_, Option<String>>(base + 1)?;
                 let invalid = row.get::<_, bool>(base + 2)?;
                 values.push(prepared_csv_value(
+                    artifact.provider.as_ref(),
+                    *schema_index,
                     &schema[*schema_index],
                     normalized,
                     raw,
@@ -2992,6 +3160,8 @@ fn read_prepared_csv_range(
                 let raw = row.get::<_, Option<String>>(base + 1)?;
                 let invalid = row.get::<_, bool>(base + 2)?;
                 values.push(prepared_csv_value(
+                    artifact.provider.as_ref(),
+                    *schema_index,
                     &schema[*schema_index],
                     normalized,
                     raw,
@@ -3051,6 +3221,8 @@ fn prepared_csv_page(
 }
 
 fn prepared_csv_value(
+    provider: &dyn crate::data::QueryInputProvider,
+    column_index: usize,
     column: &ColumnSchema,
     normalized: Option<String>,
     raw: Option<String>,
@@ -3071,12 +3243,9 @@ fn prepared_csv_value(
     if normalized.is_empty() {
         return DataValue::empty(raw.unwrap_or_default());
     }
-    let mut value = DataValue::converted(
-        kind,
-        normalized.clone(),
-        raw.unwrap_or_else(|| normalized.clone()),
-    )
-    .with_source(normalized);
+    let display = provider.format_prepared_display(column_index, &normalized);
+    let mut value = DataValue::converted(kind, display, raw.unwrap_or_else(|| normalized.clone()))
+        .with_source(normalized);
     if kind == ValueKind::Duration {
         if let Some(unit) = crate::data::duration_unit_from_logical_type(&column.logical_type) {
             value = value.with_temporal_metadata(crate::data::duration_unit_name(unit), None);
@@ -3187,9 +3356,19 @@ fn elapsed_ms(started: std::time::Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-fn acquire_query_permit(cancel: &AtomicBool) -> Option<QueryPermit> {
-    static LIMITER: OnceLock<QueryLimiter> = OnceLock::new();
-    let limiter = LIMITER.get_or_init(QueryLimiter::default);
+fn query_limiter() -> Arc<QueryLimiter> {
+    #[cfg(test)]
+    {
+        Arc::new(QueryLimiter::default())
+    }
+    #[cfg(not(test))]
+    {
+        static LIMITER: std::sync::OnceLock<Arc<QueryLimiter>> = std::sync::OnceLock::new();
+        Arc::clone(LIMITER.get_or_init(|| Arc::new(QueryLimiter::default())))
+    }
+}
+
+fn acquire_query_permit(limiter: &Arc<QueryLimiter>, cancel: &AtomicBool) -> Option<QueryPermit> {
     let mut active = limiter.active.lock().ok()?;
     loop {
         if cancel.load(Ordering::Acquire) {
@@ -3197,7 +3376,7 @@ fn acquire_query_permit(cancel: &AtomicBool) -> Option<QueryPermit> {
         }
         if *active < MAX_CONCURRENT_QUERIES {
             *active += 1;
-            return Some(QueryPermit(limiter));
+            return Some(QueryPermit(Arc::clone(limiter)));
         }
         let (next, _) = limiter
             .changed
@@ -3217,7 +3396,7 @@ fn csv_preparation_limiter() -> Arc<QueryLimiter> {
     }
     #[cfg(not(test))]
     {
-        static LIMITER: OnceLock<Arc<QueryLimiter>> = OnceLock::new();
+        static LIMITER: std::sync::OnceLock<Arc<QueryLimiter>> = std::sync::OnceLock::new();
         Arc::clone(LIMITER.get_or_init(|| Arc::new(QueryLimiter::default())))
     }
 }
@@ -3279,6 +3458,12 @@ fn set_task_state(task: &QueryTask, state: QueryTaskState, error: Option<DataErr
         status.state = state;
         status.error = error;
     }
+}
+
+fn query_wait_cancelled(task: Option<&QueryTask>) -> bool {
+    task.is_some_and(|task| {
+        task.cancel.load(Ordering::Acquire) || task.epoch.load(Ordering::Acquire) != task.generation
+    })
 }
 
 fn preparation_status(task: &CsvPreparation) -> Result<CsvPreparationStatus, DataError> {
@@ -3541,6 +3726,47 @@ mod tests {
         release: Arc<std::sync::Barrier>,
     }
 
+    #[derive(Debug, Default)]
+    struct PreparationGate {
+        entered: Mutex<bool>,
+        released: AtomicBool,
+        changed: Condvar,
+    }
+
+    impl PreparationGate {
+        fn wait_until_entered(&self) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let mut entered = self.entered.lock().unwrap();
+            while !*entered {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                assert!(
+                    !remaining.is_zero(),
+                    "CSV preparation did not enter provider"
+                );
+                let (next, wait) = self.changed.wait_timeout(entered, remaining).unwrap();
+                entered = next;
+                assert!(!wait.timed_out() || *entered);
+            }
+        }
+
+        fn release(&self) {
+            self.released.store(true, Ordering::Release);
+            self.changed.notify_all();
+        }
+    }
+
+    #[derive(Debug)]
+    struct GatedPreparationProvider {
+        identity: String,
+        calls: Arc<AtomicU64>,
+        gate: Arc<PreparationGate>,
+    }
+
+    #[derive(Debug)]
+    struct FailOncePreparationProvider {
+        calls: Arc<AtomicU64>,
+    }
+
     impl QueryInputProvider for AbortAwarePreparationProvider {
         fn reusable_source_identity(&self) -> Option<String> {
             Some(String::from("abort-aware-preparation"))
@@ -3571,6 +3797,61 @@ mod tests {
             self.entered.wait();
             self.release.wait();
             Ok(())
+        }
+    }
+
+    impl QueryInputProvider for GatedPreparationProvider {
+        fn reusable_source_identity(&self) -> Option<String> {
+            Some(self.identity.clone())
+        }
+
+        fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
+            self.calls.fetch_add(1, Ordering::AcqRel);
+            context
+                .connection
+                .execute_batch(
+                    "CREATE TABLE dv_source (__dv_row_id UBIGINT, value VARCHAR, __dv_raw_0 VARCHAR, __dv_invalid_0 BOOLEAN); INSERT INTO dv_source VALUES (0, 'alpha', 'alpha', false), (1, 'beta', 'beta', false);",
+                )
+                .map_err(duckdb_error)?;
+            if let Ok(mut entered) = self.gate.entered.lock() {
+                *entered = true;
+                self.gate.changed.notify_all();
+            }
+            let mut entered = self.gate.entered.lock().map_err(|_| registry_error())?;
+            while !self.gate.released.load(Ordering::Acquire) {
+                if context.cancel.load(Ordering::Acquire) {
+                    return Err(DataError::task_cancelled());
+                }
+                let (next, _) = self
+                    .gate
+                    .changed
+                    .wait_timeout(entered, std::time::Duration::from_millis(10))
+                    .map_err(|_| registry_error())?;
+                entered = next;
+            }
+            drop(entered);
+            (context.progress)(2)
+        }
+    }
+
+    impl QueryInputProvider for FailOncePreparationProvider {
+        fn reusable_source_identity(&self) -> Option<String> {
+            Some(String::from("fail-once-preparation"))
+        }
+
+        fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
+            let call = self.calls.fetch_add(1, Ordering::AcqRel);
+            if call == 0 {
+                return Err(DataError::query_failed(
+                    "synthetic first preparation failure",
+                ));
+            }
+            context
+                .connection
+                .execute_batch(
+                    "CREATE TABLE dv_source (__dv_row_id UBIGINT, value VARCHAR, __dv_raw_0 VARCHAR, __dv_invalid_0 BOOLEAN); INSERT INTO dv_source VALUES (0, 'fallback', 'fallback', false);",
+                )
+                .map_err(duckdb_error)
         }
     }
 
@@ -4278,6 +4559,185 @@ mod tests {
             .csv_preparation_status("document-prepared", "session-prepared")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn csv_prepared_numeric_display_matches_direct_page_query_copy_and_distinct_tokens() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let path = source_directory.path().join("numeric-display.csv");
+        std::fs::write(
+            &path,
+            "ignored,amount,ratio\nx,10001,\"1234,5\"\ny,2,\"2,5\"\nz,3,\"3,25\"\n",
+        )
+        .unwrap();
+        let mut source = DataSource::open(&path).unwrap();
+        source.configure_csv(HeaderMode::Present).unwrap();
+        let mut profile = source.active_csv_profile().unwrap();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation = profile.generation.saturating_add(1);
+        profile.columns[0].target_type = CsvTargetType::Skip;
+        profile.columns[1].target_type = CsvTargetType::UInt64;
+        profile.columns[1].thousand_separator = Some(String::from("."));
+        profile.columns[1].decimal_separator = String::from(".");
+        profile.columns[2].target_type = CsvTargetType::Float64;
+        profile.columns[2].thousand_separator = Some(String::from("."));
+        profile.columns[2].decimal_separator = String::from(",");
+        let source = source.prepare_csv_profile(&profile).unwrap();
+        let columns = vec![String::from("amount"), String::from("ratio")];
+        let direct = source
+            .read_page_projected(0, 3, Some(&columns))
+            .expect("direct profiled CSV page");
+        assert_eq!(direct.rows[0][0].display.as_deref(), Some("10.001"));
+        assert_eq!(direct.rows[0][1].display.as_deref(), Some("1.234,5"));
+        assert_eq!(direct.rows[0][0].source_display.as_deref(), Some("10001"));
+        assert_eq!(direct.rows[0][1].source_display.as_deref(), Some("1234.5"));
+
+        let spec = source.query_source_spec().unwrap();
+        let (_direct_directory, direct_service) = service();
+        let direct_distinct = direct_service
+            .distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("direct-display-document"),
+                    session_id: String::from("direct-display-session"),
+                    query_id: None,
+                    column_id: String::from("amount"),
+                    search: None,
+                    offset: 0,
+                    limit: 10,
+                },
+                Some(spec.clone()),
+            )
+            .unwrap();
+        let (_directory, service) = service();
+        service
+            .prepare_csv_session("display-document", "display-session", spec.clone())
+            .unwrap();
+        let ready = wait_csv_preparation(&service, "display-document", "display-session");
+        assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+
+        let prepared = service
+            .read_prepared_csv_page(
+                "display-document",
+                "display-session",
+                spec.clone(),
+                0,
+                3,
+                &columns,
+            )
+            .unwrap()
+            .expect("prepared page");
+        assert_eq!(prepared.rows, direct.rows);
+
+        let prepared_copy = service
+            .read_prepared_csv_copy(
+                "display-document",
+                "display-session",
+                spec.clone(),
+                0,
+                3,
+                &columns,
+            )
+            .unwrap()
+            .expect("prepared copy values");
+        assert_eq!(prepared_copy.rows, direct.rows);
+
+        let prepared_source_distinct = service
+            .distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("display-document"),
+                    session_id: String::from("display-session"),
+                    query_id: None,
+                    column_id: String::from("amount"),
+                    search: None,
+                    offset: 0,
+                    limit: 10,
+                },
+                Some(spec.clone()),
+            )
+            .unwrap();
+        assert_eq!(prepared_source_distinct.values, direct_distinct.values);
+        assert_eq!(prepared_source_distinct.has_more, direct_distinct.has_more);
+
+        let execute = ExecuteQueryRequest {
+            document_id: String::from("display-document"),
+            session_id: String::from("display-session"),
+            query_id: String::from("display-query"),
+            task_id: String::from("display-task"),
+            plan: QueryPlan {
+                filters: vec![QueryFilter {
+                    id: String::from("amount-over-two"),
+                    column_id: String::from("amount"),
+                    scalar_type: QueryScalarType::Number,
+                    operator: FilterOperator::GreaterThan,
+                    values: vec![String::from("2")],
+                }],
+                search: None,
+                sort: vec![QuerySort {
+                    column_id: String::from("ratio"),
+                    direction: QuerySortDirection::Descending,
+                    nulls_last: true,
+                }],
+                projection: columns.clone(),
+            },
+        };
+        service.execute(execute.clone(), spec.clone()).unwrap();
+        assert_eq!(
+            wait_complete(&service, &execute).state,
+            QueryTaskState::Complete
+        );
+        let query_page = service
+            .read_page(ReadQueryPageRequest {
+                document_id: execute.document_id.clone(),
+                session_id: execute.session_id.clone(),
+                query_id: execute.query_id.clone(),
+                offset: 0,
+                limit: 2,
+                columns: columns.clone(),
+            })
+            .unwrap()
+            .page;
+        assert_eq!(query_page.rows[0][0].display.as_deref(), Some("10.001"));
+        assert_eq!(query_page.rows[0][1].display.as_deref(), Some("1.234,5"));
+        assert_eq!(query_page.rows[1][0].display.as_deref(), Some("3"));
+        assert_eq!(query_page.rows[1][1].display.as_deref(), Some("3,25"));
+        assert_eq!(
+            query_page.rows[0][0].source_display.as_deref(),
+            Some("10001")
+        );
+        assert_eq!(
+            query_page.rows[0][1].source_display.as_deref(),
+            Some("1234.5")
+        );
+
+        let query_copy = service
+            .read_copy_rows(
+                &execute.document_id,
+                &execute.session_id,
+                &execute.query_id,
+                0,
+                2,
+                &columns,
+            )
+            .unwrap();
+        assert_eq!(query_copy.rows, query_page.rows);
+
+        let prepared_distinct = service
+            .distinct(
+                DistinctValuesRequest {
+                    document_id: execute.document_id.clone(),
+                    session_id: execute.session_id.clone(),
+                    query_id: Some(execute.query_id.clone()),
+                    column_id: String::from("amount"),
+                    search: None,
+                    offset: 0,
+                    limit: 10,
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(prepared_distinct.values.len(), 2);
+        assert_eq!(prepared_distinct.values[0].value.as_deref(), Some("10001"));
+        assert_eq!(prepared_distinct.values[1].value.as_deref(), Some("3"));
     }
 
     #[test]
@@ -5069,6 +5529,366 @@ mod tests {
                 fail,
             }),
         }
+    }
+
+    fn gated_preparation_spec(
+        identity: &str,
+        calls: Arc<AtomicU64>,
+        gate: Arc<PreparationGate>,
+    ) -> QuerySourceSpec {
+        QuerySourceSpec {
+            path: std::path::PathBuf::from(format!("synthetic-{identity}.csv")),
+            columns: vec![ColumnSchema {
+                name: String::from("value"),
+                logical_type: String::from("String"),
+                nullable: false,
+                physical_type: String::from("VARCHAR"),
+            }],
+            total_rows: Some(2),
+            provider: Arc::new(GatedPreparationProvider {
+                identity: identity.to_owned(),
+                calls,
+                gate,
+            }),
+        }
+    }
+
+    fn unfiltered_value_plan() -> QueryPlan {
+        QueryPlan {
+            filters: Vec::new(),
+            search: None,
+            sort: Vec::new(),
+            projection: vec![String::from("value")],
+        }
+    }
+
+    #[test]
+    fn execute_waits_for_inflight_csv_preparation_and_reuses_ready_artifact() {
+        let (_directory, service) = service();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        let spec = gated_preparation_spec(
+            "execute-waits-for-preparation",
+            Arc::clone(&calls),
+            Arc::clone(&gate),
+        );
+        service
+            .prepare_csv_session("document-test", "session-test", spec.clone())
+            .unwrap();
+        gate.wait_until_entered();
+
+        let query = request(
+            "task-waits-for-preparation",
+            "query-waits-for-preparation",
+            unfiltered_value_plan(),
+        );
+        let initial = service.execute(query.clone(), spec).unwrap();
+        assert_eq!(initial.state, QueryTaskState::Queued);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            service
+                .status(
+                    &query.document_id,
+                    &query.session_id,
+                    &query.query_id,
+                    &query.task_id,
+                )
+                .unwrap()
+                .state,
+            QueryTaskState::Queued
+        );
+        assert_eq!(
+            *service.query_limiter.active.lock().unwrap(),
+            0,
+            "a query waiting for CSV preparation must not occupy a query permit"
+        );
+
+        gate.release();
+        let prepared = wait_csv_preparation(&service, "document-test", "session-test");
+        assert_eq!(
+            prepared.state,
+            CsvPreparationState::Ready,
+            "{:?}",
+            prepared.error
+        );
+        let completed = wait_complete(&service, &query);
+        assert_eq!(
+            completed.state,
+            QueryTaskState::Complete,
+            "{:?}",
+            completed.error
+        );
+        assert_eq!(completed.progress.result_rows, 2);
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn distinct_waits_for_inflight_csv_preparation_and_reuses_ready_artifact() {
+        let (_directory, service) = service();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        let spec = gated_preparation_spec(
+            "distinct-waits-for-preparation",
+            Arc::clone(&calls),
+            Arc::clone(&gate),
+        );
+        service
+            .prepare_csv_session("distinct-document", "distinct-session", spec.clone())
+            .unwrap();
+        gate.wait_until_entered();
+
+        let worker_service = Arc::clone(&service);
+        let worker = std::thread::spawn(move || {
+            worker_service.distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("distinct-document"),
+                    session_id: String::from("distinct-session"),
+                    query_id: None,
+                    column_id: String::from("value"),
+                    search: None,
+                    offset: 0,
+                    limit: 20,
+                },
+                Some(spec),
+            )
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+        assert!(!worker.is_finished());
+
+        gate.release();
+        let response = worker.join().unwrap().unwrap();
+        assert_eq!(
+            response
+                .values
+                .iter()
+                .filter_map(|value| value.value.as_deref())
+                .collect::<Vec<_>>(),
+            ["alpha", "beta"]
+        );
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn cancelling_query_waiter_preserves_distinct_waiter_and_shared_csv_preparation() {
+        let (_directory, service) = service();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        let spec =
+            gated_preparation_spec("cancel-query-waiter", Arc::clone(&calls), Arc::clone(&gate));
+        service
+            .prepare_csv_session("document-test", "session-test", spec.clone())
+            .unwrap();
+        gate.wait_until_entered();
+
+        let query = request(
+            "task-cancel-query-waiter",
+            "query-cancel-query-waiter",
+            unfiltered_value_plan(),
+        );
+        service.execute(query.clone(), spec.clone()).unwrap();
+        let distinct_service = Arc::clone(&service);
+        let distinct_waiter = std::thread::spawn(move || {
+            distinct_service.distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("document-test"),
+                    session_id: String::from("session-test"),
+                    query_id: None,
+                    column_id: String::from("value"),
+                    search: None,
+                    offset: 0,
+                    limit: 20,
+                },
+                Some(spec),
+            )
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(!distinct_waiter.is_finished());
+        service
+            .cancel(
+                &query.document_id,
+                &query.session_id,
+                &query.query_id,
+                &query.task_id,
+            )
+            .unwrap();
+        assert_eq!(
+            wait_complete(&service, &query).state,
+            QueryTaskState::Cancelled
+        );
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            service
+                .csv_preparation_status("document-test", "session-test")
+                .unwrap()
+                .unwrap()
+                .state,
+            CsvPreparationState::Preparing
+        );
+
+        gate.release();
+        let prepared = wait_csv_preparation(&service, "document-test", "session-test");
+        assert_eq!(
+            prepared.state,
+            CsvPreparationState::Ready,
+            "{:?}",
+            prepared.error
+        );
+        let distinct = distinct_waiter.join().unwrap().unwrap();
+        assert_eq!(distinct.values.len(), 2);
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn failed_csv_preparation_falls_back_to_direct_query_once() {
+        let (_directory, service) = service();
+        let calls = Arc::new(AtomicU64::new(0));
+        let spec = QuerySourceSpec {
+            path: std::path::PathBuf::from("synthetic-fail-once-preparation.csv"),
+            columns: vec![ColumnSchema {
+                name: String::from("value"),
+                logical_type: String::from("String"),
+                nullable: false,
+                physical_type: String::from("VARCHAR"),
+            }],
+            total_rows: Some(1),
+            provider: Arc::new(FailOncePreparationProvider {
+                calls: Arc::clone(&calls),
+            }),
+        };
+        service
+            .prepare_csv_session("document-test", "session-test", spec.clone())
+            .unwrap();
+        assert_eq!(
+            wait_csv_preparation(&service, "document-test", "session-test").state,
+            CsvPreparationState::Failed
+        );
+
+        let query = request(
+            "task-failed-preparation-fallback",
+            "query-failed-preparation-fallback",
+            unfiltered_value_plan(),
+        );
+        service.execute(query.clone(), spec).unwrap();
+        let completed = wait_complete(&service, &query);
+        assert_eq!(
+            completed.state,
+            QueryTaskState::Complete,
+            "{:?}",
+            completed.error
+        );
+        assert_eq!(completed.progress.result_rows, 1);
+        assert_eq!(calls.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn cancelled_csv_preparation_falls_back_to_direct_query_once() {
+        let (_directory, service) = service();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        let spec = gated_preparation_spec(
+            "cancelled-preparation-fallback",
+            Arc::clone(&calls),
+            Arc::clone(&gate),
+        );
+        service
+            .prepare_csv_session("document-test", "session-test", spec.clone())
+            .unwrap();
+        gate.wait_until_entered();
+        service
+            .cancel_csv_preparation("document-test", "session-test")
+            .unwrap();
+        assert_eq!(
+            wait_csv_preparation(&service, "document-test", "session-test").state,
+            CsvPreparationState::Cancelled
+        );
+        gate.release();
+
+        let query = request(
+            "task-cancelled-preparation-fallback",
+            "query-cancelled-preparation-fallback",
+            unfiltered_value_plan(),
+        );
+        service.execute(query.clone(), spec).unwrap();
+        let completed = wait_complete(&service, &query);
+        assert_eq!(
+            completed.state,
+            QueryTaskState::Complete,
+            "{:?}",
+            completed.error
+        );
+        assert_eq!(completed.progress.result_rows, 2);
+        assert_eq!(calls.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn session_drop_cancels_query_waiter_and_shared_csv_preparation() {
+        let (_directory, service) = service();
+        let baseline_usage = service.usage().unwrap();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        let spec =
+            gated_preparation_spec("drop-session-waiter", Arc::clone(&calls), Arc::clone(&gate));
+        service
+            .prepare_csv_session("document-test", "session-test", spec.clone())
+            .unwrap();
+        gate.wait_until_entered();
+        let query = request(
+            "task-drop-session-waiter",
+            "query-drop-session-waiter",
+            unfiltered_value_plan(),
+        );
+        service.execute(query.clone(), spec.clone()).unwrap();
+        let distinct_service = Arc::clone(&service);
+        let distinct_waiter = std::thread::spawn(move || {
+            distinct_service.distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("document-test"),
+                    session_id: String::from("session-test"),
+                    query_id: None,
+                    column_id: String::from("value"),
+                    search: None,
+                    offset: 0,
+                    limit: 20,
+                },
+                Some(spec),
+            )
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(!distinct_waiter.is_finished());
+
+        service
+            .drop_session(&query.document_id, &query.session_id)
+            .unwrap();
+        gate.release();
+        assert!(service
+            .csv_preparation_status(&query.document_id, &query.session_id)
+            .unwrap()
+            .is_none());
+        assert!(service
+            .status(
+                &query.document_id,
+                &query.session_id,
+                &query.query_id,
+                &query.task_id,
+            )
+            .is_err());
+        assert!(service
+            .result(&query.document_id, &query.session_id, &query.query_id)
+            .is_err());
+        assert_eq!(
+            distinct_waiter.join().unwrap().unwrap_err().code,
+            DataErrorCode::TaskCancelled
+        );
+        assert!(service.tasks.lock().unwrap().is_empty());
+        assert!(service.statuses.lock().unwrap().is_empty());
+        assert!(service.results.lock().unwrap().is_empty());
+        assert!(service.query_epochs.lock().unwrap().is_empty());
+        let usage = service.usage().unwrap();
+        assert_eq!(usage.active_queries, baseline_usage.active_queries);
+        assert_eq!(usage.query_temp_bytes, baseline_usage.query_temp_bytes);
+        assert_eq!(calls.load(Ordering::Acquire), 1);
     }
 
     #[test]
@@ -6140,8 +6960,8 @@ mod tests {
         let (_directory, service) = service();
         let first = Arc::new(AtomicBool::new(false));
         let second = Arc::new(AtomicBool::new(false));
-        let permit_one = acquire_query_permit(&first).unwrap();
-        let permit_two = acquire_query_permit(&second).unwrap();
+        let permit_one = acquire_query_permit(&service.query_limiter, &first).unwrap();
+        let permit_two = acquire_query_permit(&service.query_limiter, &second).unwrap();
         let source = DataSource::open(fixture("query-small.parquet")).unwrap();
         let spec = source.query_source_spec().unwrap();
         let request = request("task-cancel", "query-cancel", category_plan());

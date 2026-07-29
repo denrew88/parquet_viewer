@@ -39,8 +39,8 @@ use super::csv_prepare::{
     CsvInvalidReason,
 };
 use super::csv_profile::{
-    convert_value, convert_value_for_query, default_profile, infer_columns, normalize_profile,
-    resolved_type, validate_resolved_profile,
+    convert_value, convert_value_for_query, default_profile, format_numeric_display, infer_columns,
+    normalize_profile, resolved_type, validate_resolved_profile,
 };
 use super::{
     cell_state_bitmap::CellStateBitmap, CsvHeaderConfigurable, CsvPreparedPhysicalColumn,
@@ -1725,6 +1725,33 @@ impl QueryInputProvider for CsvQueryProvider {
 
     fn csv_source_column_count(&self) -> Option<usize> {
         Some(self.spec.profile.columns.len())
+    }
+
+    fn format_prepared_display(&self, column_index: usize, normalized: &str) -> String {
+        let Some(column) = self.columns.get(column_index) else {
+            return normalized.to_owned();
+        };
+        let profiles = &self.spec.profile.columns;
+        let profile = if self.columns.len() == profiles.len() {
+            profiles.get(column_index)
+        } else {
+            // Skip columns are uncommon. Keep the usual no-Skip page path O(1)
+            // while preserving the visible-to-source mapping when they exist.
+            profiles
+                .iter()
+                .filter(|profile| profile.target_type != CsvTargetType::Skip)
+                .nth(column_index)
+        };
+        let Some(profile) = profile else {
+            return normalized.to_owned();
+        };
+        let kind = match query_target_type(column) {
+            CsvTargetType::Int64 | CsvTargetType::UInt64 => ValueKind::Int,
+            CsvTargetType::Float64 => ValueKind::Float,
+            CsvTargetType::Decimal => ValueKind::Decimal,
+            _ => return normalized.to_owned(),
+        };
+        format_numeric_display(normalized, kind, profile)
     }
 
     fn prepared_view_sql(&self, parquet_literal: &str) -> String {

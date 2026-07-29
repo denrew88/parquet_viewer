@@ -1,0 +1,60 @@
+{
+  "startedAtUtc": "2026-07-28T22:46:48.437Z",
+  "executable": "src-tauri/target/debug/data-viewer.exe",
+  "fixture": "fixtures/phase-15/csv-5850000-high.csv",
+  "status": "PASS",
+  "initialProgress": 136,
+  "coldElapsedMs": 83949,
+  "warmInteractiveMs": 823,
+  "warmObservationMs": 1841,
+  "warmFrames": {
+    "blockerFrames": 0,
+    "progressFrames": 0,
+    "cancelFrames": 0,
+    "samples": 110
+  },
+  "cancelElapsedMs": 260,
+  "hitTest": {
+    "covered": true,
+    "width": 1180,
+    "height": 594
+  },
+  "preflightCleanup": {
+    "deletedBytes": 922233,
+    "deletedEntries": 1,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  },
+  "coldCleanup": {
+    "deletedBytes": 406295394,
+    "deletedEntries": 1,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  },
+  "finalCleanup": {
+    "deletedBytes": 0,
+    "deletedEntries": 0,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  },
+  "screenshot": "artifacts/phase-16/ui/native-desktop.png",
+  "finishedAtUtc": "2026-07-28T22:48:18.373Z",
+  "cleanupAfterFailure": {
+    "deletedBytes": 0,
+    "deletedEntries": 0,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  }
+}

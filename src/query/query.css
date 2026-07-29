@@ -50,9 +50,11 @@
   z-index: 90;
   top: 78px;
   right: 12px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   width: min(520px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 96px));
+  height: min(560px, calc(100vh - 96px));
+  max-height: min(560px, calc(100vh - 96px));
   gap: 7px;
   overflow: auto;
   padding: 10px;
@@ -165,7 +167,7 @@
 
 .query-sort-combobox__options {
   position: absolute;
-  z-index: 2;
+  z-index: 4;
   top: calc(100% + 3px);
   right: 0;
   left: 0;
@@ -208,9 +210,16 @@
 }
 
 .query-sort-editor__panel footer {
+  position: sticky;
+  z-index: 3;
+  bottom: 0;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   gap: 6px;
+  margin: auto -10px -10px;
+  padding: 7px 10px 10px;
+  border-top: 1px solid #d8dddf;
+  background: #fff;
 }
 
 .query-search {

@@ -4256,6 +4256,19 @@ export const browserMockBackend: BackendAdapter = {
     if (task.status.state === "queued" || task.status.state === "running") {
       await wait(120);
       const totalRows = task.status.progress.totalRows ?? 0;
+      const waitingForCsvPreparation =
+        browserScenario() === "csv-progress" &&
+        sessionId.includes("csv-session") &&
+        new URLSearchParams(window.location.search).get("csvReady") !== "1";
+      if (waitingForCsvPreparation) {
+        task.status = {
+          ...task.status,
+          state: "running",
+          progress: { ...task.status.progress, rowsScanned: 0, resultRows: 0 },
+          elapsedMs: task.status.elapsedMs + 120,
+        };
+        return parseQueryStatus(task.status);
+      }
       task.status = {
         ...task.status,
         state: "complete",

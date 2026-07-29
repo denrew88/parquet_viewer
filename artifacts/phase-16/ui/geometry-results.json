@@ -1,0 +1,75 @@
+{
+  "status": "PASS",
+  "contract": {
+    "blockerCoverageTolerancePx": 1,
+    "layoutShiftTolerancePx": 1
+  },
+  "viewports": {
+    "desktop": {
+      "result": "PASS",
+      "viewport": { "width": 1440, "height": 900 },
+      "surface": {
+        "left": 0,
+        "top": 136,
+        "right": 1440,
+        "bottom": 870,
+        "width": 1440,
+        "height": 734
+      },
+      "blocker": {
+        "left": 0,
+        "top": 136,
+        "right": 1440,
+        "bottom": 870,
+        "width": 1440,
+        "height": 734
+      },
+      "layoutShiftMaxPx": 0,
+      "hitTest": { "blocker": true, "cancel": true, "settings": true, "dataTab": true }
+    },
+    "compact": {
+      "result": "PASS",
+      "viewport": { "width": 1024, "height": 768 },
+      "surface": {
+        "left": 0,
+        "top": 136,
+        "right": 1024,
+        "bottom": 738,
+        "width": 1024,
+        "height": 602
+      },
+      "blocker": {
+        "left": 0,
+        "top": 136,
+        "right": 1024,
+        "bottom": 738,
+        "width": 1024,
+        "height": 602
+      },
+      "layoutShiftMaxPx": 0,
+      "hitTest": { "blocker": true, "cancel": true, "settings": true, "dataTab": true }
+    },
+    "minimum": {
+      "result": "PASS",
+      "viewport": { "width": 800, "height": 600 },
+      "surface": {
+        "left": 0,
+        "top": 136,
+        "right": 800,
+        "bottom": 570,
+        "width": 800,
+        "height": 434
+      },
+      "blocker": {
+        "left": 0,
+        "top": 136,
+        "right": 800,
+        "bottom": 570,
+        "width": 800,
+        "height": 434
+      },
+      "layoutShiftMaxPx": 0,
+      "hitTest": { "blocker": true, "cancel": true, "settings": true, "dataTab": true }
+    }
+  }
+}

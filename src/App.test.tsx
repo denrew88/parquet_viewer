@@ -3,7 +3,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import App from "./App";
+import App, { isCsvDataInteractionBlocked } from "./App";
 import {
   DataViewerError,
   type BackendAdapter,
@@ -1075,6 +1075,8 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open file" }));
     expect(await screen.findByText("Kim, Mina")).toBeInTheDocument();
+    expect(await screen.findByText("CSV preparation cancelled")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel scan" }));
     await waitFor(() =>
       expect(screen.queryByText("Calculating CSV row count")).not.toBeInTheDocument(),
@@ -1134,6 +1136,174 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.queryByText("Preparing CSV for fast queries")).not.toBeInTheDocument(),
     );
+  });
+
+  it("T-P16-001 gates only a matching CSV Preparing status", () => {
+    const uiState = (status: CsvPreparationStatus | null) => ({
+      documentId: "legacy-csv-session",
+      sessionId: "csv-session",
+      status,
+      action: status ? null : ("starting" as const),
+      requestError: null,
+      dismissed: false,
+    });
+
+    expect(
+      isCsvDataInteractionBlocked(
+        "legacy-csv-session",
+        csvSummary(),
+        uiState(csvPreparationStatus("preparing")),
+      ),
+    ).toBe(true);
+    expect(isCsvDataInteractionBlocked("legacy-csv-session", csvSummary(), uiState(null))).toBe(
+      false,
+    );
+    for (const state of ["ready", "failed", "cancelled"] as const) {
+      expect(
+        isCsvDataInteractionBlocked(
+          "legacy-csv-session",
+          csvSummary(),
+          uiState(csvPreparationStatus(state)),
+        ),
+      ).toBe(false);
+    }
+    expect(
+      isCsvDataInteractionBlocked(
+        "another-document",
+        csvSummary(),
+        uiState(csvPreparationStatus("preparing")),
+      ),
+    ).toBe(false);
+    expect(
+      isCsvDataInteractionBlocked(
+        "legacy-csv-session",
+        summary,
+        uiState(csvPreparationStatus("preparing")),
+      ),
+    ).toBe(false);
+  });
+
+  it("T-P16-002..012 closes transient UI, blocks Data work, and keeps allowed controls usable", async () => {
+    const preparation = deferred<CsvPreparationStatus>();
+    const neverTerminal = deferred<CsvPreparationStatus>();
+    const prepareCsvSession = vi.fn(() => preparation.promise);
+    const cancelled = csvPreparationStatus("cancelled", {
+      error: { code: "Cancelled", message: "Stopped by user." },
+    });
+    const cancelCsvPreparation = vi.fn().mockResolvedValue(csvPreparationStatus("preparing"));
+    const getCsvPreparationStatus = vi.fn(() =>
+      cancelCsvPreparation.mock.calls.length > 0
+        ? Promise.resolve(cancelled)
+        : neverTerminal.promise,
+    );
+    const executeQuery = vi.fn();
+    const listDistinctValues = vi.fn(async (request) => ({
+      ...request,
+      values: [{ value: "Kim, Mina", isNull: false, isInvalid: false, count: 1 }],
+      hasMore: false,
+    }));
+    const readPage = vi.fn().mockResolvedValue(csvPage);
+    const startCopy = vi.fn();
+    const findDataBoundary = vi.fn();
+    const getCsvProfile = vi.fn();
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(queryProfileCsvSummary()),
+          readPage,
+          prepareCsvSession,
+          getCsvPreparationStatus,
+          cancelCsvPreparation,
+          executeQuery,
+          listDistinctValues,
+          startCopy,
+          findDataBoundary,
+          getCsvProfile,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(await screen.findByText("Kim, Mina")).toBeInTheDocument();
+    await waitFor(() => expect(prepareCsvSession).toHaveBeenCalledTimes(1));
+    const interactionSurface = screen.getByTestId("csv-data-interaction-surface");
+    expect(interactionSurface).toHaveAttribute("aria-disabled", "false");
+    expect(interactionSurface).not.toHaveAttribute("inert");
+    expect(screen.queryByTestId("csv-preparation-blocker")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter name" }));
+    const filter = await screen.findByRole("dialog", { name: "Filter name" });
+    await waitFor(() => expect(listDistinctValues).toHaveBeenCalledTimes(1));
+    within(filter).getByRole("textbox", { name: "Value" }).focus();
+    const readPageCallsBeforeBlock = readPage.mock.calls.length;
+
+    preparation.resolve(csvPreparationStatus("preparing"));
+    expect(await screen.findByText("Preparing CSV for fast queries")).toBeInTheDocument();
+    expect(screen.getByTestId("csv-preparation-blocker")).toHaveTextContent("Preparing CSV data");
+    expect(interactionSurface).toHaveAttribute("aria-disabled", "true");
+    expect(interactionSurface).toHaveAttribute("inert");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Filter name" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    const grid = screen.getByRole("grid", { name: "Data preview", hidden: true });
+    const activeRow = grid.getAttribute("data-active-row");
+    const scrollTop = grid.scrollTop;
+    const filterButton = interactionSurface.querySelector<HTMLButtonElement>(
+      '[aria-label="Filter name"]',
+    )!;
+    const chooseColumns = interactionSurface.querySelector<HTMLButtonElement>(
+      '[aria-label="Choose columns"]',
+    )!;
+    const searchColumns = interactionSurface.querySelector<HTMLInputElement>(
+      '[aria-label="Search columns"]',
+    )!;
+    fireEvent.click(filterButton);
+    fireEvent.click(chooseColumns);
+    fireEvent.change(searchColumns, { target: { value: "note" } });
+    fireEvent.keyDown(grid, { key: "f", ctrlKey: true });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+    fireEvent.wheel(grid, { deltaY: 240 });
+
+    expect(screen.queryByRole("dialog", { name: "Filter name" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Column chooser" })).not.toBeInTheDocument();
+    expect(searchColumns).toHaveValue("");
+    expect(grid).toHaveAttribute("data-active-row", activeRow);
+    expect(grid.scrollTop).toBe(scrollTop);
+    expect(listDistinctValues).toHaveBeenCalledTimes(1);
+    expect(executeQuery).not.toHaveBeenCalled();
+    expect(startCopy).not.toHaveBeenCalled();
+    expect(findDataBoundary).not.toHaveBeenCalled();
+    expect(readPage).toHaveBeenCalledTimes(readPageCallsBeforeBlock);
+
+    const profileButton = screen.getByRole("button", { name: "CSV Parsing Profile" });
+    expect(profileButton).toBeDisabled();
+    expect(profileButton.getAttribute("aria-description")).toContain("preparing");
+    fireEvent.click(profileButton);
+    expect(getCsvProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const settings = screen.getByRole("dialog", { name: "Application settings" });
+    expect(settings).toBeInTheDocument();
+    fireEvent.click(within(settings).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
+    expect(screen.getByRole("heading", { name: "Schema" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Data" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Cancelling..." })).toBeDisabled();
+    expect(await screen.findByText("CSV preparation cancelled")).toBeInTheDocument();
+    expect(cancelCsvPreparation).toHaveBeenCalledTimes(1);
+    expect(getCsvPreparationStatus).toHaveBeenCalled();
+    expect(interactionSurface).toHaveAttribute("aria-disabled", "false");
+    expect(interactionSurface).not.toHaveAttribute("inert");
+    expect(screen.queryByTestId("csv-preparation-blocker")).not.toBeInTheDocument();
+    expect(profileButton).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Filter name" }));
+    expect(await screen.findByRole("dialog", { name: "Filter name" })).toBeInTheDocument();
+    await waitFor(() => expect(listDistinctValues).toHaveBeenCalledTimes(2));
   });
 
   it("P15-WARM-003 refreshes an immediate Ready cache hit without banners or polling", async () => {

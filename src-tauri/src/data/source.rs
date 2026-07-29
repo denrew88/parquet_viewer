@@ -129,6 +129,13 @@ pub trait QueryInputProvider: Debug + Send + Sync {
         None
     }
 
+    /// Restores source-specific display formatting after a reusable artifact
+    /// returns the canonical value used by predicates and ordering. The
+    /// default is intentionally an identity transform for non-CSV sources.
+    fn format_prepared_display(&self, _column_index: usize, normalized: &str) -> String {
+        normalized.to_owned()
+    }
+
     /// Builds the compatibility view exposed to the query engine for a
     /// prepared Parquet artifact. Providers may keep a compact physical
     /// layout while preserving the stable `dv_source` SQL contract.

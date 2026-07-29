@@ -53,7 +53,6 @@ function moveSortDraft(
 }
 
 interface SortColumnComboboxProps {
-  autoFocus: boolean;
   columns: readonly QuerySearchColumn[];
   currentId: string;
   index: number;
@@ -64,7 +63,6 @@ interface SortColumnComboboxProps {
 }
 
 function SortColumnCombobox({
-  autoFocus,
   columns,
   currentId,
   index,
@@ -99,12 +97,6 @@ function SortColumnCombobox({
       return selectable[0]?.id ?? null;
     });
   }, [currentId, open, selectable]);
-
-  useLayoutEffect(() => {
-    if (!autoFocus) return;
-    inputRef.current?.focus();
-    setOpen(true);
-  }, [autoFocus]);
 
   return (
     <div
@@ -360,7 +352,6 @@ export function QueryToolbar({
   const findTriggerRef = useRef<HTMLButtonElement>(null);
   const [sortPanelOpen, setSortPanelOpen] = useState(false);
   const [sortDraft, setSortDraft] = useState<SortDraftRow[]>(() => draftFromPlan(plan.sort));
-  const [focusSortDraftId, setFocusSortDraftId] = useState<string | null>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
   const sortTriggerRef = useRef<HTMLButtonElement>(null);
   const [targetMenuOpen, setTargetMenuOpen] = useState(false);
@@ -801,7 +792,6 @@ export function QueryToolbar({
             onClick={() => {
               setTargetMenuOpen(false);
               setSortDraft(draftFromPlan(plan.sort));
-              setFocusSortDraftId(null);
               setSortPanelOpen((open) => !open);
             }}
             ref={sortTriggerRef}
@@ -826,7 +816,6 @@ export function QueryToolbar({
                 onClick={() => {
                   const row = createSortDraft();
                   setSortDraft((current) => [...current, row]);
-                  setFocusSortDraftId(row.draftId);
                 }}
                 type="button"
               >
@@ -866,7 +855,6 @@ export function QueryToolbar({
                         <span>{index + 1}</span>
                       </button>
                       <SortColumnCombobox
-                        autoFocus={focusSortDraftId === entry.draftId}
                         columns={columns}
                         currentId={entry.columnId}
                         index={index}
@@ -880,7 +868,6 @@ export function QueryToolbar({
                                 : candidate,
                             ),
                           );
-                          setFocusSortDraftId(null);
                         }}
                         selectedIds={selectedSortIds}
                       />

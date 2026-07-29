@@ -133,7 +133,8 @@ test("blank-first multi-sort keeps incomplete rows as UI draft", async ({ page }
   const rows = panel.locator(".query-sort-editor__row");
   await expect(rows).toHaveCount(1);
   const column = sortColumnControl(panel, 1);
-  await expect(column).toBeFocused();
+  await expect(addLevel).toBeFocused();
+  await expect(panel.getByRole("listbox")).toHaveCount(0);
   await expect(column).toHaveValue("");
   const apply = panel.getByRole("button", { name: "Apply", exact: true });
   await expect(apply).toBeDisabled();
@@ -147,6 +148,7 @@ test("blank-first multi-sort keeps incomplete rows as UI draft", async ({ page }
   await direction.selectOption("descending");
   await expect(column).toHaveValue("");
 
+  await column.click();
   const hiddenOption = panel.getByRole("option", { name: /group_id.*Hidden/i });
   await expect(hiddenOption).toHaveCount(1);
   await chooseColumn(panel, column, "group_id");
@@ -157,6 +159,73 @@ test("blank-first multi-sort keeps incomplete rows as UI draft", async ({ page }
   await expect.poll(async () => (await probe(page)).executeQuery).toBe(1);
   await expect(page.getByRole("button", { name: "Sorts (1)" })).toBeVisible();
   await expectNoHorizontalPageOverflow(page);
+});
+
+test("multi-sort panel expands, clamps, and keeps its footer accessible", async ({
+  page,
+}, testInfo) => {
+  await openMockFile(page, "large", "large-5850000.parquet");
+  await page.getByRole("button", { name: "Sorts (0)" }).click();
+  const panel = page.getByRole("dialog", { name: "Multi-column sort" });
+  const addLevel = panel.getByRole("button", { name: "Add level" });
+
+  const panelHeight = async () =>
+    panel.evaluate((element) => ({
+      actual: element.getBoundingClientRect().height,
+      expected: Math.min(560, window.innerHeight - 96),
+    }));
+  await expect.poll(async () => (await panelHeight()).actual).toBe((await panelHeight()).expected);
+
+  for (let index = 0; index < 4; index += 1) {
+    await addLevel.click();
+    expect((await panelHeight()).actual).toBe((await panelHeight()).expected);
+    await expect(panel.getByRole("listbox")).toHaveCount(0);
+  }
+  await page.screenshot({
+    path: `artifacts/phase-15/ui/multi-sort-4rows-${viewportName(testInfo.project.name)}.png`,
+  });
+
+  for (let index = 4; index < 12; index += 1) await addLevel.click();
+
+  await expect(addLevel).toBeFocused();
+  await expect(panel.locator(".query-sort-editor__row")).toHaveCount(12);
+  await expect(panel.getByRole("listbox")).toHaveCount(0);
+  const initial = await panel.evaluate((element) => {
+    const panelRect = element.getBoundingClientRect();
+    const footerRect = element.querySelector("footer")?.getBoundingClientRect();
+    return {
+      clientHeight: element.clientHeight,
+      footerBottom: footerRect?.bottom ?? 0,
+      footerTop: footerRect?.top ?? 0,
+      panelBottom: panelRect.bottom,
+      panelHeight: panelRect.height,
+      panelTop: panelRect.top,
+      scrollHeight: element.scrollHeight,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(initial.panelHeight).toBeLessThanOrEqual(Math.min(560, initial.viewportHeight - 96) + 1);
+  expect(initial.panelBottom).toBeLessThanOrEqual(initial.viewportHeight);
+  expect(initial.scrollHeight).toBeGreaterThan(initial.clientHeight);
+  expect(initial.footerTop).toBeGreaterThanOrEqual(initial.panelTop);
+  expect(initial.footerBottom).toBeLessThanOrEqual(initial.panelBottom);
+
+  await panel.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect(panel).toBeVisible();
+  const scrolled = await panel.evaluate((element) => {
+    const panelRect = element.getBoundingClientRect();
+    const footerRect = element.querySelector("footer")?.getBoundingClientRect();
+    return {
+      footerBottom: footerRect?.bottom ?? 0,
+      footerTop: footerRect?.top ?? 0,
+      panelBottom: panelRect.bottom,
+      panelTop: panelRect.top,
+    };
+  });
+  expect(scrolled.footerTop).toBeGreaterThanOrEqual(scrolled.panelTop);
+  expect(scrolled.footerBottom).toBeLessThanOrEqual(scrolled.panelBottom);
+  await expect(panel.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Apply" })).toBeVisible();
 });
 
 test("display formats expose primary controls and one inline detail accordion", async ({

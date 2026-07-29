@@ -224,6 +224,73 @@ AppData를 쓰는 native cache/Settings 검증을 PASS 처리할 수 없으므�
 | `src-tauri/target/release/bundle/nsis/Data Viewer_0.1.0_x64-setup.exe` | 24,907,071 B | `3CC1F59F38BE6616752D034177D06602039C357642AEE03A24886F10826D85AA` |
 | `src-tauri/target/release/THIRD_PARTY_NOTICES.md` | 10,980 B | `E810B8D9CA158B57168F25380EC7118D55FD5CFD771BBD767D5618A5166CB15E` |
 
+## 2026-07-28 CSV 준비 중 query 안전성과 다중 정렬 창 UX 보완
+
+CSV reusable preparation이 `Preparing`인 동안 filter query와 distinct-values 요청은 두 번째 원본 CSV
+full scan을 시작하지 않고 terminal 상태를 기다린다. query waiter는 DuckDB permit을 얻기 전에
+cancel/epoch-aware하게 대기하며, query 취소는 공유 preparation을 취소하지 않는다. `Ready`가 되면 같은
+prepared artifact를 재사용하고 preparation이 `Failed` 또는 `Cancelled`일 때만 direct source로 fallback한다.
+동기 IPC 정체를 피하기 위해 `list_distinct_values` Tauri command는 `async`와 `spawn_blocking` 경계로
+이동했다. session drop은 query waiter와 preparation을 취소하고 오래된 결과를 게시하지 않는다.
+
+다중 정렬 편집기는 `Add level`에서 빈 기준 행만 추가하고 column picker나 focus를 자동으로 열지 않는다.
+사용자가 column control을 명시적으로 click/focus/keyboard 조작했을 때만 picker가 열린다. panel은
+`min(560px, 100vh - 96px)`의 실제 높이를 사용하고 footer를 하단에 유지한다. 0·1·4·12행 geometry와
+wide·compact·minimum 4행 screenshot을 검증했다.
+
+검증 결과:
+
+| 검증 | 결과 |
+| --- | --- |
+| Rust 전체 | 303 tests: 287 PASS, 16 ignored, 0 FAIL |
+| Rust query 집중 | 42 PASS, 7 ignored, 0 FAIL |
+| Rust fmt / Clippy `-D warnings` | PASS |
+| Vitest 전체 | 20 files, 369 PASS |
+| typecheck / lint / Prettier | PASS |
+| Playwright 전체 | 84 PASS, 세 viewport |
+| 독립 Quality 재검토 | 추가 HIGH/MEDIUM 제품 결함 없음 |
+| Release EXE / NSIS | PASS |
+
+실제 Tauri debug build는 별도 identifier `com.denrew88.data-viewer.phase15-test`와 전용 WebView2 data
+directory를 사용했다. `fixtures/phase-15/csv-5850000-high.csv`를 cold 상태로 열고 preparation 중
+`category contains category-a6bd7b19eef3ead7` filter를 적용했다. 앱은 182,222ms 동안 생존했고 progress
+source byte가 136에서 45,612,004로 계속 갱신됐으며, preparation 뒤 `frontend-query-*`가 grid에 commit되어
+정확히 1행을 표시했다. 테스트 cache 406,295,394B, 1 entry를 삭제했고 skipped/failure와 remaining cache는
+모두 0이다. 원시 결과는 `artifacts/phase-15/native-csv-filter.json`, screenshot은
+`artifacts/phase-15/ui/native-csv-filter.png`에 저장했다.
+
+| 최종 산출물 | 크기 | SHA-256 |
+| --- | ---: | --- |
+| `src-tauri/target/release/data-viewer.exe` | 143,950,848 B | `99EE6A06176209EBA2158BBD84A6D7830A36A65475B3E7754E05D0B3E2406220` |
+| `src-tauri/target/release/bundle/nsis/Data Viewer_0.1.0_x64-setup.exe` | 24,927,997 B | `8C6A088B36C99869E80F52CA0034EA8B9A7635DC66A3A1A109F0FC59D9438CCB` |
+
+기존 범용 `npm run test:native:smoke`는 CDP 연결과 초기 동작 뒤 `Ctrl+ArrowDown`의 row 102 cell visibility
+대기에서 timeout되어 이 변경의 native PASS 근거로 사용하지 않았다. 이 요청의 cold CSV filter 경로는
+위 Phase 15 전용 native smoke로 별도 PASS 처리했으며, 범용 navigation smoke 실패는 후속 회귀 점검 대상으로
+남긴다.
+
+## 2026-07-28 대용량 Phase 15 회귀 fixture
+
+`fixtures/phase-15`에 CSV와 Parquet의 5,850,000행 high/low cardinality 파일 4개와
+논리 100,000×2,048 OES H5 파일 1개를 생성했다. H5 `/oes`는 실제 shape
+2,048×100,000으로 전치 저장하며 chunk는 `(2048,128)`, 압축은 Blosc-Zstd이다.
+
+| fixture | 크기 | SHA-256 |
+| --- | ---: | --- |
+| `csv-5850000-low.csv` | 641,656,312 B | `64f656af94b1260298217ae78cd9adb7346b41c8bfa8055a49b54a3bf4e3c6c0` |
+| `boundary-5850000-low.parquet` | 130,394,395 B | `76f63843ec145047fff0596a5f7cdf9fca777dea2f319b27ceec22632b7f0def` |
+| `csv-5850000-high.csv` | 979,427,914 B | `082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd` |
+| `boundary-5850000-high.parquet` | 380,618,634 B | `30fc7b291f7c936311e74dbb785e3005ebb0d4d432f5795fad269b31de9e44ba` |
+| `oes-v3-100000x2048-int32.oes.h5` | 3,915,120 B | `fdec7cb50f3f6d2de3af4c84cab7637619100c4c4e38cae0f54d52e4b039f578` |
+
+- 전체 크기: 2,136,012,375 B
+- 생성 시간: 254.5초
+- 최종 독립 audit 시간: 56.9초. manifest provenance와 golden, Blosc 세부 옵션,
+  H5 별도 재생성 결정성, publish mismatch 시 기존 final 보존과 partial cleanup까지 포함
+- 결과: 5개 파일 hash, CSV 5,850,000행×15열, low/high cardinality, Parquet schema와
+  90개 row group, H5 attrs/filter/chunk/transpose golden 모두 PASS
+- 대형 binary fixture는 기존 `fixtures/*` ignore 정책에 따라 로컬에만 보존한다.
+
 ## 2026-07-27 release 증분 산출물 유지 정책
 
 - 기본 `npm run release`와 `npm run release:exe`는 Cargo release 중간 산출물을 유지해 다음 빌드가

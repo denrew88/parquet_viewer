@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_QUERY_PLAN, type QueryPlan } from "./model";
@@ -186,6 +186,11 @@ describe("QueryToolbar", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Add level" }));
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    const firstColumn = screen.getByRole("combobox", {
+      name: "Column for sort priority 1",
+    });
+    expect(firstColumn).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     const emptyHandle = screen.getByRole("button", {
       name: "Reorder sort empty level, priority 1",
     });
@@ -193,13 +198,24 @@ describe("QueryToolbar", () => {
     fireEvent.change(screen.getByLabelText("Direction for sort priority 1"), {
       target: { value: "descending" },
     });
+    fireEvent.focus(firstColumn);
     fireEvent.click(screen.getByRole("option", { name: "Hidden ID (Hidden)" }));
     expect(
       screen.getByRole("button", { name: "Reorder sort hidden_id, priority 1" }).dataset.reorderId,
     ).toBe(draftId);
     fireEvent.click(screen.getByRole("button", { name: "Add level" }));
+    fireEvent.focus(
+      screen.getByRole("combobox", {
+        name: "Column for sort priority 2",
+      }),
+    );
     expect(screen.getByRole("option", { name: /Hidden ID.*Already used/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole("option", { name: "Name" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Columns for sort priority 2" })).getByRole(
+        "option",
+        { name: "Name" },
+      ),
+    );
     expect(screen.queryByLabelText("Column to add")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(onSortChange).toHaveBeenCalledWith([
@@ -222,8 +238,12 @@ describe("QueryToolbar", () => {
       },
     });
     fireEvent.click(screen.getByRole("button", { name: "Sorts (1)" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add level" }));
+    const addLevel = screen.getByRole("button", { name: "Add level" });
+    fireEvent.click(addLevel);
     const input = screen.getByRole("combobox", { name: "Column for sort priority 2" });
+    expect(input).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.focus(input);
     expect(screen.getByRole("option", { name: /Name.*Already used/ })).toBeDisabled();
 
     fireEvent.keyDown(input, { key: "Home" });
@@ -307,6 +327,8 @@ describe("QueryToolbar", () => {
     const reason = screen.getByText("Choose a column for this sort level.");
     const input = screen.getByRole("combobox", { name: "Column for sort priority 1" });
     expect(reason).toBeVisible();
+    expect(input).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(input).toHaveAttribute("aria-describedby", reason.id);
     expect(input).toHaveAttribute("aria-invalid", "true");
   });

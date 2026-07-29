@@ -12,11 +12,14 @@ import type {
   StartCopyRequest,
 } from "./backend";
 import {
+  fullyVisibleScrollOffset,
   VirtualDataGrid as ProductionVirtualDataGrid,
   type VirtualDataGridProps,
 } from "./VirtualDataGrid";
 import {
+  GRID_BOTTOM_CLEARANCE,
   GRID_COLUMN_OVERSCAN,
+  GRID_HEADER_HEIGHT,
   GRID_MAX_COLUMN_WIDTH,
   GRID_MAX_SEGMENT_ROWS,
   GRID_MIN_COLUMN_WIDTH,
@@ -51,6 +54,45 @@ describe("Phase 11 grid sizing primitives", () => {
     expect(autoFitColumnWidth("name", ["short", "longest\nline"], measure, 20)).toBe(90);
     expect(autoFitColumnWidth("x", ["y"], () => 1, 0)).toBe(GRID_MIN_COLUMN_WIDTH);
     expect(autoFitColumnWidth("x", ["z".repeat(1000)], measure, 20)).toBe(GRID_MAX_COLUMN_WIDTH);
+  });
+
+  it("keeps a target item fully inside sticky-header and bottom-clearance insets", () => {
+    expect(
+      fullyVisibleScrollOffset(0, 120, GRID_HEADER_HEIGHT, GRID_BOTTOM_CLEARANCE, 112, 140, 1_000),
+    ).toBe(38);
+    expect(
+      fullyVisibleScrollOffset(
+        200,
+        120,
+        GRID_HEADER_HEIGHT,
+        GRID_BOTTOM_CLEARANCE,
+        180,
+        208,
+        1_000,
+      ),
+    ).toBe(144);
+    expect(
+      fullyVisibleScrollOffset(
+        100,
+        120,
+        GRID_HEADER_HEIGHT,
+        GRID_BOTTOM_CLEARANCE,
+        150,
+        178,
+        1_000,
+      ),
+    ).toBe(100);
+    expect(
+      fullyVisibleScrollOffset(
+        980,
+        120,
+        GRID_HEADER_HEIGHT,
+        GRID_BOTTOM_CLEARANCE,
+        1_090,
+        1_118,
+        1_000,
+      ),
+    ).toBe(1_000);
   });
 });
 
@@ -788,6 +830,40 @@ describe("VirtualDataGrid", () => {
     expect(readPage.mock.calls.map(([request]) => request.offset)).toEqual([249_800]);
   });
 
+  it("T-P16-027 keeps repeated Ctrl+Down boundary targets fully visible and focused", async () => {
+    const names = ["a"];
+    const navigationSummary = makeNavigationSummary(names, 400);
+    const initial = makeNavigationPage(
+      { sessionId: navigationSummary.sessionId, offset: 0, limit: 200, columns: names },
+      names,
+      400,
+      (row) => occupiedValue(String(row)),
+    );
+    const resolver = vi.fn(async (request: FindBoundaryRequest) => {
+      const target = request.row === 0 ? 99 : request.row === 99 ? 101 : 200;
+      return boundaryResponse(request, target, "a", 400);
+    });
+    const readPage = vi.fn(async (request: ReadPageRequest) =>
+      makeNavigationPage(request, names, 400, (row) => occupiedValue(String(row))),
+    );
+    const { grid } = renderGrid(readPage, undefined, navigationSummary, initial, {
+      findDataBoundary: resolver,
+    });
+    Object.defineProperties(grid, {
+      clientHeight: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: GRID_HEADER_HEIGHT + 400 * GRID_ROW_HEIGHT },
+    });
+    grid.focus();
+
+    for (const target of [99, 101, 200]) {
+      fireEvent.keyDown(grid, { key: "ArrowDown", ctrlKey: true });
+      await waitFor(() => expect(grid).toHaveAttribute("data-active-row", String(target)));
+      expect(grid).toHaveFocus();
+    }
+    expect(resolver.mock.calls.map(([request]) => request.row)).toEqual([0, 99, 101]);
+    expect(readPage.mock.calls.map(([request]) => request.offset)).toEqual([200]);
+  });
+
   it("NAV-RPC-002 keeps selection and scroll unchanged when the target page fails", async () => {
     const names = ["a"];
     const navigationSummary = makeNavigationSummary(names, null);
@@ -1069,6 +1145,8 @@ describe("VirtualDataGrid", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sorts (0)" }));
     fireEvent.click(screen.getByRole("button", { name: "Add level" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByRole("combobox", { name: "Column for sort priority 1" }));
     const listbox = screen.getByRole("listbox", { name: "Columns for sort priority 1" });
     expect(
       within(listbox)

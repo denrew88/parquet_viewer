@@ -153,11 +153,20 @@ index는 필요할 때 백그라운드에서 계산하며 진행 상태와 취�
 
 CSV session이 열리거나 profile generation이 바뀌면 canonical path, header mode와 profile snapshot을
 identity로 하는 재사용 가능한 prepared source를 백그라운드에서 만든다. 준비 중에는 preview와 기존
-direct page를 막지 않고, Ready 이후 page, query, copy와 경계 탐색은 같은 typed/raw/invalid 정보를 가진
-prepared artifact를 재사용한다. 진행 행 수·경과 시간과 취소를 제공하고 실패·취소 시에는 이유를 남긴 채
-direct source로 안전하게 fallback한다. session 교체, tab close, process 종료와 crash janitor는 artifact와
+direct page의 backend availability를 유지하되, 실제 `Preparing` 상태를 확인한 frontend는 해당 문서의
+Data view를 inert 처리해 새 page·query·distinct·copy·navigation 상호작용을 시작하지 않는다. Ready 이후
+page, query, copy와 경계 탐색은 같은 typed/raw/invalid 정보를 가진 prepared artifact를 재사용한다.
+진행 행 수·경과 시간과 취소를 제공하고 실패·취소 시에는 이유를 남긴 채 direct source로 안전하게
+fallback하며 Data view interaction도 다시 허용한다. session 교체, tab close, process 종료와 crash janitor는 artifact와
 작업을 정리하며 다른 generation이나 process의 artifact를 재사용하거나 삭제하지 않는다. 연속 page와
 copy는 거대한 row ID `IN (...)` 목록을 만들지 않고 bounded contiguous range로 조회한다.
+
+재사용 가능한 CSV preparation이 `Preparing`인 동안 들어온 filter/sort query와 column distinct-values
+요청은 원본 CSV에 대한 두 번째 full scan을 시작하지 않는다. query worker는 preparation의 terminal
+상태를 cancel-aware하게 기다리되 DuckDB query permit을 점유하지 않으며, `Ready`가 되면 동일한
+prepared artifact를 재사용한다. query 취소는 해당 waiter만 취소하고 공유 preparation을 취소하지
+않는다. preparation이 실패하거나 명시적으로 취소된 경우에만 기존 direct source 경로로 안전하게
+fallback한다. session·generation·source fingerprint가 달라진 오래된 waiter는 결과를 게시하지 않는다.
 
 cold preparation은 source read byte와 전체 source byte를 사용한 실제 progress bar, 진행 행 수와 경과
 시간을 하나의 preparation UI에 표시한다. 유효한 warm cache hit는 이 UI를 한 frame도 표시하지 않는다.
@@ -263,6 +272,15 @@ Data view에는 capability에 따라 copy 설정, CSV Parsing Profile, column fi
 제공한다. 전체 query의 진행 상태와 취소는 활성 문서에 귀속한다. query가 commit되면 이전 active
 logical row와 column ID를 새 결과 범위에 보존·clamp하고 rectangular selection은 active cell 하나로
 축소한다. target page 검증 전에는 selection, scroll과 focus를 commit하지 않는다.
+
+cold CSV preparation의 backend 응답이 실제 `Preparing`이면 해당 문서의 Data toolbar와 grid 전체를
+`inert`로 전환하고 진행 overlay를 표시한다. pointer·wheel·keyboard·programmatic focus를 포함해 filter,
+sort, Find, copy, navigation, column 조작과 CSV Parsing Profile 진입을 차단한다. 다른 문서 탭 이동과
+현재 문서 닫기, Data/Schema/Metadata 전환, Settings, preparation 진행 확인과 Cancel은 blocker 밖에서
+계속 사용할 수 있어야 한다. Preparing 전에 열려 있던 transient surface는 닫고 focus를 허용된 control로
+옮긴다. `Ready`, `Failed`, `Cancelled` terminal 상태에서는 즉시 inert를 해제하며 실패·취소 뒤에는
+direct source를 사용할 수 있다. 상태가 아직 확정되지 않은 `starting`만으로 blocker를 표시하지 않아
+warm cache의 즉시 Ready에서 overlay·spinner·Cancel 또는 layout shift가 한 frame도 나타나지 않게 한다.
 
 각 문서 탭은 활성 뷰, page와 scroll, segmented anchor, selection, 컬럼 순서·폭·숨김·검색,
 loading/error 상태를
@@ -449,7 +467,11 @@ sort는 ascending, descending, clear와 별도 multi-sort criteria editor를 제
 identity를 tie-breaker로 사용해 안정 정렬하며 null은 양 방향 모두 마지막이다. query 결과는
 `documentId`, `sessionId`, `queryId`로 격리하고 늦은 결과를 폐기한다.
 multi-sort UI는 전체 logical column 검색, priority, direction, remove와 pointer/keyboard reorder를
-제공한다. header click과 Shift+header click은 모두 해당 단일 컬럼의 같은 sort cycle로 동작하며
+제공한다. `Add level`은 빈 기준 행만 추가하고 column picker를 자동으로 열거나 focus를 옮기지 않는다.
+사용자가 column control을 click·focus하거나 keyboard로 명시적으로 열었을 때만 picker를 표시한다.
+criteria editor는 viewport 안에서 높이를 제한하되 여러 기준을 한눈에 볼 수 있도록 충분한 세로 공간과
+내부 스크롤을 사용하고, Cancel·Apply footer는 스크롤 중에도 panel 안에서 접근 가능해야 한다.
+header click과 Shift+header click은 모두 해당 단일 컬럼의 같은 sort cycle로 동작하며
 다중 기준 변경은 criteria editor의 Apply에서만 ordered plan으로 commit한다. 실행 의미는 항상 typed
 column filter로 row 집합을 정한 뒤 multi-sort로 순서를
 정하고 Find로 위치를 탐색하는 순서다. filter→sort와 sort→filter의 최종 plan이 같으면 결과도 같다.

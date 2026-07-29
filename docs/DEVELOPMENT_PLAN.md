@@ -46,13 +46,17 @@
   5,850,000행 high CSV 5회 median 14.701초, p95 14.931초, peak process-tree RSS 약 1.150GiB를
   확인했다. EXE·NSIS 증가량과 dependency/license audit 뒤 사용자의 최종 연결 지시를 채택 결정으로
   기록했다. 구현은 완료했지만 native CDP·DPI·100-cycle·fault·clean-install 필수 gate가 남아 있다.
+- Phase 16은 cold CSV preparation 중 해당 문서 Data view를 실제 상호작용 불가 상태로 전환해
+  filter·sort·Find·copy·navigation·distinct 신규 요청을 차단한다. preparation 진행·취소와 문서
+  전환·닫기·Settings는 유지하며, warm Ready의 gate flash 0과 native Ctrl boundary target focus
+  visibility 회귀를 함께 검증한다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 15까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 16까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -85,6 +89,7 @@
 | Phase 13 | 구현 완료, 필수 performance·external native gate BLOCKED (2026-07-23) | boundary·CSV cache·직접 drag·정렬 UX·Duration·설정 안정화    |
 | Phase 14 | 구현 완료, 필수 performance·architecture gate BLOCKED (2026-07-23) | CSV 단일 scan columnar cache·Ctrl bitmap·정렬/설정/live drag UX |
 | Phase 15 | 구현 완료, 필수 native·soak gate BLOCKED (2026-07-24) | CSV 준비 병목 제거·Polars 제품 연결·compact cache 재설계 |
+| Phase 16 | 완료 (2026-07-29)                                  | CSV preparation Data gate·요청 누적 방지·Ctrl focus visibility |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
@@ -107,6 +112,8 @@ Phase 14의 미충족 performance·architecture gate를 숨기지 않고 Phase 1
 Polars Rust는 2026-07-24 사용자의 최종 연결 지시에 따라 제품 기본 dependency로 채택했다. 최신
 구현·성능·package 근거는 `artifacts/phase-15/50-integration.md`와 `60-dependency-package-audit.md`,
 남은 필수 gate는 `90-review.md`를 따른다.
+Phase 16의 확정 범위와 완료 조건은 `artifacts/phase-16/00-scope.md`를 따르며, Phase 15의 backend
+wait/reuse/cancel 안전장치를 제거하지 않고 문서별 UI interaction gate를 추가한다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -747,3 +754,35 @@ raw·typed·empty·invalid 의미와 DuckDB query 계약을 유지하면서 boun
 - Polars 실행 파일·installer 증가량과 dependency audit, 사용자의 runtime dependency 채택 결정을
   기록한다. 이 조건은 `60-dependency-package-audit.md`에서 충족했다.
 - 전체 Rust/frontend/E2E/release/native gate와 Phase 14에서 승계한 필수 증거가 PASS다.
+
+## Phase 16. CSV preparation 상호작용과 navigation focus 안정화
+
+**목표:** cold CSV preparation 중 해당 문서 Data view에서 새 query·distinct·copy·navigation 작업을
+시작하지 못하게 하면서 진행·취소와 문서 수명주기 동작은 유지한다. warm cache Ready는 차단 화면 없이
+즉시 열고, native boundary 이동 뒤 active cell과 focus가 viewport 밖에 남는 회귀를 수정한다.
+
+**상태:** 완료 (2026-07-29)
+
+확정 범위와 상태 계약은 `artifacts/phase-16/00-scope.md`, 추적 가능한 검증은
+`artifacts/phase-16/10-test-plan.md`를 따른다.
+
+### 해야 할 일
+
+- `Preparing`인 문서의 Data view를 inert 처리하고 명시적인 progress overlay 제공
+- filter, multi-sort, Find, copy, grid keyboard/pointer, column 작업과 CSV Profile 진입 차단
+- 다른 문서 탭 이동·닫기, view 전환, Settings와 preparation Cancel 유지
+- Ready/Failed/Cancelled terminal 상태에서 gate 해제와 prepared/direct source 계약 보존
+- warm 즉시 Ready의 gate·spinner·Cancel DOM frame 0
+- preparing 전환 전 열려 있던 transient surface와 focus를 안전하게 정리
+- 반복 distinct/query 요청과 stale session 응답 누적 방지, backend wait/reuse/cancel 회귀 검증
+- Ctrl boundary target page commit 뒤 active cell·selection·focus visibility 수정
+- 세 viewport와 실제 5.85M cold/warm Tauri, release/NSIS 회귀 검증
+
+### 완료 조건
+
+- `artifacts/phase-16/10-test-plan.md`의 필수 테스트가 PASS다.
+- preparing 중 신규 Data 작업은 0건이고 허용된 문서·진행·취소·Settings 동작은 정상이다.
+- terminal 상태와 warm cache hit에서 차단 해제, direct/prepared source와 UI 상태가 정확하다.
+- 반복 요청, tab close와 session 교체에서 worker·query·distinct·late update가 누적되지 않는다.
+- native 연속 Ctrl boundary 이동 뒤 target cell과 grid focus가 viewport 안에서 검증된다.
+- 전체 frontend/Rust/E2E/release/native gate가 PASS하고 HIGH/MEDIUM 결함과 필수 BLOCKED가 없다.

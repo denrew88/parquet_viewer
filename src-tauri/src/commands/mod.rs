@@ -1498,7 +1498,7 @@ pub fn read_query_page(
 }
 
 #[tauri::command]
-pub fn list_distinct_values(
+pub async fn list_distinct_values(
     request: DistinctValuesRequest,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1509,10 +1509,26 @@ pub fn list_distinct_values(
             source.query_source_spec()
         })
         .map_err(document_error)??;
-    state.query_service(&app)?.distinct(
-        request.clone(),
-        request.query_id.is_none().then_some(source),
-    )
+    let query_service = state.query_service(&app)?;
+    run_distinct_values_async(query_service, request, source).await
+}
+
+async fn run_distinct_values_async(
+    query_service: Arc<QueryService>,
+    request: DistinctValuesRequest,
+    source: crate::data::QuerySourceSpec,
+) -> Result<DistinctValuesResponse, DataError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        query_service.distinct(
+            request.clone(),
+            request.query_id.is_none().then_some(source),
+        )
+    })
+    .await
+    .map_err(|error| DataError {
+        code: DataErrorCode::Io,
+        message: format!("The distinct-values worker failed: {error}"),
+    })?
 }
 
 #[tauri::command]
@@ -2012,14 +2028,137 @@ mod tests {
     use parquet::arrow::ArrowWriter;
     use std::{
         fs::File,
+        future::Future,
         sync::Arc,
+        task::{Context, Poll, Waker},
         time::{Duration, Instant},
     };
 
+    use crate::data::{QueryInputProvider, QueryPrepareContext, QuerySourceSpec};
     use crate::domain::{
-        CsvConversionFailurePolicy, CsvProfileMode, CsvTargetType, CsvValidationState,
-        DataValueState, SourceCapability, ValueKind,
+        ColumnSchema, CsvConversionFailurePolicy, CsvProfileMode, CsvTargetType,
+        CsvValidationState, DataValueState, SourceCapability, ValueKind,
+        DEFAULT_QUERY_TEMP_LIMIT_BYTES,
     };
+
+    #[derive(Debug, Default)]
+    struct BlockingDistinctGate {
+        state: Mutex<(bool, bool)>,
+        changed: Condvar,
+    }
+
+    impl BlockingDistinctGate {
+        fn wait_until_entered(&self) {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut state = self.state.lock().unwrap();
+            while !state.0 {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                assert!(!remaining.is_zero(), "distinct provider did not start");
+                let (next, wait) = self.changed.wait_timeout(state, remaining).unwrap();
+                state = next;
+                assert!(!wait.timed_out() || state.0);
+            }
+        }
+
+        fn release(&self) {
+            let mut state = self.state.lock().unwrap();
+            state.1 = true;
+            self.changed.notify_all();
+        }
+    }
+
+    #[derive(Debug)]
+    struct BlockingDistinctProvider {
+        gate: Arc<BlockingDistinctGate>,
+    }
+
+    impl QueryInputProvider for BlockingDistinctProvider {
+        fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
+            context
+                .connection
+                .execute_batch(
+                    "CREATE TABLE dv_source (__dv_row_id UBIGINT, value VARCHAR, __dv_raw_0 VARCHAR, __dv_invalid_0 BOOLEAN); INSERT INTO dv_source VALUES (0, 'alpha', 'alpha', false), (1, 'beta', 'beta', false);",
+                )
+                .map_err(|error| DataError::query_failed(error.to_string()))?;
+            let mut state = self.gate.state.lock().map_err(|_| DataError {
+                code: DataErrorCode::Io,
+                message: String::from("The distinct test gate is unavailable."),
+            })?;
+            state.0 = true;
+            self.gate.changed.notify_all();
+            while !state.1 {
+                if context.cancel.load(Ordering::Acquire) {
+                    return Err(DataError::task_cancelled());
+                }
+                let (next, _) = self
+                    .gate
+                    .changed
+                    .wait_timeout(state, Duration::from_millis(10))
+                    .map_err(|_| DataError {
+                        code: DataErrorCode::Io,
+                        message: String::from("The distinct test gate is unavailable."),
+                    })?;
+                state = next;
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn distinct_async_boundary_yields_before_blocking_provider_scan() {
+        let directory = tempfile::tempdir().unwrap();
+        let service =
+            Arc::new(QueryService::open(directory.path(), DEFAULT_QUERY_TEMP_LIMIT_BYTES).unwrap());
+        let gate = Arc::new(BlockingDistinctGate::default());
+        let source = QuerySourceSpec {
+            path: PathBuf::from("synthetic-distinct-async.csv"),
+            columns: vec![ColumnSchema {
+                name: String::from("value"),
+                logical_type: String::from("String"),
+                nullable: false,
+                physical_type: String::from("VARCHAR"),
+            }],
+            total_rows: Some(2),
+            provider: Arc::new(BlockingDistinctProvider {
+                gate: Arc::clone(&gate),
+            }),
+        };
+        let request = DistinctValuesRequest {
+            document_id: String::from("distinct-async-document"),
+            session_id: String::from("distinct-async-session"),
+            query_id: None,
+            column_id: String::from("value"),
+            search: None,
+            offset: 0,
+            limit: 20,
+        };
+        let mut future = Box::pin(run_distinct_values_async(service, request, source));
+        let release_gate = Arc::clone(&gate);
+        let release = std::thread::spawn(move || {
+            release_gate.wait_until_entered();
+            std::thread::sleep(Duration::from_millis(500));
+            release_gate.release();
+        });
+
+        let started = Instant::now();
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
+        assert!(
+            started.elapsed() < Duration::from_millis(250),
+            "the async distinct boundary blocked on provider preparation"
+        );
+
+        let response = tauri::async_runtime::block_on(future).unwrap();
+        release.join().unwrap();
+        assert_eq!(
+            response
+                .values
+                .iter()
+                .filter_map(|value| value.value.as_deref())
+                .collect::<Vec<_>>(),
+            ["alpha", "beta"]
+        );
+    }
 
     #[test]
     fn debug_test_data_root_separates_local_and_config_directories() {

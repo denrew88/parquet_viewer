@@ -1,5 +1,39 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { openMockFile } from "./helpers";
+
+type CsvQueryProbe = { executeQuery: number; readQueryPage: number };
+
+async function installCsvQueryProbe(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const backendUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .find((name) => new URL(name).pathname === "/src/backend.ts");
+    if (!backendUrl) throw new Error("The browser mock backend module was not loaded.");
+    const module = (await (0, eval)(
+      `import(${JSON.stringify(backendUrl)})`,
+    )) as typeof import("../src/backend");
+    const backend = module.browserMockBackend;
+    const probe: CsvQueryProbe = { executeQuery: 0, readQueryPage: 0 };
+    Reflect.set(window, "__csvQueryProbe", probe);
+    const executeQuery = backend.executeQuery.bind(backend);
+    backend.executeQuery = async (request) => {
+      probe.executeQuery += 1;
+      return executeQuery(request);
+    };
+    const readQueryPage = backend.readQueryPage.bind(backend);
+    backend.readQueryPage = async (request) => {
+      probe.readQueryPage += 1;
+      return readQueryPage(request);
+    };
+  });
+}
+
+async function csvQueryProbe(page: Page): Promise<CsvQueryProbe> {
+  return page.evaluate(() =>
+    structuredClone(Reflect.get(window, "__csvQueryProbe") as CsvQueryProbe),
+  );
+}
 
 test("shows byte progress for cold CSV preparation and removes it at Ready", async ({
   page,
@@ -58,6 +92,61 @@ test("shows byte progress for cold CSV preparation and removes it at Ready", asy
     window.history.replaceState(null, "", url);
   });
   await expect(progress).toHaveCount(0, { timeout: 2_500 });
+});
+
+test("blocks filter work while cold CSV preparation is running and enables it at Ready", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openMockFile(page, "csv-progress", "quoted-multiline.csv");
+  await installCsvQueryProbe(page);
+  const progress = page.getByRole("progressbar", { name: "CSV preparation progress" });
+  const blocker = page.getByTestId("csv-preparation-blocker");
+  const surface = page.getByTestId("csv-data-interaction-surface");
+  const grid = page.getByRole("grid", { name: "Data preview" });
+  await expect(progress).toBeVisible();
+  await expect(blocker).toBeVisible();
+  await expect(surface).toHaveAttribute("inert", "");
+
+  const activeRow = await grid.getAttribute("data-active-row");
+  await page.evaluate(() => {
+    const filter = document.querySelector<HTMLButtonElement>('[aria-label="Filter name"]');
+    const dataGrid = document.querySelector<HTMLElement>(
+      '[role="grid"][aria-label="Data preview"]',
+    );
+    filter?.click();
+    dataGrid?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true, bubbles: true }),
+    );
+  });
+  await expect(page.getByRole("dialog", { name: "Filter name" })).toHaveCount(0);
+  await expect(grid).toHaveAttribute("data-active-row", activeRow ?? "0");
+  await expect(progress).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("gridcell", { name: "Kim, Mina", exact: true })).toBeVisible();
+  expect((await csvQueryProbe(page)).executeQuery).toBe(0);
+  await expect(grid).toHaveAttribute("data-query-id", "");
+
+  await page.evaluate(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("csvReady", "1");
+    window.history.replaceState(null, "", url);
+  });
+  await expect(progress).toHaveCount(0, { timeout: 2_500 });
+  await expect(blocker).toHaveCount(0);
+  await expect(surface).not.toHaveAttribute("inert", "");
+
+  await page.getByRole("button", { name: "Filter name", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "Filter name" });
+  await expect(popover).toBeVisible();
+  await popover.getByRole("textbox", { name: "Value", exact: true }).fill("Kim, Mina");
+  await popover.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByLabel("Active filters")).toContainText("name contains Kim, Mina");
+  await expect.poll(async () => (await csvQueryProbe(page)).readQueryPage).toBeGreaterThan(0);
+  await expect(grid).toHaveAttribute("data-query-id", /frontend-query-/);
+  await expect(page.getByLabel("Active filters")).toContainText("name contains Kim, Mina");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect((await csvQueryProbe(page)).executeQuery).toBe(1);
 });
 
 test("opens multiple browserMock documents and retains independent view tabs", async ({ page }) => {

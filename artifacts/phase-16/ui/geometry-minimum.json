@@ -1,0 +1,58 @@
+{
+  "result": "PASS",
+  "project": "desktop-minimum",
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "blocker": {
+    "bottom": 570,
+    "height": 434,
+    "left": 0,
+    "right": 800,
+    "top": 136,
+    "width": 800
+  },
+  "hitTest": {
+    "blocker": {
+      "contains": true,
+      "target": "STRONG"
+    },
+    "cancel": {
+      "contains": true,
+      "target": "BUTTON"
+    },
+    "settings": {
+      "contains": true,
+      "target": "svg"
+    },
+    "dataTab": {
+      "contains": true,
+      "target": "BUTTON"
+    }
+  },
+  "layoutShiftPx": {
+    "bottom": 0,
+    "height": 0,
+    "left": 0,
+    "right": 0,
+    "top": 0,
+    "width": 0
+  },
+  "surface": {
+    "bottom": 570,
+    "height": 434,
+    "left": 0,
+    "right": 800,
+    "top": 136,
+    "width": 800
+  },
+  "terminalSurface": {
+    "bottom": 570,
+    "height": 434,
+    "left": 0,
+    "right": 800,
+    "top": 136,
+    "width": 800
+  }
+}

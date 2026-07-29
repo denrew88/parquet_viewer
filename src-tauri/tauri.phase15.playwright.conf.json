@@ -1,0 +1,19 @@
+{
+  "identifier": "com.denrew88.data-viewer.phase15-test",
+  "app": {
+    "windows": [
+      {
+        "title": "Data Viewer (Phase 15 Playwright)",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 800,
+        "minHeight": 600,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9341",
+        "dataDirectory": "playwright-cdp-phase15"
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

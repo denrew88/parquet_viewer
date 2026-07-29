@@ -365,6 +365,21 @@ interface DataViewProps {
   summary: FileSummary;
 }
 
+// Kept beside DataView so the gate predicate and its rendered boundary cannot drift.
+// eslint-disable-next-line react-refresh/only-export-components
+export function isCsvDataInteractionBlocked(
+  documentId: string,
+  summary: Pick<FileSummary, "format" | "sessionId">,
+  csvPreparation: CsvPreparationUiState | null,
+): boolean {
+  return Boolean(
+    summary.format === "csv" &&
+    csvPreparation?.documentId === documentId &&
+    csvPreparation.sessionId === summary.sessionId &&
+    csvPreparation.status?.state === "preparing",
+  );
+}
+
 function DataView({
   active = true,
   cancelDataBoundaryNavigation,
@@ -402,7 +417,10 @@ function DataView({
   readCellValue,
   summary,
 }: DataViewProps) {
+  const interactionSurfaceRef = useRef<HTMLDivElement>(null);
+  const cancelPreparationRef = useRef<HTMLButtonElement>(null);
   const invalidValues = page.rows.flat().filter((value) => value.state === "invalid");
+  const interactionBlocked = isCsvDataInteractionBlocked(documentId, summary, csvPreparation);
   const visibleCsvPreparation =
     csvPreparation &&
     !csvPreparation.dismissed &&
@@ -440,15 +458,34 @@ function DataView({
       : page;
   const preparationOwnsRowCount =
     summary.format === "csv" &&
-    !csvPreparation?.requestError &&
     (csvPreparation === null ||
       csvPreparation.action === "starting" ||
       csvPreparation.status === null ||
       csvPreparation.status.state === "preparing" ||
-      csvPreparation.status.state === "ready");
+      csvPreparation.status.state === "ready" ||
+      !csvPreparation.dismissed);
   const showRowCountNotice =
     displayedSummary.rowCountStatus.state === "calculating" && !preparationOwnsRowCount;
   const hasNotices = showRowCountNotice || invalidValues.length > 0;
+  useEffect(() => {
+    if (!active || !interactionBlocked) return;
+    const focused = document.activeElement;
+    const focusIsOnAllowedChrome =
+      focused instanceof Element &&
+      Boolean(
+        focused.closest(
+          ".app-toolbar, .document-tabs, .workspace-tabs, .csv-preparation, [aria-modal='true']",
+        ),
+      );
+    if (!focusIsOnAllowedChrome) cancelPreparationRef.current?.focus();
+  }, [active, interactionBlocked]);
+
+  const blockInteractionEvent = (event: { preventDefault(): void; stopPropagation(): void }) => {
+    if (!interactionBlocked) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <div className={`data-view${hasNotices ? " data-view--notices" : ""}`}>
       {hasNotices && (
@@ -544,6 +581,7 @@ function DataView({
             <button
               disabled={visibleCsvPreparation.action === "cancelling"}
               onClick={onCancelCsvPreparation}
+              ref={cancelPreparationRef}
               type="button"
             >
               {visibleCsvPreparation.action === "cancelling" ? "Cancelling..." : "Cancel"}
@@ -564,52 +602,80 @@ function DataView({
           )}
         </div>
       )}
-      <VirtualDataGrid
-        active={active}
-        cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
-        copyLimits={copyLimits}
-        copyOptions={copyOptions}
-        displayFormats={displayFormats}
-        copyPresetError={copyPresetError}
-        copyPresetSaving={copyPresetSaving}
-        distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
-        documentId={documentId}
-        findDataBoundary={findDataBoundary}
-        startCopy={startCopy}
-        getCopyStatus={getCopyStatus}
-        cancelCopyOperation={cancelCopy}
-        getCopyHistory={getCopyHistory}
-        findTarget={queryState?.findTarget ?? undefined}
-        isLoading={isLoading}
-        logicalColumnNames={queryState?.queryId ? queryState.resultColumns : undefined}
-        onCancelQuery={queryState ? onCancelQuery : undefined}
-        onFindNext={queryState ? () => onFindMatch("next") : undefined}
-        onFindPrevious={queryState ? () => onFindMatch("previous") : undefined}
-        onOpenDistinctValues={queryState ? onOpenDistinctValues : undefined}
-        onRetryQuery={queryState ? onRetryQuery : undefined}
-        onPageChange={onPageChange}
-        onCopyPresetChange={onCopyPresetChange}
-        onOpenCopySettings={onOpenCopySettings}
-        onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
-        onReadError={onReadError}
-        page={displayedPage}
-        queryActive={Boolean(queryState?.queryId)}
-        queryId={queryState?.queryId ?? undefined}
-        queryPlan={queryState?.draftPlan}
-        queryStatus={queryState ? formatQueryToolbarStatus(queryState) : undefined}
-        readPage={readPage}
-        readCellValue={(row, columnId) =>
-          readCellValue({
-            documentId,
-            sessionId: summary.sessionId,
-            ...(queryState?.queryId ? { queryId: queryState.queryId } : {}),
-            row,
-            columnId,
-          })
-        }
-        resultKey={queryState ? resultKey(queryState.sessionId, queryState.queryId) : undefined}
-        summary={displayedSummary}
-      />
+      <div className="csv-data-interaction-region">
+        <div
+          aria-disabled={interactionBlocked}
+          className="csv-data-interaction-surface"
+          data-testid="csv-data-interaction-surface"
+          inert={interactionBlocked}
+          onChangeCapture={blockInteractionEvent}
+          onClickCapture={blockInteractionEvent}
+          onContextMenuCapture={blockInteractionEvent}
+          onInputCapture={blockInteractionEvent}
+          onKeyDownCapture={blockInteractionEvent}
+          onPointerDownCapture={blockInteractionEvent}
+          onWheelCapture={blockInteractionEvent}
+          ref={interactionSurfaceRef}
+        >
+          <VirtualDataGrid
+            active={active && !interactionBlocked}
+            cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
+            copyLimits={copyLimits}
+            copyOptions={copyOptions}
+            displayFormats={displayFormats}
+            copyPresetError={copyPresetError}
+            copyPresetSaving={copyPresetSaving}
+            distinctValuesForColumn={queryState ? distinctValuesForColumn : undefined}
+            documentId={documentId}
+            findDataBoundary={findDataBoundary}
+            startCopy={startCopy}
+            getCopyStatus={getCopyStatus}
+            cancelCopyOperation={cancelCopy}
+            getCopyHistory={getCopyHistory}
+            findTarget={queryState?.findTarget ?? undefined}
+            isLoading={isLoading}
+            logicalColumnNames={queryState?.queryId ? queryState.resultColumns : undefined}
+            onCancelQuery={queryState ? onCancelQuery : undefined}
+            onFindNext={queryState ? () => onFindMatch("next") : undefined}
+            onFindPrevious={queryState ? () => onFindMatch("previous") : undefined}
+            onOpenDistinctValues={queryState ? onOpenDistinctValues : undefined}
+            onRetryQuery={queryState ? onRetryQuery : undefined}
+            onPageChange={onPageChange}
+            onCopyPresetChange={onCopyPresetChange}
+            onOpenCopySettings={onOpenCopySettings}
+            onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
+            onReadError={onReadError}
+            page={displayedPage}
+            queryActive={Boolean(queryState?.queryId)}
+            queryId={queryState?.queryId ?? undefined}
+            queryPlan={queryState?.draftPlan}
+            queryStatus={queryState ? formatQueryToolbarStatus(queryState) : undefined}
+            readPage={readPage}
+            readCellValue={(row, columnId) =>
+              readCellValue({
+                documentId,
+                sessionId: summary.sessionId,
+                ...(queryState?.queryId ? { queryId: queryState.queryId } : {}),
+                row,
+                columnId,
+              })
+            }
+            resultKey={queryState ? resultKey(queryState.sessionId, queryState.queryId) : undefined}
+            summary={displayedSummary}
+          />
+        </div>
+        {interactionBlocked && (
+          <div
+            aria-hidden="true"
+            className="csv-preparation-blocker"
+            data-testid="csv-preparation-blocker"
+          >
+            <LoaderCircle aria-hidden="true" />
+            <strong>Preparing CSV data</strong>
+            <span>Data tools will be available when preparation finishes.</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1227,6 +1293,15 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   const activeCsvProfile = csvProfileDialogDocumentId
     ? (csvProfiles[csvProfileDialogDocumentId] ?? null)
     : null;
+  const activeDataInteractionBlocked = Boolean(
+    activeDocument?.documentId &&
+    activeDocument.summary &&
+    isCsvDataInteractionBlocked(
+      activeDocument.documentId,
+      activeDocument.summary,
+      csvPreparationStates[activeDocument.id] ?? null,
+    ),
+  );
 
   const updateDocument = useCallback(
     (id: string, update: (document: ViewerDocument) => ViewerDocument) => {
@@ -1594,12 +1669,12 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           : null;
       const preparationOwnsRowCount =
         currentSummary?.format === "csv" &&
-        !currentPreparation?.requestError &&
         (currentPreparation === null ||
           currentPreparation.action === "starting" ||
           currentPreparation.status === null ||
           currentPreparation.status.state === "preparing" ||
-          currentPreparation.status.state === "ready");
+          currentPreparation.status.state === "ready" ||
+          !currentPreparation.dismissed);
       if (
         !document.documentId ||
         !document.sessionId ||
@@ -2093,7 +2168,12 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       !document.documentId ||
       !document.sessionId ||
       !document.summary ||
-      !hasCapability(document.summary, "parsingProfile")
+      !hasCapability(document.summary, "parsingProfile") ||
+      isCsvDataInteractionBlocked(
+        document.documentId,
+        document.summary,
+        csvPreparationStates[document.id] ?? null,
+      )
     )
       return;
     const requestId = nextRequest(csvProfileRequests, `load:${document.id}`);
@@ -3029,65 +3109,84 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         return current;
       return { ...current, [document.id]: { ...state, action: "cancelling" } };
     });
-    void backend.cancelCsvPreparation(documentId, sessionId).then(
-      (status) => {
-        const latest = documentsRef.current.find((candidate) => candidate.id === document.id);
-        if (
-          csvPreparationTokens.current.get(document.id) !== token ||
-          latest?.documentId !== documentId ||
-          latest.sessionId !== sessionId ||
-          (status && (status.documentId !== documentId || status.sessionId !== sessionId))
-        )
-          return;
-        setCsvPreparationStates((current) => {
-          const previous = current[document.id];
-          if (!previous || previous.sessionId !== sessionId) return current;
-          return {
-            ...current,
-            [document.id]: {
-              ...previous,
-              status:
-                status ??
-                ({
-                  documentId,
-                  sessionId,
-                  state: "cancelled",
-                  rowsScanned: previous.status?.rowsScanned ?? 0,
-                  totalRows: previous.status?.totalRows ?? null,
-                  sourceReadBytes: previous.status?.sourceReadBytes ?? 0,
-                  totalBytes: previous.status?.totalBytes ?? 0,
-                  cacheOutputBytes: previous.status?.cacheOutputBytes ?? 0,
-                  navigationFrontierRow: previous.status?.navigationFrontierRow ?? 0,
-                  elapsedMs: previous.status?.elapsedMs ?? 0,
-                  error: {
-                    code: "Cancelled",
-                    message: "CSV preparation was cancelled.",
-                  },
-                } satisfies CsvPreparationStatus),
-              action: null,
-              requestError: null,
-              dismissed: false,
-            },
-          };
-        });
-      },
-      (error: unknown) => {
-        if (csvPreparationTokens.current.get(document.id) !== token) return;
-        setCsvPreparationStates((current) => {
-          const previous = current[document.id];
-          if (!previous || previous.sessionId !== sessionId) return current;
-          return {
-            ...current,
-            [document.id]: {
-              ...previous,
-              action: null,
-              requestError:
-                error instanceof Error ? error.message : "CSV preparation cancellation failed.",
-            },
-          };
-        });
-      },
-    );
+
+    const isCurrent = () => {
+      const latest = documentsRef.current.find((candidate) => candidate.id === document.id);
+      return (
+        csvPreparationTokens.current.get(document.id) === token &&
+        csvPreparationIdentities.current.get(document.id) === `${documentId}\u0000${sessionId}` &&
+        latest?.documentId === documentId &&
+        latest.sessionId === sessionId
+      );
+    };
+
+    const fail = (error: unknown) => {
+      if (!isCurrent()) return;
+      setCsvPreparationStates((current) => {
+        const previous = current[document.id];
+        if (!previous || previous.sessionId !== sessionId) return current;
+        return {
+          ...current,
+          [document.id]: {
+            ...previous,
+            action: null,
+            requestError:
+              error instanceof Error ? error.message : "CSV preparation cancellation failed.",
+          },
+        };
+      });
+    };
+
+    const accept = (status: CsvPreparationStatus | null) => {
+      if (
+        !isCurrent() ||
+        (status && (status.documentId !== documentId || status.sessionId !== sessionId))
+      )
+        return;
+      const nextStatus =
+        status ??
+        ({
+          documentId,
+          sessionId,
+          state: "cancelled",
+          rowsScanned: 0,
+          totalRows: null,
+          sourceReadBytes: 0,
+          totalBytes: 0,
+          cacheOutputBytes: 0,
+          navigationFrontierRow: 0,
+          elapsedMs: 0,
+          error: {
+            code: "Cancelled",
+            message: "CSV preparation was cancelled.",
+          },
+        } satisfies CsvPreparationStatus);
+      setCsvPreparationStates((current) => {
+        const previous = current[document.id];
+        if (!previous || previous.sessionId !== sessionId) return current;
+        return {
+          ...current,
+          [document.id]: {
+            ...previous,
+            status: nextStatus,
+            action: nextStatus.state === "preparing" ? "cancelling" : null,
+            requestError: null,
+            dismissed: false,
+          },
+        };
+      });
+      if (nextStatus.state === "preparing") {
+        csvPreparationTimers.current.set(
+          document.id,
+          window.setTimeout(() => {
+            if (!isCurrent()) return;
+            void backend.getCsvPreparationStatus(documentId, sessionId).then(accept, fail);
+          }, 100),
+        );
+      }
+    };
+
+    void backend.cancelCsvPreparation(documentId, sessionId).then(accept, fail);
   }
 
   function retryPreparedCsv(document: ViewerDocument): void {
@@ -3596,10 +3695,23 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                     : ""}
                 </span>
                 <button
+                  aria-description={
+                    activeDataInteractionBlocked
+                      ? "CSV parsing profile is unavailable while CSV data is preparing."
+                      : undefined
+                  }
                   className="csv-profile-command"
-                  disabled={csvProfileLoadingDocumentId === activeDocument.id}
+                  disabled={
+                    csvProfileLoadingDocumentId === activeDocument.id ||
+                    activeDataInteractionBlocked
+                  }
                   onClick={() => void openCsvProfile(activeDocument)}
                   ref={csvProfileButtonRef}
+                  title={
+                    activeDataInteractionBlocked
+                      ? "CSV Parsing Profile is unavailable while CSV data is preparing."
+                      : "Open CSV Parsing Profile"
+                  }
                   type="button"
                 >
                   <SlidersHorizontal aria-hidden="true" />

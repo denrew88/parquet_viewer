@@ -6,17 +6,53 @@ import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 
 const root = path.resolve(import.meta.dirname, "..");
+const separatorArgument = process.argv.find((argument) =>
+  argument.startsWith("--thousands-separator="),
+);
+const positionalArguments = process.argv
+  .slice(2)
+  .filter((argument) => !argument.startsWith("--"));
 const executable = path.resolve(
-  process.argv[2] ?? path.join(root, "src-tauri", "target", "debug", "data-viewer.exe"),
+  positionalArguments[0] ?? path.join(root, "src-tauri", "target", "debug", "data-viewer.exe"),
 );
 const fixture = path.resolve(
-  process.argv[3] ?? path.join(root, "fixtures", "phase-7", "small-csv.csv"),
+  positionalArguments[1] ?? path.join(root, "fixtures", "phase-7", "small-csv.csv"),
 );
 const artifact = path.resolve(
-  process.argv[4] ?? path.join(root, "artifacts", "phase-9", "ui", "native-cdp-smoke.png"),
+  positionalArguments[2] ?? path.join(root, "artifacts", "phase-9", "ui", "native-cdp-smoke.png"),
 );
 const artifactDirectory = path.dirname(artifact);
 const phase13Mode = process.argv.includes("--phase13");
+const phase15Mode = process.argv.includes("--phase15");
+const phase16Mode = process.argv.includes("--phase16");
+
+if (phase16Mode) {
+  const phase16Script = path.join(root, "scripts", "native_phase16_csv_gate_smoke.mjs");
+  const child = spawn(process.execPath, [phase16Script], {
+    cwd: root,
+    windowsHide: false,
+    env: process.env,
+    stdio: "inherit",
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code ?? 1));
+  });
+  process.exit(exitCode);
+} else if (phase15Mode) {
+  const phase15Script = path.join(root, "scripts", "native_phase15_csv_filter_smoke.mjs");
+  const child = spawn(process.execPath, [phase15Script], {
+    cwd: root,
+    windowsHide: false,
+    stdio: "inherit",
+    env: process.env,
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code ?? 1));
+  });
+  process.exit(exitCode);
+}
 
 if (phase13Mode) {
   const phase13Script = path.join(root, "scripts", "native_phase13_smoke.mjs");
@@ -37,7 +73,15 @@ if (phase13Mode) {
   process.exit(exitCode);
 }
 
-const thousandsSeparator = process.env.NATIVE_THOUSANDS_SEPARATOR ?? ".";
+const separatorNameArgument = separatorArgument?.split("=", 2)[1];
+const thousandsSeparator =
+  separatorNameArgument === "comma"
+    ? ","
+    : separatorNameArgument === "space"
+      ? " "
+      : separatorNameArgument === "dot"
+        ? "."
+        : (process.env.NATIVE_THOUSANDS_SEPARATOR ?? ".");
 const separatorName =
   thousandsSeparator === "," ? "comma" : thousandsSeparator === " " ? "space" : "dot";
 const formatInteger = (value) => value.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSeparator);
@@ -47,10 +91,24 @@ function artifactPath(name) {
 }
 
 await mkdir(path.dirname(artifact), { recursive: true });
+const appEnvironment = { ...process.env };
+delete appEnvironment.NATIVE_THOUSANDS_SEPARATOR;
 const app = spawn(executable, ["--file", fixture], {
   cwd: root,
   windowsHide: false,
-  stdio: "ignore",
+  stdio: ["ignore", "pipe", "pipe"],
+  env: appEnvironment,
+});
+let appExitCode;
+let appOutput = "";
+app.stdout.on("data", (chunk) => {
+  appOutput += chunk.toString();
+});
+app.stderr.on("data", (chunk) => {
+  appOutput += chunk.toString();
+});
+app.once("exit", (code) => {
+  appExitCode = code ?? 1;
 });
 
 let browser;
@@ -65,11 +123,16 @@ try {
       break;
     } catch (error) {
       lastError = error;
+      if (appExitCode !== undefined) {
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
   if (!browser) {
-    throw new Error(`WebView2 CDP endpoint did not start: ${lastError}`);
+    throw new Error(
+      `WebView2 CDP endpoint did not start (app exit ${appExitCode ?? "running"}): ${lastError}\n${appOutput}`,
+    );
   }
 
   const contexts = browser.contexts();
@@ -203,6 +266,7 @@ try {
   await page.keyboard.press("Control+Alt+ArrowRight");
   await waitForActiveCell(0, 19);
   await page.keyboard.press("Control+Alt+Shift+ArrowLeft");
+  await waitForActiveCell(0, 0);
   assert.equal(await grid.getAttribute("data-active-column"), "0");
   assert.equal(await grid.getAttribute("data-selection-left"), "0");
   assert.equal(await grid.getAttribute("data-selection-right"), "19");
@@ -211,6 +275,7 @@ try {
   assert.equal(await grid.getAttribute("data-selection-top"), "0");
   assert.equal(await grid.getAttribute("data-selection-bottom"), String(sourceLastRow));
   await page.keyboard.press("Control+Alt+ArrowUp");
+  await waitForActiveCell(0, 0);
   results.boundaryNavigation = "passed";
   results.sourceRowCount = sourceRowCount;
 
@@ -232,14 +297,31 @@ try {
   await profileDialog.getByRole("button", { name: "Apply", exact: true }).click();
   await profileDialog.waitFor({ state: "detached", timeout: 30_000 });
 
-  await cell(1, 0)
-    .filter({ hasText: formatInteger("10000019") })
-    .waitFor({ timeout: 30_000 });
+  try {
+    await cell(1, 0)
+      .filter({ hasText: formatInteger("10000019") })
+      .waitFor({ timeout: 30_000 });
+  } catch (error) {
+    const diagnostics = {
+      blocker: await page.getByTestId("csv-preparation-blocker").count(),
+      progress: await page.getByRole("progressbar", { name: "CSV preparation progress" }).count(),
+      activeRow: await grid.getAttribute("data-active-row"),
+      queryId: await grid.getAttribute("data-query-id"),
+      visibleFirstColumn: await page
+        .locator('[data-grid-column="0"][data-grid-row]')
+        .evaluateAll((nodes) => nodes.slice(0, 12).map((node) => node.textContent ?? "")),
+      body: (await page.locator("body").innerText()).slice(0, 2_000),
+    };
+    process.stderr.write(`CSV profile diagnostics: ${JSON.stringify(diagnostics)}\n`);
+    throw error;
+  }
   results.csvProfile = "passed";
 
   const sortButton = page.getByRole("button", { name: /Sort column_000:/ });
   await sortButton.click();
+  await page.getByRole("button", { name: "Sort column_000: ascending, priority 1" }).waitFor();
   await sortButton.click();
+  await page.getByRole("button", { name: "Sort column_000: descending, priority 1" }).waitFor();
   await cell(0, 0)
     .filter({ hasText: formatInteger("99990189981") })
     .waitFor({ timeout: 30_000 });
@@ -296,21 +378,39 @@ try {
     "Shift+ArrowRight did not extend the native grid selection.",
   );
   await page.evaluate(() => navigator.clipboard.writeText("__native-smoke-sentinel__"));
+  const copyTarget = await page.locator('[role="grid"][aria-label="Data preview"]').evaluate((grid) => ({
+    documentId: grid.getAttribute("data-document-id") ?? "",
+    sessionId: grid.getAttribute("data-session-id") ?? "",
+  }));
+  const previousCopyOperationId = await page.evaluate(
+    async ({ documentId, sessionId }) => {
+      const history = await window.__TAURI_INTERNALS__.invoke("get_copy_history", {
+        documentId,
+        sessionId,
+      });
+      return history?.current?.operationId ?? null;
+    },
+    copyTarget,
+  );
   await page.getByRole("button", { name: "Copy selection" }).click();
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll('[role="status"].copy-status')].some((element) => {
-        const text = element.textContent ?? "";
-        return text !== "" && !text.startsWith("Copying") && !text.startsWith("Writing clipboard");
-      }),
-    undefined,
-    { timeout: 30_000 },
-  );
-  const copyStatuses = await page.locator('[role="status"].copy-status').allTextContents();
-  assert.ok(
-    copyStatuses.includes("Copied 1 rows."),
-    `Native copy failed: ${copyStatuses.join(" | ")}`,
-  );
+  const copyDeadline = Date.now() + 30_000;
+  let copyHistory;
+  while (Date.now() < copyDeadline) {
+    copyHistory = await page.evaluate(
+      ({ documentId, sessionId }) =>
+        window.__TAURI_INTERNALS__.invoke("get_copy_history", { documentId, sessionId }),
+      copyTarget,
+    );
+    if (
+      copyHistory.current?.operationId !== previousCopyOperationId &&
+      copyHistory.current?.state === "complete"
+    ) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(copyHistory.current?.state, "complete", "Native copy did not complete.");
+  assert.equal(copyHistory.current?.progress?.rowsProcessed, 1, "Native copy row count changed.");
   const clipboardText = await page.evaluate(async () => navigator.clipboard.readText());
   assert.notEqual(clipboardText, "__native-smoke-sentinel__", "Copy did not write the clipboard.");
   const clipboardLines = clipboardText.trimEnd().split(/\r?\n/);
@@ -335,5 +435,12 @@ try {
       .catch(() => {});
   }
   await browser?.close().catch(() => {});
-  app.kill();
+  if (app.exitCode === null) {
+    const appExited = new Promise((resolve) => app.once("exit", resolve));
+    app.kill();
+    await Promise.race([
+      appExited,
+      new Promise((resolve) => setTimeout(resolve, 5_000)),
+    ]);
+  }
 }

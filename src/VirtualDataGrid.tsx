@@ -264,6 +264,31 @@ function arrowDirection(key: string): ArrowDirection | null {
   return null;
 }
 
+// Pure geometry is exported for deterministic sticky-header/clearance regression coverage.
+// eslint-disable-next-line react-refresh/only-export-components
+export function fullyVisibleScrollOffset(
+  currentOffset: number,
+  viewportSize: number,
+  leadingInset: number,
+  trailingInset: number,
+  itemStart: number,
+  itemEnd: number,
+  maxOffset: number,
+): number {
+  if (viewportSize <= leadingInset + trailingInset || itemEnd <= itemStart) {
+    return Math.max(0, Math.min(currentOffset, maxOffset));
+  }
+  const visibleStart = currentOffset + leadingInset;
+  const visibleEnd = currentOffset + viewportSize - trailingInset;
+  const nextOffset =
+    itemStart < visibleStart
+      ? itemStart - leadingInset
+      : itemEnd > visibleEnd
+        ? itemEnd - viewportSize + trailingInset
+        : currentOffset;
+  return Math.max(0, Math.min(nextOffset, maxOffset));
+}
+
 function cellClass(value: DataValue): string {
   return `virtual-grid__cell data-value--${value.kind}${
     value.kind === "null"
@@ -1047,7 +1072,6 @@ export function VirtualDataGrid({
   const scrollToCoordinate = useCallback(
     (coordinate: GridCoordinate, resolvedRowCount?: number) => {
       const grid = scrollRef.current;
-      const movingDown = coordinate.row > selection.active.row;
       const movingRight = coordinate.column > selection.active.column;
       const effectiveRowCount = Math.max(rowCount, resolvedRowCount ?? 0, coordinate.row + 1);
       if (
@@ -1058,15 +1082,26 @@ export function VirtualDataGrid({
         setSegmentStart(segmentStartForRow(coordinate.row, effectiveRowCount));
       } else {
         rowVirtualizer.scrollToIndex(coordinate.row - boundedSegmentStart, { align: "auto" });
+        if (grid) {
+          const segmentRow = coordinate.row - boundedSegmentStart;
+          const rowStart = GRID_HEADER_HEIGHT + segmentRow * GRID_ROW_HEIGHT;
+          const nextScrollTop = fullyVisibleScrollOffset(
+            grid.scrollTop,
+            grid.clientHeight,
+            GRID_HEADER_HEIGHT,
+            GRID_BOTTOM_CLEARANCE,
+            rowStart,
+            rowStart + GRID_ROW_HEIGHT,
+            grid.scrollHeight - grid.clientHeight,
+          );
+          if (nextScrollTop !== grid.scrollTop) {
+            grid.scrollTop = nextScrollTop;
+            grid.dispatchEvent(new Event("scroll"));
+          }
+        }
       }
       const visibleIndex = visibleColumnIndexes.indexOf(coordinate.column);
       if (visibleIndex >= 0) columnVirtualizer.scrollToIndex(visibleIndex, { align: "auto" });
-      if (grid && movingDown) {
-        grid.scrollTop = Math.min(
-          grid.scrollTop + GRID_HEADER_HEIGHT,
-          grid.scrollHeight - grid.clientHeight,
-        );
-      }
       if (grid && movingRight) {
         grid.scrollLeft = Math.min(
           grid.scrollLeft + GRID_ROW_NUMBER_WIDTH,
@@ -1081,7 +1116,6 @@ export function VirtualDataGrid({
       rowCount,
       segmentRowCount,
       selection.active.column,
-      selection.active.row,
       visibleColumnIndexes,
     ],
   );

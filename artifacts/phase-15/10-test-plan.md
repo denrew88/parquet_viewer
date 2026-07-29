@@ -201,6 +201,22 @@ Phase 14에서 남은 Windows clipboard full-copy, 150% DPI와 installer 실행 
 | `P15-GATE-007` | Lifecycle / Quality | 100-cycle open/cancel/close/reopen, fault와 cleanup PASS |
 | `P15-GATE-008` | Packaging / Tauri+Quality | feature OFF/ON release·NSIS audit, 최종 선택 build와 installer smoke PASS |
 
+## 11. CSV 준비 중 query 안전성과 다중 정렬 창 UX 보완
+
+| ID | 계층 | 완료 기준 |
+| --- | --- | --- |
+| `T-P15-UI-201` | Rust | cold CSV preparation 중 source distinct 요청이 별도 full prepare를 시작하지 않고 Ready artifact를 재사용 |
+| `T-P15-UI-202` | Rust | preparation 중 filter query는 cancel-aware하게 Ready를 기다린 뒤 결과 parity를 만족 |
+| `T-P15-UI-203` | Rust | preparation 실패·취소 후에만 direct fallback을 허용하고 query 취소는 preparation을 오염시키지 않음 |
+| `T-P15-UI-204` | Rust/App | 대기 중 session 교체·tab close의 stale 응답과 worker/temp/lease가 남지 않음 |
+| `T-P15-UI-205` | Vitest | preparing 상태에서 Filter open/apply가 전역 오류·blank를 만들지 않고 draft와 결과를 보존 |
+| `T-P15-UI-206` | Playwright | cold progress 중 Filter open/apply 후 Ready에서 query가 한 번만 실행되고 grid가 정상 commit |
+| `T-P15-UI-207` | Unit | Add level은 빈 row만 추가하고 listbox를 자동으로 열지 않으며 Apply는 disabled |
+| `T-P15-UI-208` | Unit/E2E | 사용자가 combobox를 click/focus/keyboard 조작할 때만 picker가 열리고 Escape·duplicate·hidden semantics 유지 |
+| `T-P15-UI-209` | Geometry | panel은 `min(560px, 100vh - 96px)` 범위의 가용 높이를 사용하고 세 viewport에서 footer·button이 viewport 안에 위치 |
+| `T-P15-UI-210` | Screenshot | 1440×900, 1024×768, 800×600에서 4~6 sort rows의 잘림·겹침·과한 빈 공간이 없음 |
+| `T-P15-UI-211` | Native | 실제 5.85M cold CSV progress 중 Filter open/apply에서 process 생존, 준비 1회, Ready 후 query 완료 |
+
 각 결과는 `artifacts/phase-15/50-integration.md`에 명령, commit/EXE hash, raw artifact 경로와 함께
 `PASS`, `FAIL`, `BLOCKED`, `DECISION_REQUIRED`로 기록한다. 하나라도 필수 PASS가 아니면 Phase 15를
 완료로 바꾸지 않는다.

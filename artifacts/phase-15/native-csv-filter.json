@@ -1,0 +1,32 @@
+{
+  "startedAtUtc": "2026-07-28T01:44:15.630Z",
+  "executable": "src-tauri/target/debug/data-viewer.exe",
+  "bootstrap": "fixtures/phase-7/small-csv.csv",
+  "fixture": "fixtures/phase-15/csv-5850000-high.csv",
+  "status": "PASS",
+  "elapsedMs": 182222,
+  "initialProgress": 136,
+  "laterProgress": 45612004,
+  "queryId": "frontend-query-1785203060431-1",
+  "rowCount": 1,
+  "cacheCleanup": {
+    "deletedBytes": 406295394,
+    "deletedEntries": 1,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  },
+  "screenshot": "artifacts/phase-15/ui/native-csv-filter.png",
+  "finishedAtUtc": "2026-07-28T01:47:22.519Z",
+  "finalCleanup": {
+    "deletedBytes": 0,
+    "deletedEntries": 0,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  }
+}
