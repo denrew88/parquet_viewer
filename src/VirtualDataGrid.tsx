@@ -117,6 +117,7 @@ import {
   autoFitColumnWidth,
   segmentStartForRow,
 } from "./gridSizing";
+import { createGridScrollSchedulerState, reduceGridScrollScheduler } from "./gridScrollScheduler";
 const GRID_SEGMENT_EDGE_ROWS = 2_000;
 const MAX_PAGE_WINDOW = 3;
 const MAX_CONCURRENT_REQUESTS = 2;
@@ -384,12 +385,19 @@ export function VirtualDataGrid({
   const inFlight = useRef(new Map<string, Promise<DataPage>>());
   const pendingLogicalScroll = useRef<number | null>(null);
   const segmentRecentering = useRef(false);
+  const syntheticRecenterTarget = useRef<number | null>(null);
+  const programmaticScrollTarget = useRef<number | null>(null);
+  const scrollQuietTimer = useRef<number | null>(null);
+  const scrollScheduler = useRef(createGridScrollSchedulerState(page.offset, performance.now()));
   const skipAdjacentPrefetchOnce = useRef(false);
   const [pages, setPages] = useState<Map<string, DataPage>>(
     () => new Map([[projectedPageKey(page.offset, page.columns), page]]),
   );
   const [activeOffset, setActiveOffset] = useState(page.offset);
   const [activeProjection, setActiveProjection] = useState<string[]>(() => [...page.columns]);
+  const [visibleOffset, setVisibleOffset] = useState(page.offset);
+  const [scrollMode, setScrollMode] = useState(scrollScheduler.current.mode);
+  const [scrollScheduleRevision, setScrollScheduleRevision] = useState(0);
   const [loadingPageKeys, setLoadingPageKeys] = useState<Set<string>>(new Set());
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [resolvedRowCountHint, setResolvedRowCountHint] = useState<number | null>(null);
@@ -477,6 +485,12 @@ export function VirtualDataGrid({
   const [filterFocusTarget, setFilterFocusTarget] = useState<string | null>(null);
   const queryEnabled = Boolean(queryPlan && onQueryPlanChange);
 
+  const clearScrollQuietTimer = useCallback(() => {
+    if (scrollQuietTimer.current === null) return;
+    window.clearTimeout(scrollQuietTimer.current);
+    scrollQuietTimer.current = null;
+  }, []);
+
   useEffect(() => {
     setColumnOrder((current) => {
       const next = normalizedIdOrder(sourceLogicalColumnNames, current);
@@ -529,6 +543,7 @@ export function VirtualDataGrid({
       copyGeneration.current += 1;
       cellCopyGeneration.current += 1;
       if (copyPollTimer.current !== null) window.clearTimeout(copyPollTimer.current);
+      if (scrollQuietTimer.current !== null) window.clearTimeout(scrollQuietTimer.current);
       inspectorGeneration.current += 1;
       navigationGeneration.current += 1;
       boundaryQueueEpoch.current += 1;
@@ -606,10 +621,16 @@ export function VirtualDataGrid({
     }
     setPages(new Map([[projectedPageKey(firstPage.offset, firstPage.columns), firstPage]]));
     setActiveOffset(firstPage.offset);
+    setVisibleOffset(firstPage.offset);
     setActiveProjection([...firstPage.columns]);
     setLoadingPageKeys(new Set());
     if (!preserveLogicalCell) setColumnVisibility({});
     setResolvedRowCountHint(null);
+    clearScrollQuietTimer();
+    programmaticScrollTarget.current = null;
+    syntheticRecenterTarget.current = null;
+    scrollScheduler.current = createGridScrollSchedulerState(firstPage.offset, performance.now());
+    setScrollMode("idle");
     skipAdjacentPrefetchOnce.current = false;
     inspectorGeneration.current += 1;
     setInspected(null);
@@ -638,7 +659,13 @@ export function VirtualDataGrid({
     }
     // Column order changes remap selection separately and must not reset the result cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeResultKey, sourceLogicalColumnsKey, logicalColumnNames.length, summary.sessionId]);
+  }, [
+    activeResultKey,
+    clearScrollQuietTimer,
+    sourceLogicalColumnsKey,
+    logicalColumnNames.length,
+    summary.sessionId,
+  ]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
@@ -856,6 +883,14 @@ export function VirtualDataGrid({
       return next;
     });
     setActiveOffset(page.offset);
+    setVisibleOffset(page.offset);
+    scrollScheduler.current = reduceGridScrollScheduler(scrollScheduler.current, {
+      type: "rebase",
+      row: page.offset,
+      timestamp: performance.now(),
+    });
+    setScrollMode("idle");
+    clearScrollQuietTimer();
     const total = queryActive
       ? (page.totalRows ?? page.offset + page.rows.length)
       : (summary.rowCount ?? page.offset + page.rows.length);
@@ -868,7 +903,7 @@ export function VirtualDataGrid({
       pendingLogicalScroll.current = null;
       scrollRef.current.dispatchEvent(new Event("scroll"));
     });
-  }, [page, queryActive, summary.rowCount]);
+  }, [clearScrollQuietTimer, page, queryActive, summary.rowCount]);
 
   const columnHelper = createColumnHelper<DataValue[]>();
   const columnDefs = useMemo(
@@ -1030,7 +1065,24 @@ export function VirtualDataGrid({
     const resumedFromInactive = active && !previousActive.current;
     previousActive.current = active;
     if (active) {
-      if (resumedFromInactive) resumedVisibleOffset.current = null;
+      if (resumedFromInactive) {
+        resumedVisibleOffset.current = null;
+        const resumeRow = Math.max(
+          0,
+          Math.min(rowCount - 1, scrollScheduler.current.lastRow ?? page.offset),
+        );
+        const resumeSegmentStart = segmentStartForRow(resumeRow, Math.max(1, rowCount));
+        pendingLogicalScroll.current = resumeRow;
+        setSegmentStart(resumeSegmentStart);
+        setVisibleOffset(pageOffsetFor(resumeRow, page.limit));
+        scrollScheduler.current = reduceGridScrollScheduler(scrollScheduler.current, {
+          type: "rebase",
+          row: resumeRow,
+          timestamp: performance.now(),
+        });
+        setScrollMode("idle");
+        setScrollScheduleRevision((current) => current + 1);
+      }
       window.requestAnimationFrame(() => {
         rowVirtualizer.measure();
         columnVirtualizer.measure();
@@ -1048,11 +1100,52 @@ export function VirtualDataGrid({
     navigationGeneration.current += 1;
     inFlight.current.clear();
     setLoadingPageKeys(new Set());
-  }, [active, columnVirtualizer, rowVirtualizer]);
+    clearScrollQuietTimer();
+    programmaticScrollTarget.current = null;
+    syntheticRecenterTarget.current = null;
+    scrollScheduler.current = createGridScrollSchedulerState(
+      scrollScheduler.current.lastRow ?? page.offset,
+      performance.now(),
+    );
+    setScrollMode("idle");
+  }, [
+    active,
+    clearScrollQuietTimer,
+    columnVirtualizer,
+    page.limit,
+    page.offset,
+    rowCount,
+    rowVirtualizer,
+  ]);
 
   useEffect(() => {
     if (segmentStart !== boundedSegmentStart) setSegmentStart(boundedSegmentStart);
   }, [boundedSegmentStart, segmentStart]);
+
+  const prepareImmediateScroll = useCallback(
+    (row: number) => {
+      clearScrollQuietTimer();
+      const timestamp = performance.now();
+      const settled = reduceGridScrollScheduler(scrollScheduler.current, {
+        type: "scrollend",
+      });
+      scrollScheduler.current = reduceGridScrollScheduler(settled, {
+        type: "rebase",
+        row,
+        timestamp,
+      });
+      setScrollMode("idle");
+      setVisibleOffset(pageOffsetFor(row, page.limit));
+      setScrollScheduleRevision((current) => current + 1);
+      programmaticScrollTarget.current = row;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (programmaticScrollTarget.current === row) programmaticScrollTarget.current = null;
+        });
+      });
+    },
+    [clearScrollQuietTimer, page.limit],
+  );
 
   useLayoutEffect(() => {
     const target = pendingLogicalScroll.current;
@@ -1071,6 +1164,7 @@ export function VirtualDataGrid({
 
   const scrollToCoordinate = useCallback(
     (coordinate: GridCoordinate, resolvedRowCount?: number) => {
+      prepareImmediateScroll(coordinate.row);
       const grid = scrollRef.current;
       const movingRight = coordinate.column > selection.active.column;
       const effectiveRowCount = Math.max(rowCount, resolvedRowCount ?? 0, coordinate.row + 1);
@@ -1112,6 +1206,7 @@ export function VirtualDataGrid({
     [
       columnVirtualizer,
       boundedSegmentStart,
+      prepareImmediateScroll,
       rowVirtualizer,
       rowCount,
       segmentRowCount,
@@ -1292,7 +1387,7 @@ export function VirtualDataGrid({
     const grid = scrollRef.current;
     if (!grid || rowCount <= GRID_MAX_SEGMENT_ROWS) return;
     const onScroll = () => {
-      if (segmentRecentering.current) return;
+      if (!activeRef.current || columnDragActiveRef.current || segmentRecentering.current) return;
       const maxScrollTop = Math.max(0, grid.scrollHeight - grid.clientHeight);
       const localTopRow = Math.floor(grid.scrollTop / GRID_ROW_HEIGHT);
       const logicalTopRow = Math.min(rowCount - 1, boundedSegmentStart + localTopRow);
@@ -1323,9 +1418,10 @@ export function VirtualDataGrid({
       }
 
       if (nextStart === null || nextStart === boundedSegmentStart) return;
-      segmentRecentering.current = true;
       setSegmentStart(nextStart);
       window.requestAnimationFrame(() => {
+        segmentRecentering.current = true;
+        syntheticRecenterTarget.current = targetRow;
         if (scrollRef.current) {
           scrollRef.current.scrollTop = alignToEnd
             ? scrollRef.current.scrollHeight
@@ -1333,11 +1429,129 @@ export function VirtualDataGrid({
           scrollRef.current.dispatchEvent(new Event("scroll"));
         }
         segmentRecentering.current = false;
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            if (syntheticRecenterTarget.current === targetRow) {
+              syntheticRecenterTarget.current = null;
+            }
+          });
+        });
       });
     };
     grid.addEventListener("scroll", onScroll, { passive: true });
     return () => grid.removeEventListener("scroll", onScroll);
   }, [boundedSegmentStart, maxSegmentStart, rowCount, segmentRowCount]);
+
+  useEffect(() => {
+    const grid = scrollRef.current;
+    if (!grid) return;
+
+    const settleScroll = (type: "quiet" | "scrollend", timestamp?: number) => {
+      const previous = scrollScheduler.current;
+      const next = reduceGridScrollScheduler(
+        previous,
+        type === "scrollend"
+          ? { type }
+          : { type, timestamp: timestamp ?? previous.quietDeadline ?? performance.now() },
+      );
+      if (next === previous || next.settleCount === previous.settleCount) return;
+      scrollScheduler.current = next;
+      clearScrollQuietTimer();
+      setScrollMode(next.mode);
+      setScrollScheduleRevision((current) => current + 1);
+    };
+
+    const scheduleQuietSettle = (deadline: number) => {
+      clearScrollQuietTimer();
+      scrollQuietTimer.current = window.setTimeout(
+        () => {
+          scrollQuietTimer.current = null;
+          settleScroll("quiet", deadline);
+        },
+        Math.max(0, deadline - performance.now()),
+      );
+    };
+
+    const onScroll = () => {
+      if (!activeRef.current || columnDragActiveRef.current) return;
+      if (segmentRecentering.current) return;
+      const localTopRow = Math.floor(grid.scrollTop / GRID_ROW_HEIGHT);
+      const logicalTopRow = Math.max(0, Math.min(rowCount - 1, boundedSegmentStart + localTopRow));
+      const timestamp = performance.now();
+
+      if (syntheticRecenterTarget.current !== null) {
+        if (logicalTopRow === syntheticRecenterTarget.current) {
+          syntheticRecenterTarget.current = null;
+          return;
+        }
+        // A real pointer/wheel input won the race with the scheduled recenter event. Do not let
+        // the stale synthetic guard hide the user's new final position.
+        syntheticRecenterTarget.current = null;
+      }
+
+      if (programmaticScrollTarget.current !== null) {
+        const targetRow = programmaticScrollTarget.current;
+        if (pageOffsetFor(logicalTopRow, page.limit) === pageOffsetFor(targetRow, page.limit)) {
+          programmaticScrollTarget.current = null;
+          scrollScheduler.current = reduceGridScrollScheduler(scrollScheduler.current, {
+            type: "rebase",
+            row: targetRow,
+            timestamp,
+          });
+          setScrollMode("idle");
+          setVisibleOffset(pageOffsetFor(targetRow, page.limit));
+          setScrollScheduleRevision((current) => current + 1);
+          return;
+        }
+        // A pointer/wheel movement reached another page before the scheduled keyboard scroll
+        // committed. The user's newer position wins.
+        programmaticScrollTarget.current = null;
+      }
+      if (
+        scrollScheduler.current.lastRow === logicalTopRow &&
+        scrollScheduler.current.mode !== "scrub"
+      )
+        return;
+
+      const nextVisibleOffset = pageOffsetFor(logicalTopRow, page.limit);
+      const previous = scrollScheduler.current;
+      const next = reduceGridScrollScheduler(previous, {
+        type: "sample",
+        row: logicalTopRow,
+        timestamp,
+        pageSize: page.limit,
+      });
+      scrollScheduler.current = next;
+      setVisibleOffset(nextVisibleOffset);
+      if (previous.mode !== "scrub" && next.mode === "scrub") {
+        generation.current += 1;
+        inFlight.current.clear();
+        setLoadingPageKeys(new Set());
+      }
+      setScrollMode(next.mode);
+      if (next.mode === "scrub" && next.quietDeadline !== null) {
+        scheduleQuietSettle(next.quietDeadline);
+      } else {
+        clearScrollQuietTimer();
+        setScrollScheduleRevision((current) => current + 1);
+      }
+    };
+
+    const onScrollEnd = () => settleScroll("scrollend");
+    grid.addEventListener("scroll", onScroll, { passive: true });
+    grid.addEventListener("scrollend", onScrollEnd);
+    if (
+      scrollScheduler.current.mode === "scrub" &&
+      scrollScheduler.current.quietDeadline !== null
+    ) {
+      scheduleQuietSettle(scrollScheduler.current.quietDeadline);
+    }
+    return () => {
+      grid.removeEventListener("scroll", onScroll);
+      grid.removeEventListener("scrollend", onScrollEnd);
+      clearScrollQuietTimer();
+    };
+  }, [boundedSegmentStart, clearScrollQuietTimer, page.limit, rowCount]);
 
   useEffect(() => {
     if (!active || columnDragActive || activeProjectionSettled) return;
@@ -1362,23 +1576,15 @@ export function VirtualDataGrid({
 
   useEffect(() => {
     if (!active || columnDragActive || !activeProjectionSettled || rowCount === 0) return;
-    const scrollRow = Math.min(
-      rowCount - 1,
-      boundedSegmentStart +
-        Math.floor(
-          (scrollRef.current?.scrollTop ??
-            (firstVisibleRow - boundedSegmentStart) * GRID_ROW_HEIGHT) / GRID_ROW_HEIGHT,
-        ),
-    );
-    const visibleOffset = pageOffsetFor(scrollRow, page.limit);
     const visibleKey = projectedPageKey(visibleOffset, activeProjection);
     const compatible = compatiblePageFor(pages.values(), page, visibleOffset, activeProjection);
     if (!pages.has(visibleKey) && !compatible) {
+      if (scrollMode === "scrub") return;
       void requestPage(visibleOffset, true);
     } else setActiveOffset(visibleOffset);
 
     const current = pages.get(visibleKey) ?? compatible;
-    if (!current) return;
+    if (!current || scrollMode === "scrub") return;
     if (resumedVisibleOffset.current !== undefined) {
       if (resumedVisibleOffset.current === null) resumedVisibleOffset.current = visibleOffset;
       if (resumedVisibleOffset.current === visibleOffset) return;
@@ -1408,6 +1614,9 @@ export function VirtualDataGrid({
     pages,
     requestPage,
     rowCount,
+    scrollMode,
+    scrollScheduleRevision,
+    visibleOffset,
   ]);
 
   const activePage =
@@ -2392,12 +2601,14 @@ export function VirtualDataGrid({
         data-mounted-columns={columnVirtualItems.length}
         data-mounted-rows={virtualRows.length}
         data-query-id={queryId ?? ""}
+        data-scroll-mode={scrollMode}
         data-session-id={summary.sessionId}
         data-selection-bottom={selection.rect.bottom}
         data-selection-kind={selection.kind}
         data-selection-left={selection.rect.left}
         data-selection-right={selection.rect.right}
         data-selection-top={selection.rect.top}
+        data-visible-offset={visibleOffset}
         data-testid="data-scroll"
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {

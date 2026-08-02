@@ -1,0 +1,66 @@
+{
+  "result": "PASS",
+  "project": "desktop-compact",
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "scrubAndSettled": {
+    "grid": {
+      "top": 212,
+      "right": 1024,
+      "bottom": 698,
+      "left": 0,
+      "width": 1024,
+      "height": 486
+    },
+    "shell": {
+      "top": 136,
+      "right": 1024,
+      "bottom": 738,
+      "left": 0,
+      "width": 1024,
+      "height": 602
+    },
+    "header": {
+      "top": 212,
+      "right": 236,
+      "bottom": 248,
+      "left": 56,
+      "width": 180,
+      "height": 36
+    },
+    "cell": {
+      "top": 248,
+      "right": 236,
+      "bottom": 296,
+      "left": 56,
+      "width": 180,
+      "height": 48
+    },
+    "rowHeader": {
+      "top": -136,
+      "right": 56,
+      "bottom": -88,
+      "left": 0,
+      "width": 56,
+      "height": 48
+    },
+    "clientHeight": 486,
+    "scrollHeight": 9600054,
+    "scrollTop": 438576,
+    "mountedRows": 27,
+    "mountedCells": 243,
+    "visibleOffset": 9000
+  },
+  "finalRow": {
+    "cellBottom": 680,
+    "cellHeight": 48,
+    "gridBottom": 698,
+    "bottomClearance": 18
+  },
+  "shellShift": {
+    "width": 0,
+    "height": 0
+  }
+}

@@ -50,13 +50,16 @@
   filter·sort·Find·copy·navigation·distinct 신규 요청을 차단한다. preparation 진행·취소와 문서
   전환·닫기·Settings는 유지하며, warm Ready의 gate flash 0과 native Ctrl boundary target focus
   visibility 회귀를 함께 검증한다.
+- Phase 17은 빠른 scrollbar·wheel 이동을 scrub mode로 처리해 중간 cache-miss page와 prefetch를
+  만들지 않고 최종 visible page 하나만 조회한다. 느린 탐색과 cache hit는 즉시 반응하며 기존
+  segmented scroll, query logical position과 keyboard/focus 계약을 유지한다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 16까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 17까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -90,6 +93,7 @@
 | Phase 14 | 구현 완료, 필수 performance·architecture gate BLOCKED (2026-07-23) | CSV 단일 scan columnar cache·Ctrl bitmap·정렬/설정/live drag UX |
 | Phase 15 | 구현 완료, 필수 native·soak gate BLOCKED (2026-07-24) | CSV 준비 병목 제거·Polars 제품 연결·compact cache 재설계 |
 | Phase 16 | 완료 (2026-07-29)                                  | CSV preparation Data gate·요청 누적 방지·Ctrl focus visibility |
+| Phase 17 | 완료 (2026-07-30)                                  | 적응형 scrollbar·wheel page scheduling                         |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
@@ -114,6 +118,8 @@ Polars Rust는 2026-07-24 사용자의 최종 연결 지시에 따라 제품 기
 남은 필수 gate는 `90-review.md`를 따른다.
 Phase 16의 확정 범위와 완료 조건은 `artifacts/phase-16/00-scope.md`를 따르며, Phase 15의 backend
 wait/reuse/cancel 안전장치를 제거하지 않고 문서별 UI interaction gate를 추가한다.
+Phase 17의 확정 범위와 완료 조건은 `artifacts/phase-17/00-scope.md`를 따르며, backend DTO를 바꾸지
+않고 frontend가 빠른 scroll 중 불필요한 page 요청을 시작하지 않도록 scheduling을 조정한다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -786,3 +792,29 @@ raw·typed·empty·invalid 의미와 DuckDB query 계약을 유지하면서 boun
 - 반복 요청, tab close와 session 교체에서 worker·query·distinct·late update가 누적되지 않는다.
 - native 연속 Ctrl boundary 이동 뒤 target cell과 grid focus가 viewport 안에서 검증된다.
 - 전체 frontend/Rust/E2E/release/native gate가 PASS하고 HIGH/MEDIUM 결함과 필수 BLOCKED가 없다.
+
+## Phase 17. 적응형 대용량 스크롤 page scheduling
+
+**목표:** 느린 스크롤과 cache hit의 즉시 반응은 유지하면서 빠른 scrollbar·wheel 이동 중 거쳐 가는
+uncached page를 조회하지 않고 최종 visible page만 foreground로 읽는다.
+
+**상태:** 완료 (2026-07-30)
+
+확정 범위와 상태·성능 계약은 `artifacts/phase-17/00-scope.md`, 추적 가능한 검증은
+`artifacts/phase-17/10-test-plan.md`를 따른다.
+
+### 해야 할 일
+
+- logical row delta와 elapsed time 기반 scrub mode 및 hysteresis helper
+- 빠른 이동 중 cache miss foreground와 adjacent prefetch 억제
+- `scrollend` 또는 120ms quiet period에서 최종 page 단일 요청
+- cache hit, 느린 이동, keyboard navigation과 segmented recenter fast path 유지
+- stale response, source/query, projection과 마지막 행 geometry 회귀 검증
+- 세 viewport와 실제 5.85M WebView2, release/NSIS 회귀 검증
+
+### 완료 조건
+
+- 빠른 uncached 이동의 중간 page 요청 0, 최종 foreground page 요청 1을 만족한다.
+- 느린 탐색과 cache hit의 즉시 표시·prefetch 동작이 회귀하지 않는다.
+- source/query의 논리 row, selection, focus, stale generation과 segment 경계가 정확하다.
+- 전체 frontend/E2E/native/release gate가 PASS하고 HIGH/MEDIUM 결함과 필수 BLOCKED가 없다.

@@ -1,0 +1,192 @@
+{
+  "result": "PASS",
+  "fixture": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-15\\boundary-5850000-high.parquet",
+  "expectedRows": 5850000,
+  "cycles": 20,
+  "measurements": [
+    {
+      "targetRow": 4137,
+      "expectedOffset": 4000,
+      "elapsedMs": 62.77689999999984,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 8137,
+      "expectedOffset": 8000,
+      "elapsedMs": 56.80439999999999,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 12137,
+      "expectedOffset": 12000,
+      "elapsedMs": 59.115499999999884,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 16137,
+      "expectedOffset": 16000,
+      "elapsedMs": 60.78690000000006,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 20137,
+      "expectedOffset": 20000,
+      "elapsedMs": 59.43949999999995,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 24137,
+      "expectedOffset": 24000,
+      "elapsedMs": 57.941299999999956,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 28137,
+      "expectedOffset": 28000,
+      "elapsedMs": 53.597899999999754,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 32137,
+      "expectedOffset": 32000,
+      "elapsedMs": 61.06129999999985,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 36137,
+      "expectedOffset": 36000,
+      "elapsedMs": 59.87519999999995,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 40137,
+      "expectedOffset": 40000,
+      "elapsedMs": 59.86299999999983,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 44137,
+      "expectedOffset": 44000,
+      "elapsedMs": 76.77070000000003,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 48137,
+      "expectedOffset": 48000,
+      "elapsedMs": 60.70679999999993,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 52137,
+      "expectedOffset": 52000,
+      "elapsedMs": 69.59019999999964,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 56137,
+      "expectedOffset": 56000,
+      "elapsedMs": 75.5302999999999,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 60137,
+      "expectedOffset": 60000,
+      "elapsedMs": 61.400199999999586,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 64137,
+      "expectedOffset": 64000,
+      "elapsedMs": 60.28600000000006,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 68137,
+      "expectedOffset": 68000,
+      "elapsedMs": 59.2157000000002,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 72137,
+      "expectedOffset": 72000,
+      "elapsedMs": 60.302700000000186,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 76137,
+      "expectedOffset": 76000,
+      "elapsedMs": 44.39930000000004,
+      "commandCounts": {
+        "read_page": 1
+      }
+    },
+    {
+      "targetRow": 80137,
+      "expectedOffset": 80000,
+      "elapsedMs": 45.61530000000039,
+      "commandCounts": {
+        "read_page": 1
+      }
+    }
+  ],
+  "sourceP95Ms": 75.5302999999999,
+  "cached": {
+    "targetRow": 80137,
+    "expectedOffset": 80000,
+    "elapsedMs": 33.64040000000023,
+    "commandCounts": {}
+  },
+  "finalNavigationCounts": {
+    "find_data_boundary": 1,
+    "read_page": 1
+  },
+  "lastRowGeometry": {
+    "cellBottom": 656,
+    "cellHeight": 48,
+    "gridBottom": 675,
+    "bottomClearance": 18,
+    "focused": true,
+    "scrollHeight": 9600054
+  },
+  "rssBeforeBytes": 49258496,
+  "rssAfterBytes": 54943744,
+  "rssDeltaBytes": 5685248,
+  "screenshot": "C:\\Users\\denrew88\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\phase-17\\ui\\native-desktop.png",
+  "measuredAt": "2026-07-29T16:47:54.082Z"
+}

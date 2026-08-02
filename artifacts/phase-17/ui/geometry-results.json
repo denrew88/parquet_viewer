@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "viewports": {
+    "desktop": "geometry-desktop.json",
+    "compact": "geometry-compact.json",
+    "minimum": "geometry-minimum.json"
+  },
+  "common": {
+    "headerCellAlignmentTolerancePx": 1,
+    "cellHeightPx": 48,
+    "bottomClearancePx": 18,
+    "maximumPhysicalScrollHeightPx": 9600054,
+    "shellShiftPx": 0,
+    "horizontalPageOverflow": false
+  }
+}

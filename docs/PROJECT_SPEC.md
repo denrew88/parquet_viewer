@@ -321,6 +321,14 @@ WebView의 최대 scroll height보다 작은 segmented/anchored surface를 사�
 offset을 분리한다. 5,850,000행과 10,000,000행에서도 실제 마지막 행까지 정확히 이동해야 하며 마지막
 행의 전체 border/content는 horizontal scrollbar 위에 완전히 표시되어야 한다.
 
+세로 스크롤의 page scheduling은 입력 속도에 적응한다. 120ms 표본 구간 안에서 누적 1 page 이상
+이동하거나 인접 표본이 2 page 이상 건너뛰면 scrub mode로 전환한다. scrub 중에는 논리 위치와 행
+번호만 갱신하고 uncached 중간 page 조회와 인접 prefetch를 억제한다. `scrollend` 또는 마지막 입력 뒤
+120ms quiet period에서 최종 visible page 하나만 foreground로 읽는다. 이미 호환되는 projection의
+page가 cache에 있으면 속도와 관계없이 즉시 표시한다. 느린 스크롤, 키보드 이동, selection auto-scroll은
+기존 즉시 조회를 유지하며 정착한 page의 인접 prefetch도 유지한다. segmented surface를 재배치하며
+발생한 synthetic scroll은 속도 판정과 추가 page 요청에 포함하지 않는다.
+
 ## 9. 그리드 선택과 키보드
 
 선택 상태는 렌더링된 DOM 셀이 아니라 논리적인 행과 컬럼 좌표로 관리한다. 선택 모델은

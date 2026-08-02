@@ -25,8 +25,22 @@ const artifactDirectory = path.dirname(artifact);
 const phase13Mode = process.argv.includes("--phase13");
 const phase15Mode = process.argv.includes("--phase15");
 const phase16Mode = process.argv.includes("--phase16");
+const phase17Mode = process.argv.includes("--phase17");
 
-if (phase16Mode) {
+if (phase17Mode) {
+  const phase17Script = path.join(root, "scripts", "native_phase17_scroll_smoke.mjs");
+  const child = spawn(process.execPath, [phase17Script, ...positionalArguments], {
+    cwd: root,
+    windowsHide: false,
+    env: process.env,
+    stdio: "inherit",
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code ?? 1));
+  });
+  process.exit(exitCode);
+} else if (phase16Mode) {
   const phase16Script = path.join(root, "scripts", "native_phase16_csv_gate_smoke.mjs");
   const child = spawn(process.execPath, [phase16Script], {
     cwd: root,

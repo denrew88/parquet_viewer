@@ -2046,4 +2046,225 @@ describe("VirtualDataGrid", () => {
     expect(copyOperations.cancelCopyOperation).not.toHaveBeenCalled();
     expect(writeClipboardText).not.toHaveBeenCalled();
   });
+
+  it("T-P17-009 requests a slow uncached page without waiting for quiet", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid } = renderGrid(readPage);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    readPage.mockClear();
+
+    clock.mockReturnValue(121);
+    grid.scrollTop = 200 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+
+    await waitFor(() => expect(readPage).toHaveBeenCalled());
+    expect(readPage.mock.calls[0]?.[0].offset).toBe(200);
+    expect(grid).toHaveAttribute("data-scroll-mode", "idle");
+    clock.mockRestore();
+  });
+
+  it("T-P17-010 and T-P17-011 suppress fast intermediates and settle once", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid } = renderGrid(readPage);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    readPage.mockClear();
+
+    for (const [index, row] of [600, 1_800, 5_000, 9_137].entries()) {
+      clock.mockReturnValue(10 + index * 10);
+      grid.scrollTop = row * GRID_ROW_HEIGHT;
+      fireEvent.scroll(grid);
+    }
+
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    expect(grid).toHaveAttribute("data-visible-offset", "9000");
+    expect(readPage).not.toHaveBeenCalled();
+
+    fireEvent(grid, new Event("scrollend"));
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(1));
+    expect(readPage.mock.calls[0]?.[0].offset).toBe(9_000);
+    expect(grid).toHaveAttribute("data-scroll-mode", "idle");
+    await new Promise((resolve) => window.setTimeout(resolve, 140));
+    expect(readPage).toHaveBeenCalledTimes(1);
+    clock.mockRestore();
+  });
+
+  it("T-P17-012 enters scrub from cumulative movement inside the velocity window", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid } = renderGrid(readPage);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    readPage.mockClear();
+
+    clock.mockReturnValue(40);
+    grid.scrollTop = 100 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    expect(grid).toHaveAttribute("data-scroll-mode", "idle");
+
+    clock.mockReturnValue(80);
+    grid.scrollTop = 200 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    expect(grid).toHaveAttribute("data-visible-offset", "200");
+    expect(readPage).not.toHaveBeenCalled();
+    clock.mockRestore();
+  });
+
+  it("T-P17-014 rejects pre-scrub responses after the final page commits", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const pending = new Map<number, { request: ReadPageRequest; resolve(page: DataPage): void }>();
+    const readPage = vi.fn(
+      (request: ReadPageRequest) =>
+        new Promise<DataPage>((resolve) => pending.set(request.offset, { request, resolve })),
+    );
+    const responseFor = (offset: number) => {
+      const request = pending.get(offset)!.request;
+      const full = makePage(offset);
+      const requestColumns = request.columns ?? full.columns;
+      const indexes = requestColumns.map((column) => full.columns.indexOf(column));
+      return {
+        ...full,
+        columns: [...requestColumns],
+        rows: full.rows.map((row) => indexes.map((index) => row[index]!)),
+      };
+    };
+    const onReadError = vi.fn();
+    const { grid } = renderGrid(readPage, undefined, summary, makePage(), { onReadError });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    readPage.mockClear();
+
+    clock.mockReturnValue(121);
+    grid.scrollTop = 200 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(pending.has(200)).toBe(true));
+
+    clock.mockReturnValue(122);
+    grid.scrollTop = 800 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    fireEvent(grid, new Event("scrollend"));
+    await waitFor(() => expect(pending.has(800)).toBe(true));
+
+    pending.get(800)?.resolve(responseFor(800));
+    await waitFor(() => expect(within(grid).getByText("R800C0")).toBeInTheDocument());
+    pending.get(200)?.resolve(responseFor(200));
+    await Promise.resolve();
+
+    expect(within(grid).queryByText("R200C0")).not.toBeInTheDocument();
+    expect(grid).toHaveAttribute("data-visible-offset", "800");
+    expect(onReadError).not.toHaveBeenCalled();
+    clock.mockRestore();
+  });
+
+  it("T-P17-015 switches to a compatible cached page during scrub without IPC", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const cached = makePage(4_000);
+    const { grid } = renderGrid(readPage, undefined, summary, cached);
+    await waitFor(() => expect(within(grid).getByText("R4000C0")).toBeInTheDocument());
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    const initialRequestCount = readPage.mock.calls.length;
+    grid.focus();
+    const activeRow = grid.dataset.activeRow;
+    const activeColumn = grid.dataset.activeColumn;
+
+    clock.mockReturnValue(10);
+    grid.scrollTop = 0;
+    fireEvent.scroll(grid);
+    clock.mockReturnValue(20);
+    grid.scrollTop = 4_037 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    expect(grid).toHaveAttribute("data-visible-offset", "4000");
+    await waitFor(() => expect(within(grid).getByText("R4037C0")).toBeInTheDocument());
+    expect(readPage).toHaveBeenCalledTimes(initialRequestCount);
+    expect(grid).toHaveAttribute("data-active-row", activeRow);
+    expect(grid).toHaveAttribute("data-active-column", activeColumn);
+    expect(grid).toHaveFocus();
+    clock.mockRestore();
+  });
+
+  it("T-P17-020 ignores synthetic recenter but keeps a user event that wins the guard race", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const totalRows = 5_850_000;
+    const largeSummary = { ...summary, rowCount: totalRows };
+    const largePage = { ...makePage(), totalRows };
+    const readPage = vi.fn(async (request: ReadPageRequest) => ({
+      ...makePage(request.offset),
+      totalRows,
+    }));
+    const { grid } = renderGrid(readPage, undefined, largeSummary, largePage);
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 600 });
+    Object.defineProperty(grid, "scrollHeight", {
+      configurable: true,
+      value: GRID_MAX_SEGMENT_ROWS * GRID_ROW_HEIGHT + GRID_HEADER_HEIGHT,
+    });
+    await new Promise((resolve) =>
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)),
+    );
+    readPage.mockClear();
+
+    clock.mockReturnValue(1);
+    grid.scrollTop = 198_001 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
+
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    expect(grid).toHaveAttribute("data-visible-offset", "198000");
+    expect(readPage).not.toHaveBeenCalled();
+
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    clock.mockReturnValue(2);
+    grid.scrollTop = 100_500 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    expect(grid).toHaveAttribute("data-visible-offset", "198400");
+    expect(readPage).not.toHaveBeenCalled();
+
+    fireEvent(grid, new Event("scrollend"));
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(1));
+    expect(readPage.mock.calls[0]?.[0].offset).toBe(198_400);
+    clock.mockRestore();
+  });
+
+  it("keeps a user page change that races a scheduled keyboard scroll", async () => {
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid } = renderGrid(readPage);
+    await new Promise((resolve) =>
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)),
+    );
+    readPage.mockClear();
+    grid.focus();
+
+    fireEvent.keyDown(grid, { key: "PageDown" });
+    expect(Number(grid.dataset.activeRow)).toBeGreaterThan(0);
+    grid.scrollTop = 600 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    expect(grid).toHaveAttribute("data-visible-offset", "600");
+    expect(readPage).not.toHaveBeenCalled();
+    fireEvent(grid, new Event("scrollend"));
+    await waitFor(() => expect(readPage).toHaveBeenCalledTimes(1));
+    expect(readPage.mock.calls[0]?.[0].offset).toBe(600);
+  });
+
+  it("T-P17-022 clears a pending scrub settle when unmounted", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    const readPage = vi.fn(async (request: ReadPageRequest) => makePage(request.offset));
+    const { grid, unmount } = renderGrid(readPage);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    readPage.mockClear();
+
+    clock.mockReturnValue(1);
+    grid.scrollTop = 600 * GRID_ROW_HEIGHT;
+    fireEvent.scroll(grid);
+    expect(grid).toHaveAttribute("data-scroll-mode", "scrub");
+    unmount();
+    await new Promise((resolve) => window.setTimeout(resolve, 140));
+
+    expect(readPage).not.toHaveBeenCalled();
+    clock.mockRestore();
+  });
 });

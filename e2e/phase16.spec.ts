@@ -144,7 +144,8 @@ async function installControlledFixture(
       };
       backend.cancelCsvPreparation = async (documentId, sessionId) => {
         controlled.cancelCsvPreparation += 1;
-        await new Promise((resolve) => window.setTimeout(resolve, 180));
+        // Keep the transitional state observable even when all viewport projects run in parallel.
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         controlled.state = "cancelled";
         return status(documentId, sessionId);
       };
@@ -441,12 +442,14 @@ test.describe("Phase 16 CSV preparation interaction gate", () => {
 
     await page.getByRole("tab", { name: "quoted-multiline.csv" }).click();
     await expect(page.getByTestId("csv-preparation-blocker")).toBeVisible();
-    const pollsBeforeClose = (await phase16Probe(page)).getCsvPreparationStatus;
     await page.getByRole("button", { name: "Close quoted-multiline.csv" }).click();
     await expect(page.getByRole("tab", { name: "quoted-multiline.csv" })).toHaveCount(0);
     await expect(parquetTab).toHaveAttribute("aria-selected", "true");
+    // A poll may already have crossed the backend boundary between the pre-close sample and the
+    // click. Once the close has committed, however, no new polling work may start.
+    const pollsAfterClose = (await phase16Probe(page)).getCsvPreparationStatus;
     await page.waitForTimeout(850);
-    expect((await phase16Probe(page)).getCsvPreparationStatus).toBe(pollsBeforeClose);
+    expect((await phase16Probe(page)).getCsvPreparationStatus).toBe(pollsAfterClose);
   });
 
   test("T-P16-010 keeps the gate through Cancelling and enables direct Data at Cancelled", async ({
