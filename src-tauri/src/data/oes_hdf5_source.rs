@@ -1423,12 +1423,14 @@ fn build_schema(
     columns.push(ColumnSchema {
         name: String::from("time"),
         logical_type: time.logical_type().to_owned(),
+        value_logical_type: time.logical_type().to_owned(),
         nullable: false,
         physical_type: time.physical_type().to_owned(),
     });
     columns.extend(bindings.iter().map(|binding| ColumnSchema {
         name: binding.public_name.clone(),
         logical_type: oes_logical.to_owned(),
+        value_logical_type: oes_logical.to_owned(),
         nullable: false,
         physical_type: oes_physical.to_owned(),
     }));

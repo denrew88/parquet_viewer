@@ -151,7 +151,15 @@ impl QueryBudgetMonitor {
                 if let Some(cache) = &worker_cache {
                     let _ = cache.refresh_usage();
                 }
-                if let Ok(Some(message)) = worker_temp.budget_violation() {
+                if let Ok(Some(mut message)) = worker_temp.budget_violation() {
+                    if let Some(cache) = &worker_cache {
+                        if cache.reclaim_under_pressure().unwrap_or(false) {
+                            continue;
+                        }
+                    }
+                    if let Ok(Some(current)) = worker_temp.budget_violation() {
+                        message = current;
+                    }
                     if let Ok(mut violation) = worker_violation.lock() {
                         *violation = Some(message);
                     }
@@ -174,7 +182,15 @@ impl QueryBudgetMonitor {
         if let Some(cache) = &self.csv_cache {
             cache.refresh_usage()?;
         }
-        if let Some(message) = self.temp.budget_violation()? {
+        if let Some(mut message) = self.temp.budget_violation()? {
+            if let Some(cache) = &self.csv_cache {
+                if cache.reclaim_under_pressure()? {
+                    return Ok(());
+                }
+            }
+            if let Some(current) = self.temp.budget_violation()? {
+                message = current;
+            }
             if let Ok(mut violation) = self.violation.lock() {
                 *violation = Some(message.clone());
             }
@@ -738,10 +754,17 @@ impl QueryService {
                 return Err(error);
             }
         };
-        let lease = match self
-            .temp
-            .allocate(document_id, &format!("csv-prepared-{preparation_id}"))
-        {
+        let query_temp_cap = self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
+        if let Err(error) = self.csv_cache.reclaim_for_query(query_temp_cap) {
+            source.provider.preparation_aborted();
+            set_csv_preparation_state(&task, CsvPreparationState::Failed, Some(error.clone()));
+            return Err(error);
+        }
+        let lease = match self.temp.allocate_bounded(
+            document_id,
+            &format!("csv-prepared-{preparation_id}"),
+            query_temp_cap,
+        ) {
             Ok(lease) => lease,
             Err(error) => {
                 source.provider.preparation_aborted();
@@ -758,6 +781,7 @@ impl QueryService {
             }
         };
         let database_path = lease.path().join("prepared.duckdb");
+        let query_temp_allowance = lease.allowance_bytes();
 
         if let Some(hit) = cache_hit {
             let restore = (|| {
@@ -780,7 +804,7 @@ impl QueryService {
                     &source,
                     &database_path,
                     &parquet_path,
-                    self.temp.configured_limit(),
+                    query_temp_allowance,
                 )?;
                 let config = query_connection_config()?
                     .access_mode(AccessMode::ReadOnly)
@@ -803,6 +827,7 @@ impl QueryService {
                     let cache_output_bytes = std::fs::metadata(&database_path)
                         .map(|metadata| metadata.len())
                         .unwrap_or(0);
+                    lease.commit_usage();
                     let artifact = Arc::new(CsvPreparedArtifact {
                         database_path,
                         row_count: hit.rows,
@@ -859,6 +884,7 @@ impl QueryService {
                 Arc::clone(&temp),
                 Arc::clone(&csv_cache),
                 source_file.as_ref(),
+                query_temp_allowance,
             );
             if let Ok(mut interrupt) = worker_task.interrupt.lock() {
                 interrupt.take();
@@ -1004,7 +1030,7 @@ impl QueryService {
                             &source,
                             &database_path,
                             &lease.path().join("prepared.parquet"),
-                            temp.configured_limit(),
+                            query_temp_allowance,
                         ) {
                             set_csv_preparation_state(
                                 &worker_task,
@@ -1044,6 +1070,7 @@ impl QueryService {
                             );
                             return;
                         }
+                        lease.commit_usage();
                         let artifact = Arc::new(CsvPreparedArtifact {
                             database_path,
                             row_count,
@@ -1865,14 +1892,12 @@ impl QueryService {
         task: &QueryTask,
     ) -> Result<QueryResult, DataError> {
         self.csv_cache.refresh_usage()?;
-        let lease = self
-            .temp
-            .allocate(&request.document_id, &request.query_id)?;
-        let connection = open_connection(
-            source,
-            lease.path(),
-            self.temp.usage()?.limit_bytes / MAX_CONCURRENT_QUERIES as u64,
-        )?;
+        let per_query_cap = self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
+        self.csv_cache.reclaim_for_query(per_query_cap)?;
+        let lease =
+            self.temp
+                .allocate_bounded(&request.document_id, &request.query_id, per_query_cap)?;
+        let connection = open_connection(source, lease.path(), lease.allowance_bytes())?;
         let interrupt = connection.interrupt_handle();
         *task.interrupt.lock().map_err(|_| registry_error())? = Some(interrupt.clone());
         if task.cancel.load(Ordering::Acquire) {
@@ -2064,12 +2089,12 @@ impl QueryService {
             self.next_distinct_id.fetch_add(1, Ordering::Relaxed)
         );
         self.csv_cache.refresh_usage()?;
-        let lease = self.temp.allocate(&request.document_id, &id)?;
-        let connection = open_connection(
-            &source,
-            lease.path(),
-            self.temp.usage()?.limit_bytes / MAX_CONCURRENT_QUERIES as u64,
-        )?;
+        let per_query_cap = self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
+        self.csv_cache.reclaim_for_query(per_query_cap)?;
+        let lease = self
+            .temp
+            .allocate_bounded(&request.document_id, &id, per_query_cap)?;
+        let connection = open_connection(&source, lease.path(), lease.allowance_bytes())?;
         let monitor = QueryBudgetMonitor::start(
             Arc::clone(&self.temp),
             Some(Arc::clone(&self.csv_cache)),
@@ -2469,6 +2494,7 @@ impl QueryResult {
             .map(|column| ColumnSchema {
                 name: column.name.clone(),
                 logical_type: format!("{:?}", column.kind),
+                value_logical_type: format!("{:?}", column.kind),
                 nullable: column.nullable,
                 physical_type: String::from("queryResult"),
             })
@@ -2797,6 +2823,7 @@ fn build_csv_prepared_artifact(
     temp: Arc<QueryTempManager>,
     csv_cache: Arc<CsvPersistentCache>,
     source_file: Option<&std::fs::File>,
+    temp_limit: u64,
 ) -> Result<(), DataError> {
     if !source_fingerprint_matches(&source.path, source_file, &task.source_fingerprint)? {
         return Err(DataError::query_failed(
@@ -2816,10 +2843,11 @@ fn build_csv_prepared_artifact(
         .replace('\\', "/");
     connection
         .execute_batch(&format!(
-            "SET allowed_paths = [{}]; SET allowed_directories = [{}]; SET temp_directory = {}; SET preserve_insertion_order = true; SET default_null_order = 'NULLS_LAST';",
+            "SET allowed_paths = [{}]; SET allowed_directories = [{}]; SET temp_directory = {}; SET max_temp_directory_size = '{}B'; SET preserve_insertion_order = true; SET default_null_order = 'NULLS_LAST';",
             quote_literal(&source_path),
             quote_literal(&temp_path),
             quote_literal(&temp_path),
+            temp_limit,
         ))
         .map_err(duckdb_error)?;
     let mut progress = |rows_scanned| {
@@ -3247,7 +3275,8 @@ fn prepared_csv_value(
     let mut value = DataValue::converted(kind, display, raw.unwrap_or_else(|| normalized.clone()))
         .with_source(normalized);
     if kind == ValueKind::Duration {
-        if let Some(unit) = crate::data::duration_unit_from_logical_type(&column.logical_type) {
+        if let Some(unit) = crate::data::duration_unit_from_logical_type(&column.value_logical_type)
+        {
             value = value.with_temporal_metadata(crate::data::duration_unit_name(unit), None);
         }
     }
@@ -3297,7 +3326,7 @@ fn projected_columns<'a>(
 }
 
 fn value_kind(column: &crate::domain::ColumnSchema) -> ValueKind {
-    let logical = column.logical_type.to_ascii_lowercase();
+    let logical = column.value_logical_type.to_ascii_lowercase();
     if logical.contains("timestamp") {
         ValueKind::Timestamp
     } else if logical.contains("duration") {
@@ -3579,15 +3608,48 @@ fn registry_error() -> DataError {
 
 fn duckdb_error(error: duckdb::Error) -> DataError {
     let message = error.to_string();
-    if message.contains("maximum amount of data stored")
-        || message.contains("max_temp_directory_size")
-    {
-        DataError::query_temp_limit(message)
+    if is_query_temp_storage_error(&message) {
+        query_temp_storage_error()
     } else if message.to_ascii_lowercase().contains("interrupt") {
         DataError::task_cancelled()
     } else {
         DataError::query_failed(message)
     }
+}
+
+fn query_temp_storage_error() -> DataError {
+    DataError::query_temp_limit(
+        "Query temporary storage reached its safe disk allowance. Clear inactive CSV cache in Settings or free disk space, then retry.",
+    )
+}
+
+fn is_query_temp_storage_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("maximum amount of data stored")
+        || lower.contains("max_temp_directory_size")
+        || lower.contains("no space left on device")
+        || lower.contains("disk full")
+        || lower.contains("disk is full")
+        || lower.contains("not enough space on the disk")
+    {
+        return true;
+    }
+    if lower.contains("does not exist")
+        || lower.contains("no files found")
+        || lower.contains("file not found")
+    {
+        return false;
+    }
+    let temporary = lower.contains("temporary directory")
+        || lower.contains("temp directory")
+        || lower.contains("temp_directory");
+    let io = lower.contains("failed to open")
+        || lower.contains("could not open")
+        || lower.contains("failed to write")
+        || lower.contains("could not write")
+        || lower.contains("i/o error")
+        || lower.contains("io error");
+    temporary && io
 }
 
 #[cfg(test)]
@@ -3596,12 +3658,44 @@ mod tests {
     use crate::{
         data::{DataSource, ParquetSource, QueryInputProvider, QueryPrepareContext, TabularSource},
         domain::{
-            ColumnSchema, CsvDurationInputFormat, CsvProfileMode, CsvTargetType, DataValueState,
-            DurationUnit, FilterOperator, HeaderMode, QueryFilter, QueryPlan, QueryScalarType,
-            QuerySearch, QuerySearchMode, QuerySort, QuerySortDirection,
-            DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+            scalar_type_for_column, ColumnSchema, CsvDurationInputFormat, CsvProfileMode,
+            CsvTargetType, DataValueState, DurationUnit, FilterOperator, HeaderMode, QueryFilter,
+            QueryPlan, QueryScalarType, QuerySearch, QuerySearchMode, QuerySort,
+            QuerySortDirection, DEFAULT_QUERY_TEMP_LIMIT_BYTES,
         },
     };
+    use arrow_array::builder::StringDictionaryBuilder;
+    use arrow_array::types::Int8Type;
+    use arrow_array::{
+        Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, Int8Array, RecordBatch,
+        StringArray,
+    };
+    use arrow_schema::{DataType, Field, Schema};
+    use parquet::arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ArrowWriter};
+
+    #[test]
+    fn tmp18_duckdb_storage_classifier_is_actionable_without_false_positives() {
+        for message in [
+            "IO Error: No space left on device while writing temporary data",
+            "Out of Memory Error: failed to offload data block of size 262144 (maximum amount of data stored in temporary directory exceeded max_temp_directory_size)",
+            "IO Error: failed to open temporary directory C:/secret/query-temp",
+            "IO Error: could not write temp_directory spill block",
+        ] {
+            assert!(is_query_temp_storage_error(message), "{message}");
+        }
+        for message in [
+            "IO Error: No files found that match C:/missing/source.parquet",
+            "IO Error: file does not exist: C:/missing/source.csv",
+            "Parser Error: syntax error at or near WHERE",
+        ] {
+            assert!(!is_query_temp_storage_error(message), "{message}");
+        }
+
+        let error = query_temp_storage_error();
+        assert_eq!(error.code, DataErrorCode::QueryTempLimitExceeded);
+        assert!(!error.message.contains("C:/secret"));
+        assert!(error.message.contains("Clear inactive CSV cache"));
+    }
 
     #[cfg(windows)]
     fn set_windows_file_identity_times(path: &Path, creation: u64, modified: u64) {
@@ -4202,6 +4296,7 @@ mod tests {
         let columns = vec![ColumnSchema {
             name: String::from("value"),
             logical_type: String::from("String"),
+            value_logical_type: String::from("String"),
             nullable: false,
             physical_type: String::from("VARCHAR"),
         }];
@@ -5210,6 +5305,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5249,6 +5345,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5368,6 +5465,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5455,6 +5553,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5520,6 +5619,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5541,6 +5641,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5749,6 +5850,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -5986,6 +6088,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -6025,6 +6128,7 @@ mod tests {
         let columns = vec![ColumnSchema {
             name: String::from("value"),
             logical_type: String::from("String"),
+            value_logical_type: String::from("String"),
             nullable: true,
             physical_type: String::from("VARCHAR"),
         }];
@@ -6092,6 +6196,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -6183,6 +6288,401 @@ mod tests {
             ],
             projection: vec![String::from("row_id"), String::from("category")],
         }
+    }
+
+    fn write_phase19_dictionary_fixture(path: &Path) {
+        let dictionary_type =
+            DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8));
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("source_id", DataType::Int32, false),
+            Field::new("category", dictionary_type, true),
+        ]));
+        let mut writer = ArrowWriter::try_new(
+            std::fs::File::create(path).unwrap(),
+            Arc::clone(&schema),
+            None,
+        )
+        .unwrap();
+
+        let mut first = StringDictionaryBuilder::<Int8Type>::new();
+        for value in [
+            Some("beta"),
+            Some("alpha"),
+            Some(""),
+            None,
+            Some("beta"),
+            Some("alpha"),
+        ] {
+            match value {
+                Some(value) => {
+                    first.append(value).unwrap();
+                }
+                None => first.append_null(),
+            }
+        }
+        writer
+            .write(
+                &RecordBatch::try_new(
+                    Arc::clone(&schema),
+                    vec![
+                        Arc::new(Int32Array::from_iter_values(0..6)) as ArrayRef,
+                        Arc::new(first.finish()) as ArrayRef,
+                    ],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        writer.flush().unwrap();
+
+        let mut second = StringDictionaryBuilder::<Int8Type>::new();
+        for value in [
+            Some("alpha"),
+            Some("gamma"),
+            Some("beta"),
+            Some(""),
+            None,
+            Some("beta"),
+        ] {
+            match value {
+                Some(value) => {
+                    second.append(value).unwrap();
+                }
+                None => second.append_null(),
+            }
+        }
+        writer
+            .write(
+                &RecordBatch::try_new(
+                    schema,
+                    vec![
+                        Arc::new(Int32Array::from_iter_values(6..12)) as ArrayRef,
+                        Arc::new(second.finish()) as ArrayRef,
+                    ],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        writer.close().unwrap();
+    }
+
+    fn phase19_query_ids(
+        service: &Arc<QueryService>,
+        source: QuerySourceSpec,
+        name: &str,
+        plan: QueryPlan,
+    ) -> (ExecuteQueryRequest, Vec<i32>, DataPage) {
+        let execute = request(
+            &format!("phase19-task-{name}"),
+            &format!("phase19-{name}"),
+            plan,
+        );
+        service.execute(execute.clone(), source).unwrap();
+        let status = wait_complete(service, &execute);
+        assert_eq!(status.state, QueryTaskState::Complete, "{:?}", status.error);
+        let page = service
+            .read_page(ReadQueryPageRequest {
+                document_id: execute.document_id.clone(),
+                session_id: execute.session_id.clone(),
+                query_id: execute.query_id.clone(),
+                offset: 0,
+                limit: 200,
+                columns: vec![String::from("source_id"), String::from("category")],
+            })
+            .unwrap()
+            .page;
+        let ids = page
+            .rows
+            .iter()
+            .map(|row| row[0].display.as_deref().unwrap().parse::<i32>().unwrap())
+            .collect();
+        (execute, ids, page)
+    }
+
+    #[test]
+    fn p19_dictionary_queries_use_decoded_values_across_row_groups() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let path = source_directory.path().join("phase19-dictionary.parquet");
+        write_phase19_dictionary_fixture(&path);
+        for (row_group, expected_values, expected_keys) in [
+            (
+                0,
+                vec!["beta", "alpha", ""],
+                vec![Some(0), Some(1), Some(2), None, Some(0), Some(1)],
+            ),
+            (
+                1,
+                vec!["alpha", "gamma", "beta", ""],
+                vec![Some(0), Some(1), Some(2), Some(3), None, Some(2)],
+            ),
+        ] {
+            let mut reader =
+                ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(&path).unwrap())
+                    .unwrap()
+                    .with_row_groups(vec![row_group])
+                    .build()
+                    .unwrap();
+            let batch = reader.next().unwrap().unwrap();
+            let dictionary = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<DictionaryArray<Int8Type>>()
+                .unwrap();
+            let values = dictionary
+                .values()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            assert_eq!(
+                values.iter().map(Option::unwrap).collect::<Vec<_>>(),
+                expected_values
+            );
+            assert_eq!(
+                (0..dictionary.len())
+                    .map(|index| dictionary.key(index))
+                    .collect::<Vec<_>>(),
+                expected_keys
+            );
+        }
+        let source = DataSource::open(&path).unwrap();
+        let direct = source.read_page_projected(0, 12, None).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let category = spec
+            .columns
+            .iter()
+            .find(|column| column.name == "category")
+            .unwrap();
+        assert_eq!(category.logical_type, "Dictionary(Int8, Utf8)");
+        assert_eq!(category.value_logical_type, "Utf8");
+        assert_eq!(scalar_type_for_column(category), QueryScalarType::Text);
+        assert_eq!(
+            direct
+                .rows
+                .iter()
+                .map(|row| (row[1].state, row[1].display.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                (DataValueState::Valid, Some("beta")),
+                (DataValueState::Valid, Some("alpha")),
+                (DataValueState::Empty, Some("")),
+                (DataValueState::Null, None),
+                (DataValueState::Valid, Some("beta")),
+                (DataValueState::Valid, Some("alpha")),
+                (DataValueState::Valid, Some("alpha")),
+                (DataValueState::Valid, Some("gamma")),
+                (DataValueState::Valid, Some("beta")),
+                (DataValueState::Empty, Some("")),
+                (DataValueState::Null, None),
+                (DataValueState::Valid, Some("beta")),
+            ]
+        );
+
+        let invalid_plan = QueryPlan {
+            filters: vec![QueryFilter {
+                id: String::from("wrong-kind"),
+                column_id: String::from("category"),
+                scalar_type: QueryScalarType::Number,
+                operator: FilterOperator::Equals,
+                values: vec![String::from("1")],
+            }],
+            search: None,
+            sort: Vec::new(),
+            projection: Vec::new(),
+        };
+        assert!(invalid_plan.validate(&spec.columns).is_err());
+
+        let (_temp_directory, service) = service();
+        let filter_cases = [
+            (FilterOperator::Equals, vec!["beta"], vec![0, 4, 8, 11]),
+            (
+                FilterOperator::NotEquals,
+                vec!["beta"],
+                vec![1, 2, 5, 6, 7, 9],
+            ),
+            (
+                FilterOperator::OneOf,
+                vec!["alpha", "gamma"],
+                vec![1, 5, 6, 7],
+            ),
+            (FilterOperator::Contains, vec!["mm"], vec![7]),
+            (FilterOperator::StartsWith, vec!["al"], vec![1, 5, 6]),
+            (FilterOperator::EndsWith, vec!["ta"], vec![0, 4, 8, 11]),
+        ];
+        for (case_index, (operator, values, expected)) in filter_cases.into_iter().enumerate() {
+            let (_, ids, page) = phase19_query_ids(
+                &service,
+                spec.clone(),
+                &format!("filter-{case_index}"),
+                QueryPlan {
+                    filters: vec![QueryFilter {
+                        id: format!("filter-{case_index}"),
+                        column_id: String::from("category"),
+                        scalar_type: QueryScalarType::Text,
+                        operator,
+                        values: values.into_iter().map(str::to_owned).collect(),
+                    }],
+                    search: None,
+                    sort: Vec::new(),
+                    projection: Vec::new(),
+                },
+            );
+            assert_eq!(ids, expected);
+            assert!(page.rows.iter().all(|row| row[1].kind == ValueKind::String));
+        }
+
+        for (name, direction, expected) in [
+            (
+                "asc",
+                QuerySortDirection::Ascending,
+                vec![2, 9, 1, 5, 6, 0, 4, 8, 11, 7, 3, 10],
+            ),
+            (
+                "desc",
+                QuerySortDirection::Descending,
+                vec![7, 0, 4, 8, 11, 1, 5, 6, 2, 9, 3, 10],
+            ),
+        ] {
+            let (execute, ids, page) = phase19_query_ids(
+                &service,
+                spec.clone(),
+                name,
+                QueryPlan {
+                    filters: Vec::new(),
+                    search: None,
+                    sort: vec![QuerySort {
+                        column_id: String::from("category"),
+                        direction,
+                        nulls_last: true,
+                    }],
+                    projection: Vec::new(),
+                },
+            );
+            assert_eq!(ids, expected);
+            let copied = service
+                .read_copy_rows(
+                    &execute.document_id,
+                    &execute.session_id,
+                    &execute.query_id,
+                    0,
+                    12,
+                    &[String::from("source_id"), String::from("category")],
+                )
+                .unwrap();
+            assert_eq!(copied.rows, page.rows);
+        }
+
+        let distinct = service
+            .distinct(
+                DistinctValuesRequest {
+                    document_id: String::from("document-test"),
+                    session_id: String::from("phase19-distinct"),
+                    query_id: None,
+                    column_id: String::from("category"),
+                    search: None,
+                    offset: 0,
+                    limit: 20,
+                },
+                Some(spec.clone()),
+            )
+            .unwrap();
+        let mut counts = distinct
+            .values
+            .into_iter()
+            .map(|value| (value.value, value.is_null, value.count))
+            .collect::<Vec<_>>();
+        counts.sort();
+        assert_eq!(
+            counts,
+            [
+                (None, true, 2),
+                (Some(String::from("")), false, 2),
+                (Some(String::from("alpha")), false, 3),
+                (Some(String::from("beta")), false, 4),
+                (Some(String::from("gamma")), false, 1),
+            ]
+        );
+
+        let (find_request, ids, _) = phase19_query_ids(
+            &service,
+            spec,
+            "find",
+            QueryPlan {
+                filters: Vec::new(),
+                search: Some(QuerySearch {
+                    text: String::from("ALPHA"),
+                    mode: QuerySearchMode::Find,
+                    case_sensitive: false,
+                    exact: true,
+                    target_column_ids: vec![String::from("category")],
+                }),
+                sort: Vec::new(),
+                projection: Vec::new(),
+            },
+        );
+        assert_eq!(ids, (0..12).collect::<Vec<_>>());
+        assert_eq!(
+            wait_complete(&service, &find_request).find_match_count,
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn p19_numeric_dictionary_uses_native_numeric_order() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let path = source_directory
+            .path()
+            .join("phase19-numeric-dictionary.parquet");
+        let dictionary_type =
+            DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Int64));
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("source_id", DataType::Int32, false),
+            Field::new("category", dictionary_type, false),
+        ]));
+        let values = Arc::new(Int64Array::from(vec![10_i64, 2_i64])) as ArrayRef;
+        let dictionary =
+            DictionaryArray::<Int8Type>::try_new(Int8Array::from(vec![0_i8, 1_i8]), values)
+                .unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int32Array::from(vec![0_i32, 1_i32])) as ArrayRef,
+                Arc::new(dictionary) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let mut writer =
+            ArrowWriter::try_new(std::fs::File::create(&path).unwrap(), schema, None).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+
+        let source = DataSource::open(&path).unwrap();
+        let spec = source.query_source_spec().unwrap();
+        let category = &spec.columns[1];
+        assert_eq!(category.value_logical_type, "Int64");
+        assert_eq!(scalar_type_for_column(category), QueryScalarType::Number);
+        let (_temporary_directory, service) = service();
+        let (_, ids, page) = phase19_query_ids(
+            &service,
+            spec,
+            "numeric-sort",
+            QueryPlan {
+                filters: Vec::new(),
+                search: None,
+                sort: vec![QuerySort {
+                    column_id: String::from("category"),
+                    direction: QuerySortDirection::Ascending,
+                    nulls_last: true,
+                }],
+                projection: Vec::new(),
+            },
+        );
+        assert_eq!(ids, [1, 0]);
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| (row[1].kind, row[1].display.as_deref()))
+                .collect::<Vec<_>>(),
+            [(ValueKind::Int, Some("2")), (ValueKind::Int, Some("10"))]
+        );
     }
 
     fn run_fixture(name: &str, query: &str) -> (Vec<Vec<DataValue>>, QueryStatus) {
@@ -6995,6 +7495,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -7533,6 +8034,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],
@@ -7601,6 +8103,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],

@@ -124,13 +124,16 @@ const MAX_CONCURRENT_REQUESTS = 2;
 const COPY_STATUS_POLL_MS = 100;
 
 function durationUnitForColumn(summary: FileSummary, columnId: string): DurationUnit | undefined {
-  const logicalType = summary.columns
+  const valueLogicalType = summary.columns
     .find((column) => column.name === columnId)
-    ?.logicalType.toLocaleLowerCase();
-  if (!logicalType?.includes("duration")) return undefined;
-  if (logicalType.includes("nanosecond") || logicalType.includes("duration(ns")) return "ns";
-  if (logicalType.includes("microsecond") || logicalType.includes("duration(us")) return "us";
-  if (logicalType.includes("millisecond") || logicalType.includes("duration(ms")) return "ms";
+    ?.valueLogicalType.toLocaleLowerCase();
+  if (!valueLogicalType?.includes("duration")) return undefined;
+  if (valueLogicalType.includes("nanosecond") || valueLogicalType.includes("duration(ns"))
+    return "ns";
+  if (valueLogicalType.includes("microsecond") || valueLogicalType.includes("duration(us"))
+    return "us";
+  if (valueLogicalType.includes("millisecond") || valueLogicalType.includes("duration(ms"))
+    return "ms";
   return "s";
 }
 

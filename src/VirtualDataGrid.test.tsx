@@ -150,6 +150,7 @@ function makeWideCopyFixture(columnCount: number, totalRows = 2) {
     columns: columnNames.map((name) => ({
       name,
       logicalType: "Utf8",
+      valueLogicalType: "Utf8",
       physicalType: "BYTE_ARRAY",
       nullable: false,
     })),
@@ -191,6 +192,7 @@ const summary: FileSummary = {
   columns: columns.map((name) => ({
     name,
     logicalType: "Utf8",
+    valueLogicalType: "Utf8",
     physicalType: "BYTE_ARRAY",
     nullable: false,
   })),
@@ -224,6 +226,7 @@ const oesSummary: FileSummary = {
   columns: oesColumns.map((name, index) => ({
     name,
     logicalType: index === 0 ? "Int64" : "Int32",
+    valueLogicalType: index === 0 ? "Int64" : "Int32",
     physicalType: index === 0 ? "HDF5 int64 attribute" : "HDF5 int32",
     nullable: false,
   })),
@@ -273,6 +276,7 @@ function makeNavigationSummary(
     columns: columnNames.map((name) => ({
       name,
       logicalType: "Utf8",
+      valueLogicalType: "Utf8",
       physicalType: "BYTE_ARRAY",
       nullable: true,
     })),
@@ -1361,6 +1365,71 @@ describe("VirtualDataGrid", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("uses a dictionary string value type for text operators and the outgoing filter plan", async () => {
+    const dictionarySummary: FileSummary = {
+      ...querySummary,
+      columns: querySummary.columns.map((column, index) =>
+        index === 0
+          ? {
+              ...column,
+              logicalType: "Dictionary(Int8, Utf8)",
+              valueLogicalType: "Utf8",
+              physicalType: "INT8",
+            }
+          : column,
+      ),
+    };
+    render(<QueryGridHarness summaryValue={dictionarySummary} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter column_0" }));
+    const dialog = screen.getByRole("dialog", { name: "Filter column_0" });
+    const operator = within(dialog).getByRole("combobox", { name: "Filter operator" });
+    expect(within(operator).getByRole("option", { name: "Contains" })).toBeInTheDocument();
+    expect(
+      within(operator).queryByRole("option", { name: "Greater than" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Value" }), {
+      target: { value: "alpha" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(JSON.parse(screen.getByTestId("query-plan").textContent ?? "{}").filters).toEqual([
+      {
+        id: "filter:column_0",
+        columnId: "column_0",
+        scalarType: "text",
+        operator: "contains",
+        values: ["alpha"],
+      },
+    ]);
+  });
+
+  it("uses a dictionary numeric value type for numeric operators", () => {
+    const dictionarySummary: FileSummary = {
+      ...querySummary,
+      columns: querySummary.columns.map((column, index) =>
+        index === 0
+          ? {
+              ...column,
+              logicalType: "Dictionary(UInt8, Int64)",
+              valueLogicalType: "Int64",
+              physicalType: "BYTE_ARRAY UTF8",
+            }
+          : column,
+      ),
+    };
+    render(<QueryGridHarness summaryValue={dictionarySummary} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter column_0" }));
+    const operator = within(screen.getByRole("dialog", { name: "Filter column_0" })).getByRole(
+      "combobox",
+      { name: "Filter operator" },
+    );
+    expect(within(operator).getByRole("option", { name: "Greater than" })).toBeInTheDocument();
+    expect(within(operator).queryByRole("option", { name: "Contains" })).not.toBeInTheDocument();
   });
 
   it("clamps the filter popover and restores trigger focus on Escape", async () => {

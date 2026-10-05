@@ -62,7 +62,15 @@ const validSummary = {
   },
   columnCount: 1,
   rowGroupCount: 1,
-  columns: [{ name: "value", logicalType: "Utf8", nullable: true, physicalType: "BYTE_ARRAY" }],
+  columns: [
+    {
+      name: "value",
+      logicalType: "Utf8",
+      valueLogicalType: "Utf8",
+      nullable: true,
+      physicalType: "BYTE_ARRAY",
+    },
+  ],
   rowGroups: [
     {
       index: 0,
@@ -123,6 +131,7 @@ const validCsvSummary = {
   columns: ["name", "note", "empty"].map((name) => ({
     name,
     logicalType: "Utf8",
+    valueLogicalType: "Utf8",
     nullable: false,
     physicalType: "UTF8",
   })),
@@ -1257,6 +1266,20 @@ describe("backend adapters", () => {
     ["fractional row count", { ...validSummary, rowCount: 1.5 }],
     ["column count mismatch", { ...validSummary, columnCount: 2 }],
     ["malformed column", { ...validSummary, columns: [{ name: "value" }] }],
+    [
+      "missing column value logical type",
+      {
+        ...validSummary,
+        columns: [{ ...validSummary.columns[0], valueLogicalType: undefined }],
+      },
+    ],
+    [
+      "non-string column value logical type",
+      {
+        ...validSummary,
+        columns: [{ ...validSummary.columns[0], valueLogicalType: 8 }],
+      },
+    ],
     ["missing row groups", { ...validSummary, rowGroups: undefined }],
     ["row group count mismatch", { ...validSummary, rowGroupCount: 2 }],
     [

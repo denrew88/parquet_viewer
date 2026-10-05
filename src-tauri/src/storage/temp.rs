@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -75,6 +75,7 @@ pub struct QueryTempManager {
     active_queries: Arc<AtomicUsize>,
     limit_bytes: AtomicU64,
     external_cache_bytes: AtomicU64,
+    reservations: Arc<Mutex<HashMap<PathBuf, u64>>>,
 }
 
 #[derive(Debug)]
@@ -82,6 +83,14 @@ pub struct QueryTempLease {
     path: PathBuf,
     active_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active_queries: Arc<AtomicUsize>,
+    reservations: Arc<Mutex<HashMap<PathBuf, u64>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct QueryTempBudget {
+    pub allowance_bytes: u64,
+    pub limit_remaining_bytes: u64,
+    pub free_remaining_bytes: u64,
 }
 
 impl QueryTempManager {
@@ -114,6 +123,7 @@ impl QueryTempManager {
             active_queries: Arc::new(AtomicUsize::new(0)),
             limit_bytes: AtomicU64::new(effective_limit(limit_bytes)),
             external_cache_bytes: AtomicU64::new(0),
+            reservations: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -122,20 +132,28 @@ impl QueryTempManager {
             .store(effective_limit(limit_bytes), Ordering::Release);
     }
 
+    #[cfg(test)]
     pub fn allocate(&self, document_id: &str, query_id: &str) -> Result<QueryTempLease, DataError> {
+        self.allocate_inner(document_id, query_id, None)
+    }
+
+    pub(crate) fn allocate_bounded(
+        &self,
+        document_id: &str,
+        query_id: &str,
+        per_query_cap: u64,
+    ) -> Result<QueryTempLease, DataError> {
+        self.allocate_inner(document_id, query_id, Some(per_query_cap))
+    }
+
+    fn allocate_inner(
+        &self,
+        document_id: &str,
+        query_id: &str,
+        per_query_cap: Option<u64>,
+    ) -> Result<QueryTempLease, DataError> {
         validate_identity(document_id)?;
         validate_identity(query_id)?;
-        let usage = self.usage()?;
-        if usage.process_bytes >= usage.limit_bytes {
-            return Err(DataError::query_temp_limit(
-                "The process query temporary storage limit has been reached.",
-            ));
-        }
-        if usage.free_bytes <= QUERY_TEMP_SAFETY_RESERVE_BYTES {
-            return Err(DataError::query_temp_limit(format!(
-                "Query requires free disk space above the fixed safety reserve of {QUERY_TEMP_SAFETY_RESERVE_BYTES} bytes."
-            )));
-        }
         let path = self
             .process_directory
             .join(identity_component(document_id))
@@ -145,17 +163,84 @@ impl QueryTempManager {
                 "A temporary directory already exists for this query identity.",
             ));
         }
-        fs::create_dir_all(&path).map_err(|error| temp_io(&path, error))?;
-        self.active_paths
-            .lock()
-            .map_err(|_| temp_unavailable())?
-            .insert(path.clone());
+        if let Some(per_query_cap) = per_query_cap {
+            let mut reservations = self.reservations.lock().map_err(|_| temp_unavailable())?;
+            let budget = self.budget_locked(per_query_cap, &reservations)?;
+            if budget.allowance_bytes == 0 {
+                return Err(self.limit_error()?);
+            }
+            reservations.insert(path.clone(), budget.allowance_bytes);
+        } else {
+            let usage = self.usage()?;
+            if usage.process_bytes >= usage.limit_bytes
+                || usage.free_bytes <= QUERY_TEMP_SAFETY_RESERVE_BYTES
+            {
+                return Err(self.limit_error_from_usage(&usage));
+            }
+        }
+        if let Err(error) = fs::create_dir_all(&path).map_err(|error| temp_io(&path, error)) {
+            if per_query_cap.is_some() {
+                if let Ok(mut reservations) = self.reservations.lock() {
+                    reservations.remove(&path);
+                }
+            }
+            return Err(error);
+        }
+        let mut active_paths = match self.active_paths.lock() {
+            Ok(active_paths) => active_paths,
+            Err(_) => {
+                if let Ok(mut reservations) = self.reservations.lock() {
+                    reservations.remove(&path);
+                }
+                let _ = remove_with_retry(&path, std::time::Duration::from_millis(100));
+                return Err(temp_unavailable());
+            }
+        };
+        active_paths.insert(path.clone());
+        drop(active_paths);
         self.active_queries.fetch_add(1, Ordering::AcqRel);
         Ok(QueryTempLease {
             path,
             active_paths: Arc::clone(&self.active_paths),
             active_queries: Arc::clone(&self.active_queries),
+            reservations: Arc::clone(&self.reservations),
         })
+    }
+
+    pub(crate) fn bounded_allowance(
+        &self,
+        per_query_cap: u64,
+    ) -> Result<QueryTempBudget, DataError> {
+        let reservations = self.reservations.lock().map_err(|_| temp_unavailable())?;
+        self.budget_locked(per_query_cap, &reservations)
+    }
+
+    fn budget_locked(
+        &self,
+        per_query_cap: u64,
+        reservations: &HashMap<PathBuf, u64>,
+    ) -> Result<QueryTempBudget, DataError> {
+        let free_bytes = fs2::available_space(&self.process_directory)
+            .map_err(|error| temp_io(&self.process_directory, error))?;
+        let query_temp_bytes = directory_bytes(&self.process_directory)?;
+        let cache_bytes = self.external_cache_bytes.load(Ordering::Acquire);
+        let mut active_bytes = 0_u64;
+        let mut reserved_remaining = 0_u64;
+        for (path, reservation) in reservations {
+            let bytes = directory_bytes_best_effort(path);
+            active_bytes = active_bytes.saturating_add(bytes);
+            reserved_remaining =
+                reserved_remaining.saturating_add(reservation.saturating_sub(bytes));
+        }
+        let unreserved_bytes = query_temp_bytes.saturating_sub(active_bytes);
+        Ok(calculate_query_budget(
+            self.limit_bytes.load(Ordering::Acquire),
+            cache_bytes.saturating_add(unreserved_bytes),
+            reservations.values().copied().sum(),
+            free_bytes,
+            reserved_remaining,
+            per_query_cap,
+        ))
     }
 
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
@@ -218,17 +303,27 @@ impl QueryTempManager {
     pub fn budget_violation(&self) -> Result<Option<String>, DataError> {
         let usage = self.usage()?;
         if usage.process_bytes >= usage.limit_bytes {
-            return Ok(Some(format!(
-                "Query temporary storage exceeded the process limit of {} bytes.",
-                usage.limit_bytes
-            )));
+            return Ok(Some(self.limit_error_from_usage(&usage).message));
         }
         if usage.free_bytes <= QUERY_TEMP_SAFETY_RESERVE_BYTES {
-            return Ok(Some(format!(
-                "Query stopped to preserve the fixed safety reserve of {QUERY_TEMP_SAFETY_RESERVE_BYTES} bytes of free disk space."
-            )));
+            return Ok(Some(self.limit_error_from_usage(&usage).message));
         }
         Ok(None)
+    }
+
+    pub(crate) fn limit_error(&self) -> Result<DataError, DataError> {
+        Ok(self.limit_error_from_usage(&self.usage()?))
+    }
+
+    fn limit_error_from_usage(&self, usage: &QueryTempUsage) -> DataError {
+        DataError::query_temp_limit(format!(
+            "Query temporary storage is unavailable (query {} bytes, CSV cache {} bytes, limit {} bytes, free {} bytes, safety reserve {} bytes). Clear inactive CSV cache in Settings or free disk space, then retry.",
+            usage.query_temp_bytes,
+            usage.csv_cache_bytes,
+            usage.limit_bytes,
+            usage.free_bytes,
+            usage.safety_reserve_bytes,
+        ))
     }
 
     pub fn shutdown_cleanup(&self, timeout: std::time::Duration) {
@@ -262,9 +357,49 @@ fn effective_limit(configured_limit: u64) -> u64 {
     configured_limit.min(QUERY_TEMP_HARD_CAP_BYTES)
 }
 
+fn calculate_query_budget(
+    configured_limit: u64,
+    occupied_bytes: u64,
+    reserved_bytes: u64,
+    free_bytes: u64,
+    reserved_remaining_bytes: u64,
+    per_query_cap: u64,
+) -> QueryTempBudget {
+    let limit_remaining_bytes = configured_limit
+        .saturating_sub(occupied_bytes)
+        .saturating_sub(reserved_bytes);
+    let free_remaining_bytes = free_bytes
+        .saturating_sub(QUERY_TEMP_SAFETY_RESERVE_BYTES)
+        .saturating_sub(reserved_remaining_bytes);
+    QueryTempBudget {
+        allowance_bytes: per_query_cap
+            .min(limit_remaining_bytes)
+            .min(free_remaining_bytes),
+        limit_remaining_bytes,
+        free_remaining_bytes,
+    }
+}
+
 impl QueryTempLease {
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub(crate) fn allowance_bytes(&self) -> u64 {
+        self.reservations
+            .lock()
+            .ok()
+            .and_then(|reservations| reservations.get(&self.path).copied())
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn commit_usage(&self) {
+        let bytes = directory_bytes_best_effort(&self.path);
+        if let Ok(mut reservations) = self.reservations.lock() {
+            if let Some(reservation) = reservations.get_mut(&self.path) {
+                *reservation = bytes;
+            }
+        }
     }
 }
 
@@ -272,6 +407,9 @@ impl Drop for QueryTempLease {
     fn drop(&mut self) {
         if let Ok(mut active) = self.active_paths.lock() {
             active.remove(&self.path);
+        }
+        if let Ok(mut reservations) = self.reservations.lock() {
+            reservations.remove(&self.path);
         }
         self.active_queries.fetch_sub(1, Ordering::AcqRel);
         let _ = remove_with_retry(&self.path, std::time::Duration::from_millis(100));
@@ -469,14 +607,10 @@ fn temp_unavailable() -> DataError {
     }
 }
 
-fn temp_io(path: &Path, error: impl std::fmt::Display) -> DataError {
-    DataError {
-        code: DataErrorCode::Io,
-        message: format!(
-            "Query temporary storage failed at {}: {error}",
-            path.display()
-        ),
-    }
+fn temp_io(_path: &Path, _error: impl std::fmt::Display) -> DataError {
+    DataError::query_temp_limit(
+        "Query temporary storage could not be accessed. Clear inactive CSV cache in Settings, verify the temporary storage location is writable, or free disk space, then retry.",
+    )
 }
 
 #[cfg(test)]
@@ -491,6 +625,62 @@ mod tests {
         assert_eq!(
             effective_limit(1024 * 1024 * 1024 * 1024),
             QUERY_TEMP_HARD_CAP_BYTES
+        );
+    }
+
+    #[test]
+    fn tmp18_bounded_allowance_uses_cap_shared_usage_and_free_reserve() {
+        let reserve = QUERY_TEMP_SAFETY_RESERVE_BYTES;
+        let budget = calculate_query_budget(1_000, 200, 300, reserve + 900, 100, 700);
+        assert_eq!(budget.limit_remaining_bytes, 500);
+        assert_eq!(budget.free_remaining_bytes, 800);
+        assert_eq!(budget.allowance_bytes, 500);
+
+        let free_bound = calculate_query_budget(2_000, 100, 200, reserve + 350, 250, 1_000);
+        assert_eq!(free_bound.allowance_bytes, 100);
+        assert_eq!(
+            calculate_query_budget(500, 200, 300, reserve + 1, 0, 100).allowance_bytes,
+            0
+        );
+        assert_eq!(
+            calculate_query_budget(1_000, 0, 0, reserve, 0, 100).allowance_bytes,
+            0
+        );
+    }
+
+    #[test]
+    fn tmp18_temp_io_is_typed_actionable_and_does_not_expose_paths() {
+        let error = temp_io(
+            Path::new("C:/private/query-temp/document/query"),
+            std::io::Error::other("disk full"),
+        );
+        assert_eq!(error.code, DataErrorCode::QueryTempLimitExceeded);
+        assert!(error.message.contains("Clear inactive CSV cache"));
+        assert!(!error.message.contains("C:/private"));
+        assert!(!error.message.contains("disk full"));
+    }
+
+    #[test]
+    fn tmp18_bounded_leases_reserve_without_oversubscription_and_release_on_drop() {
+        let directory = tempfile::tempdir().unwrap();
+        let manager = QueryTempManager::open(directory.path(), 4 * 1024 * 1024).unwrap();
+        let first = manager
+            .allocate_bounded("document", "first", 3 * 1024 * 1024)
+            .unwrap();
+        let second = manager
+            .allocate_bounded("document", "second", 3 * 1024 * 1024)
+            .unwrap();
+        assert!(first.allowance_bytes() > 0);
+        assert!(second.allowance_bytes() > 0);
+        assert!(first.allowance_bytes() + second.allowance_bytes() <= 4 * 1024 * 1024);
+        let second_allowance = second.allowance_bytes();
+        drop(first);
+        assert!(
+            manager
+                .bounded_allowance(3 * 1024 * 1024)
+                .unwrap()
+                .allowance_bytes
+                > second_allowance
         );
     }
 

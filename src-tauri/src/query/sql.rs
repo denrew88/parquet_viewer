@@ -202,7 +202,7 @@ fn normalized_filter_values(
     if filter.scalar_type != QueryScalarType::Duration {
         return Ok(filter.values.clone());
     }
-    let unit = duration_unit_from_logical_type(&column.logical_type).ok_or_else(|| {
+    let unit = duration_unit_from_logical_type(&column.value_logical_type).ok_or_else(|| {
         DataError::invalid_request(format!(
             "Duration column '{}' does not declare a supported source unit.",
             column.name
@@ -217,7 +217,7 @@ fn normalized_filter_values(
                 .ok_or_else(|| {
                     DataError::invalid_request(format!(
                         "Duration literal cannot be represented exactly in {}: {value}",
-                        column.logical_type
+                        column.value_logical_type
                     ))
                 })
         })
@@ -370,6 +370,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("odd\"name"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: true,
                 physical_type: String::from("BYTE_ARRAY"),
             }],
@@ -402,6 +403,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("Int64"),
+                value_logical_type: String::from("Int64"),
                 nullable: false,
                 physical_type: String::from("INT64"),
             }],
@@ -435,6 +437,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("group_id"),
                 logical_type: String::from("Int64"),
+                value_logical_type: String::from("Int64"),
                 nullable: false,
                 physical_type: String::from("INT64"),
             }],
@@ -490,6 +493,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("elapsed"),
                 logical_type: String::from("Duration(Millisecond)"),
+                value_logical_type: String::from("Duration(Millisecond)"),
                 nullable: false,
                 physical_type: String::from("INT64"),
             }],

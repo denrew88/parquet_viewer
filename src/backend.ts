@@ -387,6 +387,7 @@ export interface CsvCacheCleanupResult {
 export interface ColumnSchema {
   name: string;
   logicalType: string;
+  valueLogicalType: string;
   nullable: boolean;
   physicalType: string;
 }
@@ -1931,6 +1932,7 @@ function parseColumnSchema(value: unknown): ColumnSchema | null {
     !column ||
     typeof column.name !== "string" ||
     typeof column.logicalType !== "string" ||
+    typeof column.valueLogicalType !== "string" ||
     typeof column.nullable !== "boolean" ||
     typeof column.physicalType !== "string"
   ) {
@@ -1940,6 +1942,7 @@ function parseColumnSchema(value: unknown): ColumnSchema | null {
   return {
     name: column.name,
     logicalType: column.logicalType,
+    valueLogicalType: column.valueLogicalType,
     nullable: column.nullable,
     physicalType: column.physicalType,
   };
@@ -3262,23 +3265,55 @@ const browserFixtureSummary: FileSummary = {
   columnCount: 7,
   rowGroupCount: 3,
   columns: [
-    { name: "id", logicalType: "Int64", nullable: false, physicalType: "INT64" },
-    { name: "unsigned_max", logicalType: "UInt64", nullable: false, physicalType: "INT64" },
+    {
+      name: "id",
+      logicalType: "Int64",
+      valueLogicalType: "Int64",
+      nullable: false,
+      physicalType: "INT64",
+    },
+    {
+      name: "unsigned_max",
+      logicalType: "UInt64",
+      valueLogicalType: "UInt64",
+      nullable: false,
+      physicalType: "INT64",
+    },
     {
       name: "amount",
       logicalType: "Decimal128(28, 9)",
+      valueLogicalType: "Decimal128(28, 9)",
       nullable: false,
       physicalType: "FIXED_LEN_BYTE_ARRAY",
     },
     {
       name: "recorded_at",
       logicalType: "Timestamp(Nanosecond, Asia/Seoul)",
+      valueLogicalType: "Timestamp(Nanosecond, Asia/Seoul)",
       nullable: false,
       physicalType: "INT64",
     },
-    { name: "payload", logicalType: "Binary", nullable: true, physicalType: "BYTE_ARRAY" },
-    { name: "tags", logicalType: "List(Int64)", nullable: true, physicalType: "GROUP" },
-    { name: "detail", logicalType: "Struct", nullable: true, physicalType: "GROUP" },
+    {
+      name: "payload",
+      logicalType: "Binary",
+      valueLogicalType: "Binary",
+      nullable: true,
+      physicalType: "BYTE_ARRAY",
+    },
+    {
+      name: "tags",
+      logicalType: "List(Int64)",
+      valueLogicalType: "List(Int64)",
+      nullable: true,
+      physicalType: "GROUP",
+    },
+    {
+      name: "detail",
+      logicalType: "Struct",
+      valueLogicalType: "Struct",
+      nullable: true,
+      physicalType: "GROUP",
+    },
   ],
   rowGroups: [
     {
@@ -3359,21 +3394,27 @@ const browserLargeSummary: FileSummary = {
   },
   columnCount: browserLargeColumnNames.length,
   rowGroupCount: 0,
-  columns: browserLargeColumnNames.map((name, index) => ({
-    name,
-    logicalType:
-      index === 6
-        ? "Timestamp(Nanosecond, UTC)"
-        : index === 7
-          ? "Boolean"
-          : [2, 3, 13, 14].includes(index)
-            ? "Utf8"
-            : [5, 10, 11].includes(index)
-              ? "Float64"
-              : "Int64",
-    nullable: index === 3,
-    physicalType: index === 6 ? "INT64" : [2, 3, 13, 14].includes(index) ? "BYTE_ARRAY" : "INT64",
-  })),
+  columns: browserLargeColumnNames.map((name, index) => {
+    const logicalType =
+      index === 1
+        ? "Dictionary(Int8, Utf8)"
+        : index === 6
+          ? "Timestamp(Nanosecond, UTC)"
+          : index === 7
+            ? "Boolean"
+            : [2, 3, 13, 14].includes(index)
+              ? "Utf8"
+              : [5, 10, 11].includes(index)
+                ? "Float64"
+                : "Int64";
+    return {
+      name,
+      logicalType,
+      valueLogicalType: index === 1 ? "Utf8" : logicalType,
+      nullable: index === 3,
+      physicalType: index === 6 ? "INT64" : [2, 3, 13, 14].includes(index) ? "BYTE_ARRAY" : "INT64",
+    };
+  }),
   rowGroups: [],
   csvMetadata: null,
   formatDetails: [],
@@ -3483,6 +3524,7 @@ const browserOesSummary: FileSummary = {
   columns: browserOesColumnNames.map((name, index) => ({
     name,
     logicalType: index === 0 ? "Int64" : "Int32",
+    valueLogicalType: index === 0 ? "Int64" : "Int32",
     nullable: false,
     physicalType: index === 0 ? "HDF5 int64 dataset" : "HDF5 /oes int32",
   })),
@@ -3610,6 +3652,7 @@ function browserCsvSummary(
     columns: ["name", "note", "empty"].map((name) => ({
       name,
       logicalType: "Utf8",
+      valueLogicalType: "Utf8",
       nullable: false,
       physicalType: "UTF8",
     })),
@@ -4154,6 +4197,10 @@ export const browserMockBackend: BackendAdapter = {
       columns: browserCsvSummary().columns.map((column, index) => ({
         ...column,
         logicalType:
+          profile.columns[index]?.targetType === "auto"
+            ? "Utf8"
+            : (profile.columns[index]?.targetType ?? "Utf8"),
+        valueLogicalType:
           profile.columns[index]?.targetType === "auto"
             ? "Utf8"
             : (profile.columns[index]?.targetType ?? "Utf8"),

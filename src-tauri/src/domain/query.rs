@@ -179,7 +179,7 @@ impl QueryPlan {
 }
 
 pub fn scalar_type_for_column(column: &ColumnSchema) -> QueryScalarType {
-    let logical = column.logical_type.to_ascii_lowercase();
+    let logical = column.value_logical_type.to_ascii_lowercase();
     if logical.contains("timestamp") {
         QueryScalarType::Timestamp
     } else if logical.contains("duration") {
@@ -557,6 +557,7 @@ mod tests {
         vec![ColumnSchema {
             name: String::from("city"),
             logical_type: String::from("String"),
+            value_logical_type: String::from("String"),
             nullable: true,
             physical_type: String::from("UTF8"),
         }]

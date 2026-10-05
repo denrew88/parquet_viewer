@@ -364,9 +364,11 @@ impl CsvSource {
                 continue;
             }
             let raw = &summary.columns[column.source_index];
+            let logical_type = csv_logical_type(target, column);
             columns.push(ColumnSchema {
                 name: raw.name.clone(),
-                logical_type: csv_logical_type(target, column),
+                value_logical_type: logical_type.clone(),
+                logical_type,
                 nullable: !column.null_tokens.is_empty()
                     || matches!(
                         column.failure_policy,
@@ -3209,6 +3211,7 @@ fn build_columns(headers: &[String], count: usize) -> (Vec<ColumnSchema>, Header
             ColumnSchema {
                 name,
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("UTF8"),
             }
@@ -4081,12 +4084,14 @@ mod tests {
             ColumnSchema {
                 name: String::from("count"),
                 logical_type: String::from("Int64"),
+                value_logical_type: String::from("Int64"),
                 nullable: true,
                 physical_type: String::from("Int64"),
             },
             ColumnSchema {
                 name: String::from("amount"),
                 logical_type: String::from("Decimal"),
+                value_logical_type: String::from("Decimal"),
                 nullable: true,
                 physical_type: String::from("Utf8"),
             },
@@ -4633,6 +4638,7 @@ mod tests {
         let columns = vec![ColumnSchema {
             name: String::from("value"),
             logical_type: String::from("Utf8"),
+            value_logical_type: String::from("Utf8"),
             nullable: true,
             physical_type: String::from("BYTE_ARRAY"),
         }];
@@ -4698,6 +4704,7 @@ mod tests {
         let columns = vec![ColumnSchema {
             name: String::from("value"),
             logical_type: String::from("Utf8"),
+            value_logical_type: String::from("Utf8"),
             nullable: true,
             physical_type: String::from("BYTE_ARRAY"),
         }];

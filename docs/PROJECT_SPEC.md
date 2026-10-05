@@ -139,8 +139,19 @@ row-group 경계, 중간 페이지와 마지막 페이지를 같은 제한된 �
 - 통계가 존재하는 경우 null 수, 최솟값, 최댓값
 
 스칼라, null, integer, floating point, boolean, string, binary, decimal, date, timestamp,
-list, struct, map 값을 지원한다. 중첩 값은 구조를 잃지 않는 일관된 축약 표현으로 표시하고,
-전체 값을 확인할 수 있는 방법을 제공한다.
+list, struct, map 값을 지원한다. Arrow dictionary로 보존된 pandas·Polars categorical 컬럼은
+dictionary index가 아니라 실제 category 값을 원래 value 타입으로 해석하며 null과 빈 문자열을
+구분한다. 중첩 값은 구조를 잃지 않는 일관된 축약 표현으로 표시하고, 전체 값을 확인할 수 있는
+방법을 제공한다.
+
+schema DTO의 `logicalType`은 `Dictionary(Int8, Utf8)`처럼 원래 Arrow 타입을 표시하고,
+`valueLogicalType`은 dictionary wrapper를 재귀적으로 해제한 실제 value 타입을 필수로 제공한다.
+비-dictionary 컬럼은 두 값이 같다. filter, sort, distinct, Find, query page, copy, boundary와
+result value kind는 `valueLogicalType`과 디코딩된 실제 값만 사용한다. dictionary key/code는 현재
+Arrow batch 안에서 value를 찾는 용도로만 사용하며 row group 사이에 저장하거나 비교하지 않는다.
+기본 categorical 정렬은 decoded value의 native typed order이고 양방향 모두 null-last이며, 같은
+값은 source row identity 순서를 유지한다. pandas ordered categorical의 별도 category order는
+명시적인 file-wide order metadata를 지원하기 전까지 적용하지 않는다.
 
 ## 6. CSV 규칙
 
@@ -494,6 +505,16 @@ temporary data는 Tauri가 resolve한 app-local-data 아래 process/document/que
 데이터, 안전 여유와 hard cap을 서로 구분한다. 완료, 실패,
 취소, 교체와 tab close 시 정리하고 owner lock을 사용해 다른 active process의 파일을 삭제하지 않는다.
 crash orphan은 다음 startup janitor가 lock 획득 가능한 directory만 정리한다.
+
+query와 CSV preparation이 받는 DuckDB temporary allowance는 고정 상한을 그대로 사용하지 않고
+현재 query temp, persistent CSV cache, 이미 예약된 동시 query와 `free space - 5 GiB reserve`를
+반영한 남은 공통 예산으로 제한한다. query 시작 시 또는 실행 중 100ms monitor가 공통 예산 압력을
+확인하면 제품이 소유하고 manifest와 artifact 크기를 검증한 비활성 CSV cache만 oldest-first로
+필요한 만큼 회수한다. 같은 process와 다른 process가 lease 중인 cache, 검증되지 않은 cache-like
+directory와 원본 데이터 파일은 회수 대상이 아니다. 회수 후에도 안전 예산을 확보할 수 없거나
+DuckDB가 temp limit, disk-full 또는 temp directory I/O 오류를 반환하면 raw SQL이나 절대 경로를
+노출하지 않는 `QueryTempLimitExceeded`로 정규화하고 현재 query/cache 사용량, limit, free space,
+5 GiB reserve와 Settings의 `Clear inactive CSV cache` 조치를 안내한다.
 
 Parquet query는 가능한 predicate와 projection을 scan에 push down한다. Phase 12부터 정렬·filter
 결과 index는 정렬된 source row identity 한 열만 가진 DuckDB 물리 table로 materialize한다. 생성 후

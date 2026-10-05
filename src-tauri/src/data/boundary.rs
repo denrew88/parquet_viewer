@@ -391,6 +391,7 @@ mod tests {
             .map(|name| ColumnSchema {
                 name: name.to_owned(),
                 logical_type: String::from("Utf8"),
+                value_logical_type: String::from("Utf8"),
                 nullable: true,
                 physical_type: String::from("BYTE_ARRAY"),
             })

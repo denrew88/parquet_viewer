@@ -2115,6 +2115,7 @@ mod tests {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("String"),
+                value_logical_type: String::from("String"),
                 nullable: false,
                 physical_type: String::from("VARCHAR"),
             }],

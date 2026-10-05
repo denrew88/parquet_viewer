@@ -3,9 +3,12 @@ use crate::domain::{
     DurationUnitSuffix, TimestampDateTimeSeparator, TimestampFractionalDigits, TimestampTimeFormat,
     TimestampTimezoneSuffix, ValueKind,
 };
+use arrow_array::types::{
+    Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+};
 use arrow_array::{
     Array, BinaryArray, BooleanArray, Date32Array, Date64Array, Decimal128Array, Decimal256Array,
-    DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
+    DictionaryArray, DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float32Array, Float64Array,
     Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeListArray,
     LargeStringArray, ListArray, MapArray, StringArray, StructArray, TimestampMicrosecondArray,
@@ -240,6 +243,10 @@ pub(crate) fn value_at(array: &dyn Array, index: usize) -> Result<DataValue, Dat
         DataType::Float64 => display_value!(Float64Array, ValueKind::Float),
         DataType::Utf8 => display_value!(StringArray, ValueKind::String),
         DataType::LargeUtf8 => display_value!(LargeStringArray, ValueKind::String),
+        DataType::Dictionary(_, _) => {
+            let (values, value_index) = resolve_dictionary_value(array, index)?;
+            value_at(values, value_index)?
+        }
         DataType::Binary => binary_value(downcast::<BinaryArray>(array)?.value(index)),
         DataType::LargeBinary => binary_value(downcast::<LargeBinaryArray>(array)?.value(index)),
         DataType::FixedSizeBinary(_) => {
@@ -322,7 +329,66 @@ pub(crate) fn value_at(array: &dyn Array, index: usize) -> Result<DataValue, Dat
     Ok(value)
 }
 
+pub(crate) fn resolve_dictionary_value(
+    mut array: &dyn Array,
+    mut index: usize,
+) -> Result<(&dyn Array, usize), DataError> {
+    for _ in 0..64 {
+        if array.is_null(index) {
+            return Ok((array, index));
+        }
+        if !matches!(array.data_type(), DataType::Dictionary(_, _)) {
+            return Ok((array, index));
+        }
+        (array, index) = dictionary_value(array, index)?;
+    }
+    Err(DataError::invalid_parquet(
+        Path::new("<memory>"),
+        "Dictionary nesting exceeds the depth limit.",
+    ))
+}
+
+fn dictionary_value(array: &dyn Array, index: usize) -> Result<(&dyn Array, usize), DataError> {
+    macro_rules! dictionary_value {
+        ($key_type:ty) => {{
+            let dictionary = downcast::<DictionaryArray<$key_type>>(array)?;
+            let key = dictionary.key(index).ok_or_else(|| {
+                DataError::invalid_parquet(
+                    Path::new("<memory>"),
+                    "Dictionary key is null or outside the dictionary values.",
+                )
+            })?;
+            Ok((dictionary.values().as_ref(), key))
+        }};
+    }
+
+    match array.data_type() {
+        DataType::Dictionary(key_type, _) => match key_type.as_ref() {
+            DataType::Int8 => dictionary_value!(Int8Type),
+            DataType::Int16 => dictionary_value!(Int16Type),
+            DataType::Int32 => dictionary_value!(Int32Type),
+            DataType::Int64 => dictionary_value!(Int64Type),
+            DataType::UInt8 => dictionary_value!(UInt8Type),
+            DataType::UInt16 => dictionary_value!(UInt16Type),
+            DataType::UInt32 => dictionary_value!(UInt32Type),
+            DataType::UInt64 => dictionary_value!(UInt64Type),
+            other => Err(DataError::invalid_parquet(
+                Path::new("<memory>"),
+                format!("Unsupported dictionary key type: {other}"),
+            )),
+        },
+        other => Err(DataError::invalid_parquet(
+            Path::new("<memory>"),
+            format!("Expected a dictionary array, found {other}"),
+        )),
+    }
+}
+
 pub(crate) fn full_value_at(array: &dyn Array, index: usize) -> Result<DataValue, DataError> {
+    if array.is_null(index) {
+        return Ok(DataValue::null());
+    }
+    let (array, index) = resolve_dictionary_value(array, index)?;
     if array.is_null(index) {
         return Ok(DataValue::null());
     }
@@ -633,6 +699,10 @@ fn canonical_value_at(array: &dyn Array, index: usize, depth: usize) -> Result<S
         return Ok(String::from("\"… nested value truncated\""));
     }
     match array.data_type() {
+        DataType::Dictionary(_, _) => {
+            let (values, value_index) = resolve_dictionary_value(array, index)?;
+            canonical_value_at(values, value_index, depth)
+        }
         DataType::Boolean => Ok(downcast::<BooleanArray>(array)?.value(index).to_string()),
         DataType::Int8 => Ok(downcast::<Int8Array>(array)?.value(index).to_string()),
         DataType::Int16 => Ok(downcast::<Int16Array>(array)?.value(index).to_string()),
@@ -683,6 +753,10 @@ fn canonical_full(array: &dyn Array, index: usize, depth: usize) -> Result<Strin
         return Ok(String::from("null"));
     }
     match array.data_type() {
+        DataType::Dictionary(_, _) => {
+            let (values, value_index) = resolve_dictionary_value(array, index)?;
+            canonical_full(values, value_index, depth)
+        }
         DataType::List(_) => {
             canonical_full_list(downcast::<ListArray>(array)?.value(index).as_ref(), depth)
         }
@@ -764,6 +838,10 @@ fn truncate_nested(mut value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow_array::builder::StringDictionaryBuilder;
+    use arrow_array::types::{Int32Type, Int8Type};
+    use arrow_array::ArrayRef;
+    use std::sync::Arc;
 
     #[test]
     fn decimal_format_preserves_scale_and_sign() {
@@ -829,5 +907,91 @@ mod tests {
         let preview = value_at(&array, 0).expect("preview");
         let full = full_value_at(&array, 0).expect("full value");
         assert!(preview.display.unwrap().len() < full.display.unwrap().len());
+    }
+
+    #[test]
+    fn dictionary_values_decode_to_their_underlying_category_values() {
+        let mut builder = StringDictionaryBuilder::<Int8Type>::new();
+        builder.append("alpha").unwrap();
+        builder.append("").unwrap();
+        builder.append_null();
+        builder.append("alpha").unwrap();
+        let values = builder.finish();
+
+        assert_eq!(
+            value_at(&values, 0).unwrap(),
+            DataValue::displayed(ValueKind::String, "alpha")
+        );
+        assert_eq!(
+            value_at(&values, 1).unwrap(),
+            DataValue::displayed(ValueKind::String, "")
+        );
+        assert_eq!(value_at(&values, 2).unwrap(), DataValue::null());
+        assert_eq!(
+            full_value_at(&values, 3).unwrap(),
+            DataValue::displayed(ValueKind::String, "alpha")
+        );
+    }
+
+    #[test]
+    fn dictionary_full_binary_matches_the_underlying_full_value() {
+        let bytes = vec![7_u8; 4_096];
+        let underlying = Arc::new(BinaryArray::from(vec![Some(bytes.as_slice())])) as ArrayRef;
+        let dictionary = DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(vec![Some(0_i8)]),
+            Arc::clone(&underlying),
+        )
+        .unwrap();
+
+        assert_eq!(
+            full_value_at(&dictionary, 0).unwrap(),
+            full_value_at(underlying.as_ref(), 0).unwrap()
+        );
+        assert!(
+            value_at(&dictionary, 0).unwrap().display.unwrap().len()
+                < full_value_at(&dictionary, 0)
+                    .unwrap()
+                    .display
+                    .unwrap()
+                    .len()
+        );
+    }
+
+    #[test]
+    fn dictionary_full_nested_matches_the_underlying_full_value() {
+        let underlying = Arc::new(ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
+            Some(vec![Some(1_i32), Some(2_i32), Some(3_i32)]),
+        ])) as ArrayRef;
+        let dictionary = DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(vec![Some(0_i8)]),
+            Arc::clone(&underlying),
+        )
+        .unwrap();
+
+        assert_eq!(
+            full_value_at(&dictionary, 0).unwrap(),
+            full_value_at(underlying.as_ref(), 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn nested_dictionary_preserves_an_inner_null_key() {
+        let inner = DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(vec![Some(0_i8), None]),
+            Arc::new(StringArray::from(vec!["alpha"])) as ArrayRef,
+        )
+        .unwrap();
+        let outer = DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(vec![0_i8, 1_i8]),
+            Arc::new(inner) as ArrayRef,
+        )
+        .unwrap();
+
+        assert_eq!(
+            value_at(&outer, 0).unwrap(),
+            DataValue::displayed(ValueKind::String, "alpha")
+        );
+        assert_eq!(value_at(&outer, 1).unwrap(), DataValue::null());
+        assert_eq!(full_value_at(&outer, 1).unwrap(), DataValue::null());
     }
 }

@@ -54,10 +54,34 @@ const summary: FileSummary = {
   columnCount: 4,
   rowGroupCount: 2,
   columns: [
-    { name: "id", logicalType: "Int32", nullable: false, physicalType: "INT32" },
-    { name: "label", logicalType: "Utf8", nullable: true, physicalType: "BYTE_ARRAY" },
-    { name: "score", logicalType: "Float64", nullable: true, physicalType: "DOUBLE" },
-    { name: "active", logicalType: "Boolean", nullable: true, physicalType: "BOOLEAN" },
+    {
+      name: "id",
+      logicalType: "Int32",
+      valueLogicalType: "Int32",
+      nullable: false,
+      physicalType: "INT32",
+    },
+    {
+      name: "label",
+      logicalType: "Utf8",
+      valueLogicalType: "Utf8",
+      nullable: true,
+      physicalType: "BYTE_ARRAY",
+    },
+    {
+      name: "score",
+      logicalType: "Float64",
+      valueLogicalType: "Float64",
+      nullable: true,
+      physicalType: "DOUBLE",
+    },
+    {
+      name: "active",
+      logicalType: "Boolean",
+      valueLogicalType: "Boolean",
+      nullable: true,
+      physicalType: "BOOLEAN",
+    },
   ],
   rowGroups: [
     {
@@ -150,6 +174,7 @@ function csvSummary(headerMode: "auto" | "present" | "absent" = "auto"): FileSum
     columns: ["name", "note", "empty"].map((name) => ({
       name,
       logicalType: "Utf8",
+      valueLogicalType: "Utf8",
       nullable: false,
       physicalType: "UTF8",
     })),
@@ -710,6 +735,34 @@ describe("App", () => {
     expect(within(rowGroupTable).getByText("3 / 4 columns")).toBeInTheDocument();
   });
 
+  it("keeps the original dictionary wrapper visible in Schema", async () => {
+    const dictionarySummary: FileSummary = {
+      ...summary,
+      columns: summary.columns.map((column) =>
+        column.name === "label"
+          ? {
+              ...column,
+              logicalType: "Dictionary(Int8, Utf8)",
+              valueLogicalType: "Utf8",
+            }
+          : column,
+      ),
+    };
+    render(
+      <App
+        backend={backend({
+          selectDataFile: vi.fn().mockResolvedValue(dictionarySummary),
+        })}
+      />,
+    );
+    await openFile();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
+    const labelRow = screen.getByRole("row", { name: /label/ });
+    expect(within(labelRow).getByText("Dictionary(Int8, Utf8)")).toBeInTheDocument();
+    expect(within(labelRow).queryByText("Utf8", { exact: true })).not.toBeInTheDocument();
+  });
+
   it("preserves the existing view when file selection is cancelled", async () => {
     const selectDataFile = vi.fn().mockResolvedValueOnce(summary).mockResolvedValueOnce(null);
     render(<App backend={backend({ selectDataFile })} />);
@@ -958,6 +1011,7 @@ describe("App", () => {
       columns: typedPage.columns.map((name) => ({
         name,
         logicalType: name,
+        valueLogicalType: name,
         nullable: true,
         physicalType: name.toLocaleUpperCase(),
       })),
@@ -2383,7 +2437,14 @@ describe("App", () => {
     }));
     const incompatibleSummary = queryProfileCsvSummary(nextSessionId);
     incompatibleSummary.columns = incompatibleSummary.columns.map((column, index) =>
-      index === 0 ? { ...column, logicalType: "Int64", physicalType: "Int64" } : column,
+      index === 0
+        ? {
+            ...column,
+            logicalType: "Int64",
+            valueLogicalType: "Int64",
+            physicalType: "Int64",
+          }
+        : column,
     );
     render(
       <App

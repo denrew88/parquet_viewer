@@ -119,6 +119,8 @@ pub(crate) struct CsvPersistentCache {
     temp: Arc<QueryTempManager>,
     global_lock: Mutex<File>,
     audit: Mutex<CsvCacheAudit>,
+    #[cfg(test)]
+    reclaim_delete_failures: Mutex<std::collections::HashSet<String>>,
 }
 
 #[derive(Debug)]
@@ -159,6 +161,8 @@ impl CsvPersistentCache {
             temp,
             global_lock: Mutex::new(global_lock),
             audit: Mutex::new(CsvCacheAudit::default()),
+            #[cfg(test)]
+            reclaim_delete_failures: Mutex::new(std::collections::HashSet::new()),
         };
         let _global = cache.lock_global()?;
         // Publication and atomic manifest replacement use this same global
@@ -506,6 +510,134 @@ impl CsvPersistentCache {
             }
         }
         Ok(result)
+    }
+
+    pub(crate) fn reclaim_for_query(&self, target_allowance: u64) -> Result<u64, DataError> {
+        let _global = self
+            .lock_global()
+            .map_err(|_| self.actionable_temp_error())?;
+        self.refresh_usage_locked()
+            .map_err(|_| self.actionable_temp_error())?;
+        loop {
+            let allowance = self
+                .temp
+                .bounded_allowance(target_allowance)?
+                .allowance_bytes;
+            if allowance >= target_allowance {
+                return Ok(allowance);
+            }
+            if self.reclaim_one_lru_locked()?.is_none() {
+                return if allowance > 0 {
+                    Ok(allowance)
+                } else {
+                    Err(self.temp.limit_error()?)
+                };
+            }
+        }
+    }
+
+    pub(crate) fn reclaim_under_pressure(&self) -> Result<bool, DataError> {
+        let _global = self
+            .lock_global()
+            .map_err(|_| self.actionable_temp_error())?;
+        self.refresh_usage_locked()
+            .map_err(|_| self.actionable_temp_error())?;
+        let mut reclaimed = false;
+        while self.temp.budget_violation()?.is_some() {
+            if self.reclaim_one_lru_locked()?.is_none() {
+                break;
+            }
+            reclaimed = true;
+        }
+        Ok(reclaimed && self.temp.budget_violation()?.is_none())
+    }
+
+    fn reclaim_one_lru_locked(&self) -> Result<Option<u64>, DataError> {
+        let mut last_failure = None;
+        for (key, _, bytes, path) in self
+            .reclaimable_entries_locked()
+            .map_err(|_| self.actionable_temp_error())?
+        {
+            let Some(lock) = self
+                .try_exclusive_entry_lock(&key)
+                .map_err(|_| self.actionable_temp_error())?
+            else {
+                continue;
+            };
+            let removal = self.remove_reclaim_candidate(&key, &path);
+            let _ = FileExt::unlock(&lock);
+            drop(lock);
+            if removal.is_err() {
+                last_failure = Some(self.actionable_temp_error());
+                continue;
+            }
+            if !path.exists() {
+                let _ = fs::remove_file(self.lock_directory.join(format!("{key}.lock")));
+            }
+            if let Ok(mut audit) = self.audit.lock() {
+                audit.evictions = audit.evictions.saturating_add(1);
+            }
+            self.refresh_usage_locked()
+                .map_err(|_| self.actionable_temp_error())?;
+            return Ok(Some(bytes));
+        }
+        match last_failure {
+            Some(error) => Err(error),
+            None => Ok(None),
+        }
+    }
+
+    fn remove_reclaim_candidate(&self, _key: &str, path: &Path) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self
+            .reclaim_delete_failures
+            .lock()
+            .is_ok_and(|mut failures| failures.remove(_key))
+        {
+            let _ = fs::remove_file(path.join("states.bin"));
+            return Err(std::io::Error::other("injected cache reclaim failure"));
+        }
+        fs::remove_dir_all(path)
+    }
+
+    #[cfg(test)]
+    fn fail_next_reclaim_delete(&self, key: impl Into<String>) {
+        self.reclaim_delete_failures
+            .lock()
+            .unwrap()
+            .insert(key.into());
+    }
+
+    fn reclaimable_entries_locked(&self) -> Result<Vec<(String, u128, u64, PathBuf)>, DataError> {
+        let mut output = Vec::new();
+        for (key, path) in self.owned_entry_paths()? {
+            let manifest_path = path.join(MANIFEST_NAME);
+            let Ok(bytes) = fs::read(&manifest_path) else {
+                continue;
+            };
+            let Ok(manifest) = serde_json::from_slice::<CsvCacheManifest>(&bytes) else {
+                continue;
+            };
+            if manifest.cache_schema_version != CACHE_SCHEMA_VERSION
+                || (manifest_cache_key(&manifest) != key
+                    && manifest_legacy_cache_key(&manifest) != key)
+                || !manifest_artifacts_have_expected_sizes(&path, &manifest)
+            {
+                continue;
+            }
+            let access = fs::metadata(path.join("last-access"))
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_nanos());
+            output.push((key, access, directory_bytes(&path)?, path));
+        }
+        output.sort_by(|left, right| (left.1, &left.0).cmp(&(right.1, &right.0)));
+        Ok(output)
+    }
+
+    fn actionable_temp_error(&self) -> DataError {
+        self.temp.limit_error().unwrap_or_else(|error| error)
     }
 
     fn lease(&self, key: String) -> Result<CsvPersistentCacheLease, DataError> {
@@ -1217,6 +1349,76 @@ fn cache_key(identity: &CsvCacheIdentity) -> String {
     format!("{hash:016x}")
 }
 
+fn manifest_cache_key(manifest: &CsvCacheManifest) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in format!(
+        "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}",
+        manifest.canonical_path,
+        manifest.file_identity,
+        manifest.source_bytes,
+        manifest
+            .modified_nanos
+            .as_deref()
+            .and_then(|value| value.parse::<u128>().ok()),
+        manifest
+            .created_nanos
+            .as_deref()
+            .and_then(|value| value.parse::<u128>().ok()),
+        manifest.profile_identity,
+        manifest.columns,
+        manifest.source_columns,
+        CACHE_SCHEMA_VERSION
+    )
+    .bytes()
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn manifest_legacy_cache_key(manifest: &CsvCacheManifest) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in format!(
+        "{}|{}|{}|{:?}|{:?}|{}|{}|{}|{}|{}",
+        manifest.canonical_path,
+        manifest.file_identity,
+        manifest.source_bytes,
+        manifest
+            .modified_nanos
+            .as_deref()
+            .and_then(|value| value.parse::<u128>().ok()),
+        manifest
+            .created_nanos
+            .as_deref()
+            .and_then(|value| value.parse::<u128>().ok()),
+        manifest.profile_identity,
+        manifest.columns,
+        manifest.source_columns,
+        CACHE_SCHEMA_VERSION,
+        manifest.application_version,
+    )
+    .bytes()
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn manifest_artifacts_have_expected_sizes(path: &Path, manifest: &CsvCacheManifest) -> bool {
+    [
+        ("prepared.parquet", manifest.parquet.bytes),
+        ("states.bin", manifest.states.bytes),
+        ("offsets.idx", manifest.offsets.bytes),
+    ]
+    .into_iter()
+    .all(|(name, expected)| {
+        fs::metadata(path.join(name))
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() == expected)
+    })
+}
+
 #[cfg(test)]
 fn legacy_versioned_cache_key(identity: &CsvCacheIdentity, application_version: &str) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
@@ -1917,6 +2119,219 @@ mod tests {
         assert_eq!(cache.audit().hits, 1);
         assert_eq!(cache.audit().misses, 0);
         assert!(!current_entry.exists());
+    }
+
+    #[test]
+    fn tmp18_query_reclaim_removes_minimum_inactive_lru_and_preserves_active_and_foreign() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), Arc::clone(&temp)).unwrap();
+
+        let first_source = local_data.path().join("first-artifacts");
+        write_publish_artifacts(&first_source);
+        let mut first_identity = publish_identity();
+        first_identity.profile_identity = String::from("phase18-first");
+        let first = cache
+            .publish(&first_identity, &first_source, || Ok(()))
+            .unwrap();
+        let first_path = first.path().to_owned();
+        drop(first);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let second_source = local_data.path().join("second-artifacts");
+        write_publish_artifacts(&second_source);
+        let mut second_identity = publish_identity();
+        second_identity.profile_identity = String::from("phase18-second");
+        let second = cache
+            .publish(&second_identity, &second_source, || Ok(()))
+            .unwrap();
+        let second_path = second.path().to_owned();
+        drop(second);
+
+        let foreign = cache.root.join("0123456789abcdef");
+        fs::create_dir(&foreign).unwrap();
+        fs::write(foreign.join(MANIFEST_NAME), b"not an app cache manifest").unwrap();
+        fs::write(foreign.join("payload"), b"foreign").unwrap();
+
+        let first_key = first_path.file_name().unwrap().to_str().unwrap().to_owned();
+        let active = cache.lease(first_key).unwrap();
+        cache.refresh_usage().unwrap();
+        let second_bytes = directory_bytes(&second_path).unwrap();
+        let usage = temp.usage().unwrap();
+        let target = 64 * 1024;
+        temp.set_limit(
+            usage
+                .process_bytes
+                .saturating_sub(second_bytes)
+                .saturating_add(target),
+        );
+
+        assert!(cache.reclaim_for_query(target).unwrap() >= target);
+        assert!(
+            first_path.exists(),
+            "the active shared lease must be preserved"
+        );
+        assert!(
+            !second_path.exists(),
+            "the oldest reclaimable inactive peer is sufficient"
+        );
+        assert!(
+            foreign.exists(),
+            "unvalidated cache-like directories are foreign"
+        );
+        drop(active);
+    }
+
+    #[test]
+    fn tmp18_running_pressure_reclaims_inactive_then_active_only_fails_typed() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), Arc::clone(&temp)).unwrap();
+
+        let active_source = local_data.path().join("active-artifacts");
+        write_publish_artifacts(&active_source);
+        let mut active_identity = publish_identity();
+        active_identity.profile_identity = String::from("phase18-active");
+        let active = cache
+            .publish(&active_identity, &active_source, || Ok(()))
+            .unwrap();
+        let active_path = active.path().to_owned();
+
+        let inactive_source = local_data.path().join("inactive-artifacts");
+        write_publish_artifacts(&inactive_source);
+        let mut inactive_identity = publish_identity();
+        inactive_identity.profile_identity = String::from("phase18-inactive");
+        let inactive = cache
+            .publish(&inactive_identity, &inactive_source, || Ok(()))
+            .unwrap();
+        let inactive_path = inactive.path().to_owned();
+        drop(inactive);
+
+        cache.refresh_usage().unwrap();
+        let inactive_bytes = directory_bytes(&inactive_path).unwrap();
+        let usage = temp.usage().unwrap();
+        temp.set_limit(
+            usage
+                .process_bytes
+                .saturating_sub(inactive_bytes)
+                .saturating_add(1),
+        );
+        assert!(temp.budget_violation().unwrap().is_some());
+        assert!(cache.reclaim_under_pressure().unwrap());
+        assert!(active_path.exists());
+        assert!(!inactive_path.exists());
+
+        cache.refresh_usage().unwrap();
+        let active_only = temp.usage().unwrap();
+        temp.set_limit(active_only.process_bytes.saturating_sub(1));
+        let error = cache.reclaim_for_query(64 * 1024).unwrap_err();
+        assert_eq!(
+            error.code,
+            crate::domain::DataErrorCode::QueryTempLimitExceeded
+        );
+        assert!(error.message.contains("Clear inactive CSV cache"));
+        assert!(!error
+            .message
+            .contains(&local_data.path().to_string_lossy().to_string()));
+        assert!(active_path.exists());
+        drop(active);
+    }
+
+    #[test]
+    fn tmp18_reclaim_skips_a_delete_failure_and_uses_the_next_valid_candidate() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), Arc::clone(&temp)).unwrap();
+
+        for index in 0..3 {
+            let source = local_data.path().join(format!("failure-artifacts-{index}"));
+            write_publish_artifacts(&source);
+            let mut identity = publish_identity();
+            identity.profile_identity = format!("phase18-failure-{index}");
+            drop(cache.publish(&identity, &source, || Ok(())).unwrap());
+        }
+        for path in cache.entry_paths() {
+            fs::remove_file(path.join("last-access")).unwrap();
+        }
+        cache.refresh_usage().unwrap();
+        let candidates = cache.reclaimable_entries_locked().unwrap();
+        assert_eq!(candidates.len(), 3);
+        assert!(candidates.windows(2).all(|pair| pair[0].0 < pair[1].0));
+
+        let target = 64 * 1024;
+        let usage = temp.usage().unwrap();
+        temp.set_limit(
+            usage
+                .process_bytes
+                .saturating_sub(candidates[1].2)
+                .saturating_add(target),
+        );
+        cache.fail_next_reclaim_delete(candidates[0].0.clone());
+
+        assert!(cache.reclaim_for_query(target).unwrap() >= target);
+        assert!(
+            candidates[0].3.exists(),
+            "the failed candidate is not retried"
+        );
+        assert!(!candidates[0].3.join("states.bin").exists());
+        assert!(
+            !candidates[1].3.exists(),
+            "the next valid candidate is reclaimed"
+        );
+        assert!(candidates[2].3.exists());
+        assert!(cache
+            .reclaimable_entries_locked()
+            .unwrap()
+            .iter()
+            .all(|entry| entry.0 != candidates[0].0));
+
+        cache.refresh_usage().unwrap();
+        let active_usage = temp.usage().unwrap();
+        temp.set_limit(active_usage.process_bytes.saturating_sub(1));
+        cache.fail_next_reclaim_delete(candidates[2].0.clone());
+        let error = cache.reclaim_for_query(target).unwrap_err();
+        assert_eq!(
+            error.code,
+            crate::domain::DataErrorCode::QueryTempLimitExceeded
+        );
+        assert!(error.message.contains("Clear inactive CSV cache"));
+        assert!(candidates[0].3.exists());
+        assert!(candidates[2].3.exists());
+    }
+
+    #[test]
+    fn tmp18_same_timestamp_reclaim_uses_cache_key_as_a_stable_tie_break() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), Arc::clone(&temp)).unwrap();
+
+        for suffix in ["a", "b"] {
+            let source = local_data.path().join(format!("tie-artifacts-{suffix}"));
+            write_publish_artifacts(&source);
+            let mut identity = publish_identity();
+            identity.profile_identity = format!("phase18-tie-{suffix}");
+            drop(cache.publish(&identity, &source, || Ok(())).unwrap());
+        }
+        for path in cache.entry_paths() {
+            fs::remove_file(path.join("last-access")).unwrap();
+        }
+        cache.refresh_usage().unwrap();
+        let candidates = cache.reclaimable_entries_locked().unwrap();
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].1, candidates[1].1);
+        assert!(candidates[0].0 < candidates[1].0);
+
+        let target = 64 * 1024;
+        let usage = temp.usage().unwrap();
+        temp.set_limit(
+            usage
+                .process_bytes
+                .saturating_sub(candidates[0].2)
+                .saturating_add(target),
+        );
+        assert!(cache.reclaim_for_query(target).unwrap() >= target);
+        assert!(!candidates[0].3.exists());
+        assert!(candidates[1].3.exists());
     }
 
     #[test]

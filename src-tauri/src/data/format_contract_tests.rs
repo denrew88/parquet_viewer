@@ -66,6 +66,7 @@ impl TabularSource for StubSource {
             columns: vec![ColumnSchema {
                 name: String::from("value"),
                 logical_type: String::from("Utf8"),
+                value_logical_type: String::from("Utf8"),
                 nullable: false,
                 physical_type: String::from("UTF8"),
             }],

@@ -118,6 +118,7 @@ pub struct CsvMetadata {
 pub struct ColumnSchema {
     pub name: String,
     pub logical_type: String,
+    pub value_logical_type: String,
     pub nullable: bool,
     pub physical_type: String,
 }

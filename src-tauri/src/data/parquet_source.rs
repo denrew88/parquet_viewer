@@ -150,6 +150,7 @@ impl ParquetSource {
             .map(|(index, field)| ColumnSchema {
                 name: field.name().clone(),
                 logical_type: field.data_type().to_string(),
+                value_logical_type: dictionary_value_data_type(field.data_type()).to_string(),
                 nullable: field.is_nullable(),
                 physical_type: {
                     let mut types = physical_columns
@@ -1243,7 +1244,7 @@ impl TabularSource for ParquetSource {
                 .iter()
                 .find(|column| column.name == request.column_id)
                 .expect("validated Parquet boundary column");
-            let logical_type = column.logical_type.to_ascii_lowercase();
+            let logical_type = column.value_logical_type.to_ascii_lowercase();
             let can_contain_empty_string =
                 logical_type.contains("utf8") || logical_type.contains("string");
             if !column.nullable && !can_contain_empty_string {
@@ -1296,7 +1297,7 @@ fn occupancy_from_statistics(
     if statistics.null_count_opt() == Some(row_count) {
         return RowGroupOccupancy::AllEmpty;
     }
-    let logical_type = column.logical_type.to_ascii_lowercase();
+    let logical_type = column.value_logical_type.to_ascii_lowercase();
     let is_string = logical_type.contains("utf8") || logical_type.contains("string");
     if is_string {
         if statistics.max_is_exact() && statistics.max_bytes_opt() == Some(b"".as_slice()) {
@@ -1320,6 +1321,13 @@ fn occupancy_from_statistics(
     }
 }
 
+fn dictionary_value_data_type(mut data_type: &DataType) -> &DataType {
+    while let DataType::Dictionary(_, value_type) = data_type {
+        data_type = value_type.as_ref();
+    }
+    data_type
+}
+
 fn arrow_value_occupied(array: &dyn Array, index: usize) -> Option<bool> {
     if array.is_null(index) {
         return Some(false);
@@ -1333,10 +1341,10 @@ fn arrow_value_occupied(array: &dyn Array, index: usize) -> Option<bool> {
             .as_any()
             .downcast_ref::<LargeStringArray>()
             .map(|values| !values.value(index).is_empty()),
-        DataType::Dictionary(_, value)
-            if matches!(value.as_ref(), DataType::Utf8 | DataType::LargeUtf8) =>
-        {
-            None
+        DataType::Dictionary(_, _) => {
+            let (values, value_index) =
+                super::value_format::resolve_dictionary_value(array, index).ok()?;
+            arrow_value_occupied(values, value_index)
         }
         _ => Some(true),
     }
@@ -1451,6 +1459,8 @@ fn append_batch_rows(
 mod tests {
     use super::*;
     use crate::domain::{DataErrorCode, ValueKind};
+    use arrow_array::builder::StringDictionaryBuilder;
+    use arrow_array::types::Int8Type;
     use arrow_array::{ArrayRef, BooleanArray, Float64Array, Int32Array, StringArray};
     use arrow_schema::{DataType, Field, Schema};
     use parquet::arrow::ArrowWriter;
@@ -1491,6 +1501,24 @@ mod tests {
         )
         .unwrap();
         writer.write(&second).unwrap();
+        writer.close().unwrap();
+    }
+
+    fn write_categorical_fixture(path: &Path) {
+        let data_type = DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8));
+        let schema = Arc::new(Schema::new(vec![Field::new("category", data_type, true)]));
+        let mut builder = StringDictionaryBuilder::<Int8Type>::new();
+        builder.append("alpha").unwrap();
+        builder.append("").unwrap();
+        builder.append_null();
+        builder.append("alpha").unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(builder.finish()) as ArrayRef],
+        )
+        .unwrap();
+        let mut writer = ArrowWriter::try_new(File::create(path).unwrap(), schema, None).unwrap();
+        writer.write(&batch).unwrap();
         writer.close().unwrap();
     }
 
@@ -1598,9 +1626,11 @@ mod tests {
         assert!(summary.file_size > 0);
         assert_eq!(summary.columns[0].name, "id");
         assert_eq!(summary.columns[0].logical_type, "Int32");
+        assert_eq!(summary.columns[0].value_logical_type, "Int32");
         assert!(!summary.columns[0].nullable);
         assert_eq!(summary.columns[0].physical_type, "INT32");
         assert_eq!(summary.columns[1].logical_type, "Utf8");
+        assert_eq!(summary.columns[1].value_logical_type, "Utf8");
         assert!(summary.columns[1].nullable);
     }
 
@@ -1635,6 +1665,66 @@ mod tests {
         assert_eq!(rows[0][0].kind, ValueKind::Int);
         assert_eq!(rows[0][2].kind, ValueKind::Float);
         assert_eq!(rows[0][3].kind, ValueKind::Boolean);
+    }
+
+    #[test]
+    fn reads_dictionary_encoded_categorical_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("categorical.parquet");
+        write_categorical_fixture(&path);
+        let source = ParquetSource::open(&path).unwrap();
+
+        assert_eq!(
+            source.summary().columns[0].logical_type,
+            "Dictionary(Int8, Utf8)"
+        );
+        assert_eq!(source.summary().columns[0].value_logical_type, "Utf8");
+        let page = source.read_page(0, 200).unwrap();
+        assert_eq!(
+            page.rows[0][0],
+            DataValue::displayed(ValueKind::String, "alpha")
+        );
+        assert_eq!(page.rows[1][0], DataValue::displayed(ValueKind::String, ""));
+        assert_eq!(page.rows[2][0], DataValue::null());
+        assert_eq!(
+            page.rows[3][0],
+            DataValue::displayed(ValueKind::String, "alpha")
+        );
+        assert_eq!(
+            source
+                .read_occupancy_states_exact(&[0, 1, 2, 3], "category")
+                .unwrap(),
+            vec![true, false, false, true]
+        );
+    }
+
+    #[test]
+    fn p19_dictionary_value_type_is_recursive_and_key_type_independent() {
+        for key_type in [
+            DataType::Int8,
+            DataType::Int16,
+            DataType::Int32,
+            DataType::Int64,
+            DataType::UInt8,
+            DataType::UInt16,
+            DataType::UInt32,
+            DataType::UInt64,
+        ] {
+            let dictionary = DataType::Dictionary(Box::new(key_type), Box::new(DataType::Utf8));
+            assert_eq!(dictionary_value_data_type(&dictionary), &DataType::Utf8);
+        }
+        let nested = DataType::Dictionary(
+            Box::new(DataType::Int8),
+            Box::new(DataType::Dictionary(
+                Box::new(DataType::UInt16),
+                Box::new(DataType::LargeUtf8),
+            )),
+        );
+        assert_eq!(dictionary_value_data_type(&nested), &DataType::LargeUtf8);
+        assert_eq!(
+            dictionary_value_data_type(&DataType::Int64),
+            &DataType::Int64
+        );
     }
 
     #[test]
@@ -1945,6 +2035,7 @@ mod tests {
         assert_eq!(summary["formatDetails"][0]["kind"], "table");
         assert_eq!(summary["rowCount"], 4);
         assert_eq!(summary["columns"][0]["logicalType"], "Int32");
+        assert_eq!(summary["columns"][0]["valueLogicalType"], "Int32");
         assert!(summary.get("row_count").is_none());
         assert_eq!(page["rows"][0][0]["kind"], "int");
         assert_eq!(page["rows"][0][0]["display"], "1");

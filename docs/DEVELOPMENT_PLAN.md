@@ -53,13 +53,18 @@
 - Phase 17은 빠른 scrollbar·wheel 이동을 scrub mode로 처리해 중간 cache-miss page와 prefetch를
   만들지 않고 최종 visible page 하나만 조회한다. 느린 탐색과 cache hit는 즉시 반응하며 기존
   segmented scroll, query logical position과 keyboard/focus 계약을 유지한다.
+- Phase 18은 대용량 filter/sort의 query spill과 persistent CSV cache가 같은 disk budget을 안전하게
+  공유하도록 bounded allowance와 동시 query reservation을 적용한다. query 시작·실행 중에는 검증된
+  비활성 cache만 LRU로 회수하고 disk-full/temp I/O는 경로를 숨긴 typed actionable 오류로 정규화한다.
+- Phase 19는 Arrow dictionary 컬럼의 key/code가 아니라 재귀 해제한 value 타입과 decoded value를
+  기준으로 표시, filter, stable sort, distinct, Find, boundary, copy와 full-value를 일치시킨다.
 
 이 문서는 구현 순서, 단계별 작업, 테스트, 완료 조건을 관리한다. 상세 제품 계약은
 `docs/PROJECT_SPEC.md`를 따른다.
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 17까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 19까지 순서대로 진행한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -94,6 +99,8 @@
 | Phase 15 | 구현 완료, 필수 native·soak gate BLOCKED (2026-07-24) | CSV 준비 병목 제거·Polars 제품 연결·compact cache 재설계 |
 | Phase 16 | 완료 (2026-07-29)                                  | CSV preparation Data gate·요청 누적 방지·Ctrl focus visibility |
 | Phase 17 | 완료 (2026-07-30)                                  | 적응형 scrollbar·wheel page scheduling                         |
+| Phase 18 | 구현 완료, 필수 large native spill·soak gate BLOCKED (2026-10-05) | query/cache 공통 disk budget·LRU 회수·typed storage 오류 |
+| Phase 19 | 완료 (2026-10-05) | Arrow dictionary value-type query parity |
 
 Phase 0~7의 제품 코드와 자동 검증은 완료했지만 미실행 Browser 범위, 실제 Excel,
 clean VM이 필요한 필수 품질 gate는 BLOCKED다. 단계별 근거는 각
@@ -120,6 +127,12 @@ Phase 16의 확정 범위와 완료 조건은 `artifacts/phase-16/00-scope.md`�
 wait/reuse/cancel 안전장치를 제거하지 않고 문서별 UI interaction gate를 추가한다.
 Phase 17의 확정 범위와 완료 조건은 `artifacts/phase-17/00-scope.md`를 따르며, backend DTO를 바꾸지
 않고 frontend가 빠른 scroll 중 불필요한 page 요청을 시작하지 않도록 scheduling을 조정한다.
+Phase 18의 확정 범위와 테스트는 `artifacts/phase-18/00-scope.md`와 `10-test-plan.md`를 따른다.
+제품 구현과 자동 회귀, release/NSIS는 통과했지만 생성된 5.85M fixture를 사용한 별도 Windows
+forced-spill·100-cycle native soak는 fixture 부재로 BLOCKED이며 `90-review.md`에서 계속 추적한다.
+Phase 19의 확정 범위와 테스트는 `artifacts/phase-19/00-scope.md`와 `10-test-plan.md`를 따른다.
+서로 다른 row-group local dictionary를 가진 fixture로 decoded-value filter/sort/query parity를
+고정하고, required `valueLogicalType` wire 계약을 Rust와 TypeScript 양쪽에서 검증한다.
 
 ## Phase 0. 프로젝트 기반
 
@@ -818,3 +831,53 @@ uncached page를 조회하지 않고 최종 visible page만 foreground로 읽는
 - 느린 탐색과 cache hit의 즉시 표시·prefetch 동작이 회귀하지 않는다.
 - source/query의 논리 row, selection, focus, stale generation과 segment 경계가 정확하다.
 - 전체 frontend/E2E/native/release gate가 PASS하고 HIGH/MEDIUM 결함과 필수 BLOCKED가 없다.
+
+## Phase 18. query disk-pressure와 temporary storage 오류 안정화
+
+**목표:** 대용량 filter/sort와 CSV preparation이 query temp와 persistent cache의 공통 disk budget을
+초과하지 않게 하고, 회수 가능한 cache가 있으면 작업을 계속하며 부족하면 사용자가 조치할 수 있는
+typed 오류를 반환한다.
+
+**상태:** 구현 완료, 필수 large native spill·soak gate BLOCKED (2026-10-05)
+
+### 해야 할 일
+
+- 현재 query/cache byte, 동시 reservation과 free-space reserve를 반영한 DuckDB allowance
+- query 시작과 100ms monitor에서 검증된 inactive CSV cache의 deterministic LRU 최소 회수
+- 같은 process와 다른 process의 active cache lease, foreign directory와 원본 파일 보호
+- temp limit, disk-full과 temp directory I/O의 `QueryTempLimitExceeded` 정규화 및 경로 비노출
+- cancel, replacement, failure와 shutdown의 reservation·query directory 정리
+- 전체 Rust 회귀, release/NSIS와 실제 대용량 Windows forced-spill·lifecycle soak
+
+### 완료 조건
+
+- `artifacts/phase-18/10-test-plan.md`의 실행 가능한 자동 gate가 PASS다.
+- 회수 가능한 inactive cache가 있으면 필요한 예산을 확보하고 query가 계속된다.
+- active cache만 남거나 safety reserve가 부족하면 원본과 lease를 보존하고 typed actionable 오류가 난다.
+- 동시 query allowance 합계가 hard cap과 5 GiB safety reserve를 침범하지 않는다.
+- 빠른 query 교체·cancel·failure 뒤 reservation, active query와 temp directory가 기준선으로 복귀한다.
+- 생성된 5.85M fixture의 별도 Windows release forced-spill·100-cycle soak를 포함한 필수 gate에
+  BLOCKED가 없어야 Phase를 `완료`로 바꿀 수 있다.
+
+## Phase 19. Arrow dictionary value-type query parity
+
+**목표:** row group마다 다른 dictionary key/code를 비교하지 않고 decoded value와 실제 value 타입을
+기준으로 categorical 컬럼의 표시, filter, sort와 모든 query 보조 기능을 일치시킨다.
+
+**상태:** 완료 (2026-10-05)
+
+### 해야 할 일
+
+- 원래 `logicalType`과 재귀 해제한 required `valueLogicalType`의 Rust/TypeScript DTO 계약
+- query scalar validation, result kind, duration, boundary/statistics/occupancy의 value-type 판정
+- 서로 다른 local dictionary mapping을 가진 두 row-group fixture의 실제 key/value audit
+- decoded native value filter, stable asc/desc null-last sort, distinct, Find, page와 copy parity
+- dictionary binary와 nested value의 preview/full-value 재귀 처리
+- categorical text/numeric filter UI, 세 viewport interaction과 실제 Tauri 회귀 검증
+
+### 완료 조건
+
+- row-group code가 달라도 같은 decoded value는 filter, sort와 distinct에서 같은 값으로 처리된다.
+- 문자열 dictionary는 text 연산자, numeric dictionary는 native numeric order를 사용한다.
+- null, empty, duplicate, binary와 nested dictionary 값이 직접 value 타입과 같은 계약을 지킨다.
+- Rust 전체 suite, frontend unit/E2E, 실제 Tauri smoke와 release/NSIS가 통과한다.
