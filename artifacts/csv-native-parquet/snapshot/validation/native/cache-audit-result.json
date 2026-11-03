@@ -1,0 +1,28 @@
+{
+  "status": "PASS",
+  "createdBy": "Polars",
+  "rows": 5850000,
+  "physicalColumns": 27,
+  "cache": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\161a0059d1ebfc95\\prepared.parquet",
+  "manifest": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\161a0059d1ebfc95\\cache-manifest.json",
+  "resolvedTargets": [
+    "uint64",
+    "text",
+    "text",
+    "boolean",
+    "uint64",
+    "text",
+    "decimal",
+    "text",
+    "text",
+    "uint64",
+    "uint64",
+    "uint64",
+    "uint64",
+    "uint64",
+    "uint64"
+  ],
+  "rowMajorSha256": "351ea17228f7b3ab828661b903e32878840071c55ba48b69b4248938af3014ba",
+  "nativeAppSha256": "cd10b4d667c1959679449d60bc2ef3cc5e42924408a3a7f568c7b716ac48563a",
+  "baselinePolarsSha256": "ff625321cf0421b5aa2b36a2ee34d7dc1319f7b58661eb4c5681681b779bb98d"
+}

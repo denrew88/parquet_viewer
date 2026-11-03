@@ -1,0 +1,34 @@
+[
+  {
+    "id": "cr-only",
+    "rawStatus": "FAIL",
+    "adjudication": "BASELINE_DIFFERENCE",
+    "independentCsvOracle": "PASS",
+    "expectedRows": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3",
+        "4"
+      ]
+    ],
+    "note": "csv CR/LF/CRLF handling and empty-record skipping; raw comparison retained."
+  },
+  {
+    "id": "blank-lines",
+    "rawStatus": "FAIL",
+    "adjudication": "BASELINE_DIFFERENCE",
+    "independentCsvOracle": "PASS",
+    "expectedRows": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "note": "csv CR/LF/CRLF handling and empty-record skipping; raw comparison retained."
+  }
+]

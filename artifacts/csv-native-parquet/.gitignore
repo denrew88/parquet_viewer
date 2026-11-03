@@ -1,0 +1,27 @@
+# Local binaries, logs and screenshots remain on disk.
+/bin/
+*.log
+*.png
+*.ico
+
+# Generated full-app copy and intermediate validation runs.
+/snapshot/size-variant/
+/snapshot/validation/pre-fix/
+/snapshot/validation/native/before-fix/
+/snapshot/validation/native/generated/
+/snapshot/validation/native/auto-worker-staging*/
+
+# Keep only final result JSON; omit per-case and historical raw output.
+/snapshot/**/*.json
+!/snapshot/validation/60-size-corrected.json
+!/snapshot/validation/80-final-evidence.json
+!/snapshot/validation/build-app.json
+!/snapshot/validation/data/final/results.json
+!/snapshot/validation/performance/final/results.json
+!/snapshot/validation/quality/90-final-adjudication.json
+!/snapshot/validation/native/cache-audit-result.json
+!/snapshot/validation/native/cancel-result.json
+!/snapshot/validation/native/csv-result.json
+!/snapshot/validation/native/parquet-result.json
+!/snapshot/validation/native/large-auto-result.json
+!/snapshot/validation/worker-safety/final/results.json

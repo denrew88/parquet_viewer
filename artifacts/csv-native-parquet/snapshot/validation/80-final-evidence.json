@@ -1,0 +1,86 @@
+{
+  "productInputs": {
+    "src-tauri/Cargo.toml": {
+      "sha256": "5d5f8288d3cd22fc6606aedfda2c63207012d509cf332f4a252c529667859dfd",
+      "unchanged": true
+    },
+    "src-tauri/Cargo.lock": {
+      "sha256": "114c2f72473d6667e975a8be0f7fc0effbadc2db0bc12d03221e7c6d02dc1f5e",
+      "unchanged": true
+    },
+    "dist/index.html": {
+      "sha256": "d558728b6caa8e570fd8feb12458041bc90801ca50e40d97cc32cd4f86cf2896",
+      "unchanged": true
+    },
+    "dist/assets/index-3bFBQTg3.css": {
+      "sha256": "016e3e81b0c17093688160ae6f4d10d03875d71f774226cc553cc5fe85a75fa2",
+      "unchanged": true
+    },
+    "dist/assets/index-QRlWexSH.js": {
+      "sha256": "c5870b87baa5111681f33a7801896f7c05c1ce5d8ba295c52fc7b725c0d49678",
+      "unchanged": true
+    }
+  },
+  "originalProductSinkUnchanged": true,
+  "candidateAppSha256": "cd10b4d667c1959679449d60bc2ef3cc5e42924408a3a7f568c7b716ac48563a",
+  "candidateCoreSha256": "555559012c707c03763d6062d2810b0c1d9dd242e5a9a4f78d463e42e968a5d9",
+  "sizeMiB": 56.03564453125,
+  "reductionPercent": 45.94878461183408,
+  "rowGroups": {
+    "main-high": {
+      "polars": 90,
+      "native": 90
+    },
+    "low-cardinality": {
+      "polars": 5,
+      "native": 5
+    },
+    "numeric": {
+      "polars": 5,
+      "native": 5
+    },
+    "wide-65": {
+      "polars": 2,
+      "native": 2
+    },
+    "long-utf8": {
+      "polars": 1,
+      "native": 2
+    }
+  },
+  "qualityAdjudications": [
+    {
+      "id": "cr-only",
+      "rawStatus": "FAIL",
+      "adjudication": "BASELINE_DIFFERENCE",
+      "independentCsvOracle": "PASS",
+      "expectedRows": [
+        [
+          "1",
+          "2"
+        ],
+        [
+          "3",
+          "4"
+        ]
+      ],
+      "note": "csv CR/LF/CRLF handling and empty-record skipping; raw comparison retained."
+    },
+    {
+      "id": "blank-lines",
+      "rawStatus": "FAIL",
+      "adjudication": "BASELINE_DIFFERENCE",
+      "independentCsvOracle": "PASS",
+      "expectedRows": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ]
+      ],
+      "note": "csv CR/LF/CRLF handling and empty-record skipping; raw comparison retained."
+    }
+  ],
+  "review": "Independent initial review; root ran final validation after agents hit provider usage limit. No independent post-fix signoff."
+}

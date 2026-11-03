@@ -40,6 +40,7 @@ Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, Rea
 - Rust stable MSVC toolchain
 - Node.js와 npm
 - Windows C++ Build Tools와 WebView2 Runtime
+- HDF5 native 빌드용 CMake (`PATH` 또는 target별 `CMAKE` 환경변수로 지정)
 
 ```powershell
 npm ci
@@ -60,6 +61,7 @@ npm run format:check
 npm run lint
 npm run typecheck
 npm test -- --run
+node --test scripts/hdf5_release_build.node-test.mjs
 npm run test:e2e
 npm run test:native:build
 npm run test:native:smoke
@@ -100,10 +102,41 @@ NSIS installer 빌드:
 npm run release
 ```
 
-두 명령은 빌드가 성공한 뒤 Cargo의 Release 중간 산출물을 정리하고 최종 `data-viewer.exe`,
-`THIRD_PARTY_NOTICES.md`와 최신 NSIS installer만 복원한다. 이미 빌드된 최종 산출물을 보존한 채
-중간 산출물만 정리하려면 `npm run clean:release`를 사용한다. `npm run tauri -- build`는 반복 검증을
-위한 저수준 명령이며, 다음 빌드 속도를 위해 `target/release`의 Cargo cache를 유지한다.
+두 명령은 다음 빌드를 위해 Cargo Release 중간 산출물을 유지하고, 성공 후 `clean:temp`로
+workspace `.tmp`의 64MiB 이상 생성 항목을 정리한다. Release 중간 산출물을 직접 정리하려면
+`npm run clean:release`를 사용한다.
+
+Windows MSVC Release 빌드는 `scripts/hdf5_release_build.mjs`를 거친다. 이 wrapper는 설치된
+Visual Studio와 CMake가 함께 지원하는 generator를 명시해 HDF5의 C Release 기본 최적화를
+보존한다. 사용자가 지정한 `CMAKE_GENERATOR` 계열 설정은 우선하며, Debug와 다른 플랫폼에는
+설정을 추가하지 않는다. Rust profile, DuckDB와 Polars의 기능은 변경하지 않는다.
+
+이 수정 전의 HDF5 CMake cache가 남아 있다면 최초 한 번 다음 명령으로 해당 패키지의 생성
+산출물을 지운 뒤 Release를 빌드한다. `CARGO_TARGET_DIR`를 사용한다면 같은 환경에서 실행한다.
+
+```powershell
+cargo clean --manifest-path src-tauri/Cargo.toml --release -p hdf5-metno-src
+npm run release:exe
+```
+
+저수준 Cargo Release 명령에도 wrapper를 적용할 수 있다.
+
+```powershell
+node scripts/hdf5_release_build.mjs cargo build --manifest-path src-tauri/Cargo.toml --release --features custom-protocol
+node scripts/hdf5_release_build.mjs --print-plan tauri build
+```
+
+직접 실행한 `cargo build --release`나 `npm run tauri -- build`에는 wrapper가 적용되지 않는다.
+자동 발견 실패 시 경고를 출력하고 원래 환경으로 빌드하므로, 최적화 적용 여부는 출력된 계획과
+실제 native compile flags로 확인한다.
+
+HDF5 Release 수정의 동일 조건 EXE 비교는 141.13→114.88MiB(-18.6%)이며, H5 읽기 성능은
+5회 A/B에서 유지됐다. [크기·성능·실제 Tauri 검증 결과](artifacts/optimizations/hdf5-msvc-release/50-results.md).
+
+추가로 Rust Release에 `lto = "thin"`, `codegen-units = 1`을 적용했다. 동일 조건 EXE는
+114.88→103.67MiB(-9.76%), 최종 Tauri 패키징 EXE는 103.71MiB다. CSV·HDF5 각각 5회
+A/B에서 데이터 정합성과 측정 성능을 유지했고, Rust 305개 테스트와 실제 CSV·Parquet·HDF5
+앱 검증을 통과했다. [최종 측정과 검증 기록](artifacts/optimizations/rust-thin-lto/50-results.md).
 
 설치본은 CSV·Parquet file association을 등록한다. clean VM 설치·제거, Explorer 더블클릭, 실제 Excel paste는 배포 전 별도 native gate로 확인해야 한다.
 

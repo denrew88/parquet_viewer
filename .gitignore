@@ -42,6 +42,8 @@ artifacts/**/ui/*-pre-final.png
 artifacts/**/ui/*-locked-black.png
 artifacts/**/*-attempt-*
 artifacts/**/*-unsandboxed*
+artifacts/experiments/
+artifacts/optimizations/
 
 # Editor directories and files
 .vscode/*

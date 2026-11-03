@@ -1,0 +1,95 @@
+{
+  "binarySha256": "cd10b4d667c1959679449d60bc2ef3cc5e42924408a3a7f568c7b716ac48563a",
+  "cases": [
+    {
+      "id": "valid-control",
+      "status": "PASS",
+      "returnCode": 0,
+      "outputExists": true
+    },
+    {
+      "id": "schema-version",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "relative-request",
+      "status": "PASS",
+      "returnCode": 64,
+      "outputExists": false
+    },
+    {
+      "id": "request-parent",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "outside-snapshot",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "thread-zero",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "thread-nine",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "thread-env-mismatch",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "stale-length",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "stale-modified",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "existing-output",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": true
+    },
+    {
+      "id": "existing-result",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "unsupported-profile",
+      "status": "PASS",
+      "returnCode": 70,
+      "outputExists": false
+    },
+    {
+      "id": "source-mutation",
+      "status": "PASS",
+      "returnCode": 70,
+      "sourceBytesBefore": 979427914,
+      "sourceBytesAfter": 979427916,
+      "noPublishedOutput": true
+    }
+  ],
+  "counts": {
+    "PASS": 14,
+    "FAIL": 0
+  }
+}

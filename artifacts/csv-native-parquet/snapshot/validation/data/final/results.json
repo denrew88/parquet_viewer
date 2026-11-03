@@ -1,0 +1,2698 @@
+{
+  "label": "final",
+  "nativeBinary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\csv-native-parquet-validation.exe",
+  "nativeSha256": "555559012c707c03763d6062d2810b0c1d9dd242e5a9a4f78d463e42e968a5d9",
+  "note": "Functional matrix under possible concurrent validation load; elapsed times are not benchmark results.",
+  "cases": [
+    {
+      "id": "rows-0",
+      "rows": 0,
+      "sourceColumns": 7,
+      "seed": 41,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 0,
+            "cells": 0,
+            "physicalColumns": 14,
+            "rowGroups": 0,
+            "logicalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 0,
+            "cells": 0,
+            "physicalColumns": 14,
+            "rowGroups": 0,
+            "logicalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "rows-1",
+      "rows": 1,
+      "sourceColumns": 7,
+      "seed": 41,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 1,
+            "cells": 14,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "54262b0fb9afa418087d22cdacdd1a2083c1ff81cbbbe1378a17fe53c31b1291"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 1,
+            "cells": 14,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "54262b0fb9afa418087d22cdacdd1a2083c1ff81cbbbe1378a17fe53c31b1291"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "rows-65535",
+      "rows": 65535,
+      "sourceColumns": 7,
+      "seed": 41,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65535,
+            "cells": 917490,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "718644d695ab5b781a99a7e8f22477b4948be48c0033671a50a87b27a4be05a1"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65535,
+            "cells": 917490,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "718644d695ab5b781a99a7e8f22477b4948be48c0033671a50a87b27a4be05a1"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "rows-65536",
+      "rows": 65536,
+      "sourceColumns": 7,
+      "seed": 41,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65536,
+            "cells": 917504,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "ec596a60ecc9a483f9e84d6d8d2a7db34509b19bf0984c97be295740469fa812"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65536,
+            "cells": 917504,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "ec596a60ecc9a483f9e84d6d8d2a7db34509b19bf0984c97be295740469fa812"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "rows-65537",
+      "rows": 65537,
+      "sourceColumns": 7,
+      "seed": 41,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65537,
+            "cells": 917518,
+            "physicalColumns": 14,
+            "rowGroups": 2,
+            "logicalSha256": "085bc0c029b817166a30cca2bfaf223caeac8f44a8dafa92115223ddc97bed26"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65537,
+            "cells": 917518,
+            "physicalColumns": 14,
+            "rowGroups": 2,
+            "logicalSha256": "085bc0c029b817166a30cca2bfaf223caeac8f44a8dafa92115223ddc97bed26"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-1",
+      "rows": 257,
+      "sourceColumns": 1,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 1028,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "52a4941a13096ddadd9149122485d3a2a96d9f738f7027b097ba539a98d1779b"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 1028,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "52a4941a13096ddadd9149122485d3a2a96d9f738f7027b097ba539a98d1779b"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-31",
+      "rows": 257,
+      "sourceColumns": 31,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 14392,
+            "physicalColumns": 56,
+            "rowGroups": 1,
+            "logicalSha256": "22d5ffb310a818904cece8fdc26f0f4a3e3d28a05e727339965f968758bef272"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 14392,
+            "physicalColumns": 56,
+            "rowGroups": 1,
+            "logicalSha256": "22d5ffb310a818904cece8fdc26f0f4a3e3d28a05e727339965f968758bef272"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-32",
+      "rows": 257,
+      "sourceColumns": 32,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 14906,
+            "physicalColumns": 58,
+            "rowGroups": 1,
+            "logicalSha256": "6523b6ad888e68f39b318c86f2d22c585b3e90696929714486dd197d2e4997c2"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 14906,
+            "physicalColumns": 58,
+            "rowGroups": 1,
+            "logicalSha256": "6523b6ad888e68f39b318c86f2d22c585b3e90696929714486dd197d2e4997c2"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-33",
+      "rows": 257,
+      "sourceColumns": 33,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 15420,
+            "physicalColumns": 60,
+            "rowGroups": 1,
+            "logicalSha256": "ebe86079dbcb9b7bcc8f6fbaebe27ec3f7e7883ca38c42775ee0a7e8c89125ab"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 15420,
+            "physicalColumns": 60,
+            "rowGroups": 1,
+            "logicalSha256": "ebe86079dbcb9b7bcc8f6fbaebe27ec3f7e7883ca38c42775ee0a7e8c89125ab"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-64",
+      "rows": 257,
+      "sourceColumns": 64,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 29041,
+            "physicalColumns": 113,
+            "rowGroups": 1,
+            "logicalSha256": "b780d373b5f5dc789607d7af4bde57010aad83b203b7e6ec7e184612e68a8e97"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 29041,
+            "physicalColumns": 113,
+            "rowGroups": 1,
+            "logicalSha256": "b780d373b5f5dc789607d7af4bde57010aad83b203b7e6ec7e184612e68a8e97"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-65",
+      "rows": 257,
+      "sourceColumns": 65,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 29812,
+            "physicalColumns": 116,
+            "rowGroups": 1,
+            "logicalSha256": "1d0a6bf36b8d28aed0d03d2881f0c531994acaf76767abae98040a518fd9bd8c"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 29812,
+            "physicalColumns": 116,
+            "rowGroups": 1,
+            "logicalSha256": "1d0a6bf36b8d28aed0d03d2881f0c531994acaf76767abae98040a518fd9bd8c"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-255",
+      "rows": 257,
+      "sourceColumns": 255,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 114879,
+            "physicalColumns": 447,
+            "rowGroups": 1,
+            "logicalSha256": "0304cd7778441b2d14428d595385400e9353d3ca2025ac1c7adb5c87f912e3df"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 114879,
+            "physicalColumns": 447,
+            "rowGroups": 1,
+            "logicalSha256": "0304cd7778441b2d14428d595385400e9353d3ca2025ac1c7adb5c87f912e3df"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "width-256",
+      "rows": 257,
+      "sourceColumns": 256,
+      "seed": 83,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 115393,
+            "physicalColumns": 449,
+            "rowGroups": 1,
+            "logicalSha256": "276dc26ef3ed606943f54138201046b521f839469e16580663b97fbbe4619c14"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 257,
+            "cells": 115393,
+            "physicalColumns": 449,
+            "rowGroups": 1,
+            "logicalSha256": "276dc26ef3ed606943f54138201046b521f839469e16580663b97fbbe4619c14"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "no-header",
+      "rows": 1031,
+      "sourceColumns": 33,
+      "seed": 97,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 1031,
+            "cells": 61860,
+            "physicalColumns": 60,
+            "rowGroups": 1,
+            "logicalSha256": "5743dcdd4dacc533abecc799341c0ed7e61d08ccd8a3aeb3abf57df9785a4890"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 1031,
+            "cells": 61860,
+            "physicalColumns": 60,
+            "rowGroups": 1,
+            "logicalSha256": "5743dcdd4dacc533abecc799341c0ed7e61d08ccd8a3aeb3abf57df9785a4890"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "long-utf8",
+      "rows": 129,
+      "sourceColumns": 7,
+      "seed": 113,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 129,
+            "cells": 1806,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "53e7d1e0cd56b4cc37c543ae40894eaacba8e3c8d1630a2ce9fe0f0f43735558"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 129,
+            "cells": 1806,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "53e7d1e0cd56b4cc37c543ae40894eaacba8e3c8d1630a2ce9fe0f0f43735558"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-00",
+      "rows": 46,
+      "sourceColumns": 5,
+      "seed": 21250,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 46,
+            "cells": 506,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "5bf168741eee9f38ddf046d21d5f5df945b6d7ed82a2adcaf98e29563f611aeb"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 46,
+            "cells": 506,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "5bf168741eee9f38ddf046d21d5f5df945b6d7ed82a2adcaf98e29563f611aeb"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-01",
+      "rows": 84,
+      "sourceColumns": 7,
+      "seed": 81236,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 84,
+            "cells": 1176,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "b86ea378d6b3fa9b9ec76b2594b86d66c7bf96717ef0e35ee5a6849b901078ae"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 84,
+            "cells": 1176,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "b86ea378d6b3fa9b9ec76b2594b86d66c7bf96717ef0e35ee5a6849b901078ae"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-02",
+      "rows": 69,
+      "sourceColumns": 2,
+      "seed": 69306,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 69,
+            "cells": 414,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "fc75eb8faa9608e1dd8bf3247db2e2733a64c8871d24436af3fd42cb95afa2aa"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 69,
+            "cells": 414,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "fc75eb8faa9608e1dd8bf3247db2e2733a64c8871d24436af3fd42cb95afa2aa"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-03",
+      "rows": 131,
+      "sourceColumns": 17,
+      "seed": 96950,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 131,
+            "cells": 4192,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "b711785415c88a2dc96996140ac17609a7f0755e643f940d7694689fb1bb3df1"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 131,
+            "cells": 4192,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "b711785415c88a2dc96996140ac17609a7f0755e643f940d7694689fb1bb3df1"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-04",
+      "rows": 59,
+      "sourceColumns": 6,
+      "seed": 59348,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 59,
+            "cells": 767,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "2ea53ded360fae84b4a91c08a079687556978070854060bd31656dc4f3762bf0"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 59,
+            "cells": 767,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "2ea53ded360fae84b4a91c08a079687556978070854060bd31656dc4f3762bf0"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-05",
+      "rows": 97,
+      "sourceColumns": 11,
+      "seed": 84366,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 97,
+            "cells": 2134,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "7d89a7bcbd4a9519915d7585a2a850ebfc9bd0c22c067eb9ea15cab35e4a7d1f"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 97,
+            "cells": 2134,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "7d89a7bcbd4a9519915d7585a2a850ebfc9bd0c22c067eb9ea15cab35e4a7d1f"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-06",
+      "rows": 92,
+      "sourceColumns": 11,
+      "seed": 42057,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 92,
+            "cells": 2024,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "d2667f5e8b9b1365f81c4c6aac8e173681697b39e652542c260b784b0a7e90b7"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 92,
+            "cells": 2024,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "d2667f5e8b9b1365f81c4c6aac8e173681697b39e652542c260b784b0a7e90b7"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-07",
+      "rows": 233,
+      "sourceColumns": 11,
+      "seed": 59440,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 233,
+            "cells": 5126,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "b2c5e2281cf35addf7f54084aa6223a516b3337ea06ad55596060e29b519cc82"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 233,
+            "cells": 5126,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "b2c5e2281cf35addf7f54084aa6223a516b3337ea06ad55596060e29b519cc82"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-08",
+      "rows": 105,
+      "sourceColumns": 8,
+      "seed": 69249,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 105,
+            "cells": 1680,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "22715f6af2e3e512ea1d0bcc035983028d939dbbebb99489c81448662e2dfb9c"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 105,
+            "cells": 1680,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "22715f6af2e3e512ea1d0bcc035983028d939dbbebb99489c81448662e2dfb9c"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-09",
+      "rows": 61,
+      "sourceColumns": 1,
+      "seed": 9687,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 61,
+            "cells": 244,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "c90afa756c81f8e1d9df7282c60db887fc091775260c4086da88c50764bc7db0"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 61,
+            "cells": 244,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "c90afa756c81f8e1d9df7282c60db887fc091775260c4086da88c50764bc7db0"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-10",
+      "rows": 160,
+      "sourceColumns": 7,
+      "seed": 68520,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 160,
+            "cells": 2240,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "757bf8786ef1e6137f1013bf7ebb75fecfdf9f1abfafe7579790fef950893e01"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 160,
+            "cells": 2240,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "757bf8786ef1e6137f1013bf7ebb75fecfdf9f1abfafe7579790fef950893e01"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-11",
+      "rows": 248,
+      "sourceColumns": 8,
+      "seed": 14852,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 248,
+            "cells": 3968,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "ad6abcbc778c811f5c77c92eeb98ae06979bd34e9ac602f6cf8d56275e0feabd"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 248,
+            "cells": 3968,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "ad6abcbc778c811f5c77c92eeb98ae06979bd34e9ac602f6cf8d56275e0feabd"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-12",
+      "rows": 204,
+      "sourceColumns": 12,
+      "seed": 5275,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 204,
+            "cells": 4692,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "3deb98129cb20ee20ce59b0aadc350ba0ddbe0e36d74449f0de73be100701cb9"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 204,
+            "cells": 4692,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "3deb98129cb20ee20ce59b0aadc350ba0ddbe0e36d74449f0de73be100701cb9"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-13",
+      "rows": 44,
+      "sourceColumns": 16,
+      "seed": 16954,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 44,
+            "cells": 1320,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "0a10cd321e0c99038edfebea6341bffd1893f30ae73cdf2b6e1194763af736e8"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 44,
+            "cells": 1320,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "0a10cd321e0c99038edfebea6341bffd1893f30ae73cdf2b6e1194763af736e8"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-14",
+      "rows": 101,
+      "sourceColumns": 10,
+      "seed": 34387,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 101,
+            "cells": 2020,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "a702eae46bf252c58af6fac8db61510bad57278258743fe49debb47fb5c5d7a5"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 101,
+            "cells": 2020,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "a702eae46bf252c58af6fac8db61510bad57278258743fe49debb47fb5c5d7a5"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-15",
+      "rows": 24,
+      "sourceColumns": 4,
+      "seed": 44453,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 24,
+            "cells": 240,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "43500d9712bcc22cd59a5991aa6af6b90b3d3aae2b7bd37a7709a69586cee1f7"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 24,
+            "cells": 240,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "43500d9712bcc22cd59a5991aa6af6b90b3d3aae2b7bd37a7709a69586cee1f7"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-16",
+      "rows": 108,
+      "sourceColumns": 14,
+      "seed": 99076,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 108,
+            "cells": 2808,
+            "physicalColumns": 26,
+            "rowGroups": 1,
+            "logicalSha256": "09ac4c57267f68508351ffa81c402b340b13cde2dbc8df48f5070fa6e7ae6ade"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 108,
+            "cells": 2808,
+            "physicalColumns": 26,
+            "rowGroups": 1,
+            "logicalSha256": "09ac4c57267f68508351ffa81c402b340b13cde2dbc8df48f5070fa6e7ae6ade"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-17",
+      "rows": 119,
+      "sourceColumns": 16,
+      "seed": 2302,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 119,
+            "cells": 3570,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "5022a9241aa7b72d7da1c970cac20a94cd59625bd75c0475425e66bc7bb6ac93"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 119,
+            "cells": 3570,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "5022a9241aa7b72d7da1c970cac20a94cd59625bd75c0475425e66bc7bb6ac93"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-18",
+      "rows": 254,
+      "sourceColumns": 6,
+      "seed": 96034,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 254,
+            "cells": 3302,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "d9157dae18a6447cd6311af738116bcc8faa51c4598766ca5995e06e5dbfaffc"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 254,
+            "cells": 3302,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "d9157dae18a6447cd6311af738116bcc8faa51c4598766ca5995e06e5dbfaffc"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-19",
+      "rows": 21,
+      "sourceColumns": 5,
+      "seed": 66191,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 21,
+            "cells": 231,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "7aea0e1704a1ee72203d58f41cf56d9871839e552fa6da173b3b78ee3ee85528"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 21,
+            "cells": 231,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "7aea0e1704a1ee72203d58f41cf56d9871839e552fa6da173b3b78ee3ee85528"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-20",
+      "rows": 56,
+      "sourceColumns": 13,
+      "seed": 14297,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 56,
+            "cells": 1400,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "266e51a46714e8d0264f445759cc411a6a320ec0e39ba72ef23ddb6eecea1e33"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 56,
+            "cells": 1400,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "266e51a46714e8d0264f445759cc411a6a320ec0e39ba72ef23ddb6eecea1e33"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-21",
+      "rows": 54,
+      "sourceColumns": 12,
+      "seed": 84845,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 54,
+            "cells": 1242,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "990b9152e909f43c73c333f6048db8db638ee2f2f297cf62bdfa8d4f5a529fcb"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 54,
+            "cells": 1242,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "990b9152e909f43c73c333f6048db8db638ee2f2f297cf62bdfa8d4f5a529fcb"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-22",
+      "rows": 65,
+      "sourceColumns": 6,
+      "seed": 85664,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65,
+            "cells": 845,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "3af4b00cf230833d5466d4521027aa0849fb3aadc975998b795b42fd1e273a21"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 65,
+            "cells": 845,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "3af4b00cf230833d5466d4521027aa0849fb3aadc975998b795b42fd1e273a21"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-23",
+      "rows": 169,
+      "sourceColumns": 2,
+      "seed": 7457,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 169,
+            "cells": 1014,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "acda5400440d4784a7e77eb55fa593b317520d4ae081ad6a09636449780ee06e"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 169,
+            "cells": 1014,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "acda5400440d4784a7e77eb55fa593b317520d4ae081ad6a09636449780ee06e"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-24",
+      "rows": 111,
+      "sourceColumns": 6,
+      "seed": 67234,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 111,
+            "cells": 1443,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "e553705d9d2052a5f6570e0c618d0013077a7c6ece436bca5ec00263b94588aa"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 111,
+            "cells": 1443,
+            "physicalColumns": 13,
+            "rowGroups": 1,
+            "logicalSha256": "e553705d9d2052a5f6570e0c618d0013077a7c6ece436bca5ec00263b94588aa"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-25",
+      "rows": 219,
+      "sourceColumns": 2,
+      "seed": 46560,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 219,
+            "cells": 1314,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "89c31359b95d9dd086fedda4bd5dba09f60b04ecb9dd90d2b174a2448f701c86"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 219,
+            "cells": 1314,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "89c31359b95d9dd086fedda4bd5dba09f60b04ecb9dd90d2b174a2448f701c86"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-26",
+      "rows": 129,
+      "sourceColumns": 8,
+      "seed": 82757,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 129,
+            "cells": 2064,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "3d86763be5e46cd949a4e87db39bd831f116d1e303e3dff6aa5c2fd515918313"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 129,
+            "cells": 2064,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "3d86763be5e46cd949a4e87db39bd831f116d1e303e3dff6aa5c2fd515918313"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-27",
+      "rows": 165,
+      "sourceColumns": 15,
+      "seed": 93570,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 165,
+            "cells": 4620,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "30b2924ab05de61d5dbec1c65e5555fe8173f5cc15eac00bb8e2d08c01167e16"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 165,
+            "cells": 4620,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "30b2924ab05de61d5dbec1c65e5555fe8173f5cc15eac00bb8e2d08c01167e16"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-28",
+      "rows": 254,
+      "sourceColumns": 12,
+      "seed": 54369,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 254,
+            "cells": 5842,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "f56f4a3b7ac1b48907a70adf8a3b300da09d52d8306d93a34ba8f402db6bcb83"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 254,
+            "cells": 5842,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "f56f4a3b7ac1b48907a70adf8a3b300da09d52d8306d93a34ba8f402db6bcb83"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-29",
+      "rows": 126,
+      "sourceColumns": 16,
+      "seed": 9191,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 126,
+            "cells": 3780,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "f41ffbefb549d86c4b7d21c1684f4a87abf0b512c8afc39f945a0d09f626ddaa"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 126,
+            "cells": 3780,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "f41ffbefb549d86c4b7d21c1684f4a87abf0b512c8afc39f945a0d09f626ddaa"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-30",
+      "rows": 49,
+      "sourceColumns": 4,
+      "seed": 97763,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 49,
+            "cells": 490,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "6e2d3a4d03da87a798a827c5b3821879ffd0db37c75f539d6bc6a9ee20311676"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 49,
+            "cells": 490,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "6e2d3a4d03da87a798a827c5b3821879ffd0db37c75f539d6bc6a9ee20311676"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-31",
+      "rows": 154,
+      "sourceColumns": 13,
+      "seed": 89738,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 154,
+            "cells": 3850,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "42f49f2ed8e41cf5bc2c40a088937b8343130d2fb74f8aed6df957dbc63ed457"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 154,
+            "cells": 3850,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "42f49f2ed8e41cf5bc2c40a088937b8343130d2fb74f8aed6df957dbc63ed457"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-32",
+      "rows": 30,
+      "sourceColumns": 11,
+      "seed": 47524,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 30,
+            "cells": 660,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "4fa73440db2c15764172b1e1dfe1210722cf8c0a5ef451082199e8df89eb8bce"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 30,
+            "cells": 660,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "4fa73440db2c15764172b1e1dfe1210722cf8c0a5ef451082199e8df89eb8bce"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-33",
+      "rows": 189,
+      "sourceColumns": 10,
+      "seed": 81493,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 189,
+            "cells": 3780,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "83e6a482492ff01bfc5731fce4472a2bfb24a7a0d68a7046764567be3f4f66cb"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 189,
+            "cells": 3780,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "83e6a482492ff01bfc5731fce4472a2bfb24a7a0d68a7046764567be3f4f66cb"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-34",
+      "rows": 171,
+      "sourceColumns": 16,
+      "seed": 15609,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 171,
+            "cells": 5130,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "5e5f667f7e1154d013fd03746835cf6f48da0530104f94292c3fbe452200371b"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 171,
+            "cells": 5130,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "5e5f667f7e1154d013fd03746835cf6f48da0530104f94292c3fbe452200371b"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-35",
+      "rows": 141,
+      "sourceColumns": 17,
+      "seed": 36039,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 141,
+            "cells": 4512,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "4d7775104cb89af9403f27cee4e81cf82e9d9dddf283e55257270dee7da62fd3"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 141,
+            "cells": 4512,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "4d7775104cb89af9403f27cee4e81cf82e9d9dddf283e55257270dee7da62fd3"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-36",
+      "rows": 69,
+      "sourceColumns": 1,
+      "seed": 45821,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 69,
+            "cells": 276,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "c6ef4588dc8c02c13b472230d45d3766d39747912b6246aa65f09982e04d26df"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 69,
+            "cells": 276,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "c6ef4588dc8c02c13b472230d45d3766d39747912b6246aa65f09982e04d26df"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-37",
+      "rows": 180,
+      "sourceColumns": 12,
+      "seed": 31476,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 180,
+            "cells": 4140,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "c1e4578a441554602f9b5d3d84d170d7f5211fc5ccf51efd5b1f7556b0e2e195"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 180,
+            "cells": 4140,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "c1e4578a441554602f9b5d3d84d170d7f5211fc5ccf51efd5b1f7556b0e2e195"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-38",
+      "rows": 88,
+      "sourceColumns": 9,
+      "seed": 88072,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 88,
+            "cells": 1584,
+            "physicalColumns": 18,
+            "rowGroups": 1,
+            "logicalSha256": "1229317267dad776d47cb8c62123ca04fb430e06181689799c1c076bae692cf9"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 88,
+            "cells": 1584,
+            "physicalColumns": 18,
+            "rowGroups": 1,
+            "logicalSha256": "1229317267dad776d47cb8c62123ca04fb430e06181689799c1c076bae692cf9"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-39",
+      "rows": 89,
+      "sourceColumns": 11,
+      "seed": 53413,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 89,
+            "cells": 1958,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "82ced4f6a779a14473cae79516dea8f7e42db5d701d8c087fb2559f7b4aa9bef"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 89,
+            "cells": 1958,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "82ced4f6a779a14473cae79516dea8f7e42db5d701d8c087fb2559f7b4aa9bef"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-40",
+      "rows": 231,
+      "sourceColumns": 2,
+      "seed": 89132,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 231,
+            "cells": 1386,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "d838dfafb451b257e514d0749c2bc58db759e5b88d62ba461c55486665c9a3da"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 231,
+            "cells": 1386,
+            "physicalColumns": 6,
+            "rowGroups": 1,
+            "logicalSha256": "d838dfafb451b257e514d0749c2bc58db759e5b88d62ba461c55486665c9a3da"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-41",
+      "rows": 99,
+      "sourceColumns": 1,
+      "seed": 53544,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 99,
+            "cells": 396,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "ff01f33477b0511180e1d6fcf58c497a21f6387957369bddab6566ea759ba547"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 99,
+            "cells": 396,
+            "physicalColumns": 4,
+            "rowGroups": 1,
+            "logicalSha256": "ff01f33477b0511180e1d6fcf58c497a21f6387957369bddab6566ea759ba547"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-42",
+      "rows": 101,
+      "sourceColumns": 17,
+      "seed": 58043,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 101,
+            "cells": 3232,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "3139e9d6d3dd4f846d6a2d294c184d8a9a9726a0c41cc0bc2e875d2524ec4309"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 101,
+            "cells": 3232,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "3139e9d6d3dd4f846d6a2d294c184d8a9a9726a0c41cc0bc2e875d2524ec4309"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-43",
+      "rows": 90,
+      "sourceColumns": 12,
+      "seed": 80549,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 90,
+            "cells": 2070,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "e5e89af983249c217eb655da2658cf30086d62d2ddfb272f9c2268606418260e"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 90,
+            "cells": 2070,
+            "physicalColumns": 23,
+            "rowGroups": 1,
+            "logicalSha256": "e5e89af983249c217eb655da2658cf30086d62d2ddfb272f9c2268606418260e"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-44",
+      "rows": 24,
+      "sourceColumns": 16,
+      "seed": 29979,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 24,
+            "cells": 720,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "72f921a3daeaf0b64c8e6f7787db1a157803cd618558df2c41fb8aadd7466ebe"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 24,
+            "cells": 720,
+            "physicalColumns": 30,
+            "rowGroups": 1,
+            "logicalSha256": "72f921a3daeaf0b64c8e6f7787db1a157803cd618558df2c41fb8aadd7466ebe"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-45",
+      "rows": 221,
+      "sourceColumns": 3,
+      "seed": 89539,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 221,
+            "cells": 1768,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "d5ed1847c58e539343175f62412c1a1b5c7085ff3da4bf111bda7611a79ae540"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 221,
+            "cells": 1768,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "d5ed1847c58e539343175f62412c1a1b5c7085ff3da4bf111bda7611a79ae540"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-46",
+      "rows": 208,
+      "sourceColumns": 7,
+      "seed": 51099,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 208,
+            "cells": 2912,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "d3f01e49b76ec51b5fc9a4dcf4982f4a4bfc4f3203f23d585efb3f3b69a60972"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 208,
+            "cells": 2912,
+            "physicalColumns": 14,
+            "rowGroups": 1,
+            "logicalSha256": "d3f01e49b76ec51b5fc9a4dcf4982f4a4bfc4f3203f23d585efb3f3b69a60972"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-47",
+      "rows": 197,
+      "sourceColumns": 3,
+      "seed": 78041,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 197,
+            "cells": 1576,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "71e7566e7b30bb88307e733488c7a49cd78aea3dd0f06b172e275fc516f7b345"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 197,
+            "cells": 1576,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "71e7566e7b30bb88307e733488c7a49cd78aea3dd0f06b172e275fc516f7b345"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-48",
+      "rows": 197,
+      "sourceColumns": 14,
+      "seed": 21711,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 197,
+            "cells": 5122,
+            "physicalColumns": 26,
+            "rowGroups": 1,
+            "logicalSha256": "fcaebc8af3b34bf91148ad3ff9bbfe3d7534f4e8776f7a8f86bc2a0a4704386a"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 197,
+            "cells": 5122,
+            "physicalColumns": 26,
+            "rowGroups": 1,
+            "logicalSha256": "fcaebc8af3b34bf91148ad3ff9bbfe3d7534f4e8776f7a8f86bc2a0a4704386a"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-49",
+      "rows": 58,
+      "sourceColumns": 3,
+      "seed": 67552,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 58,
+            "cells": 464,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "246ff2431a881c924991c9169e5038c035aacc185b954eb7733faf66cac4e34c"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 58,
+            "cells": 464,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "246ff2431a881c924991c9169e5038c035aacc185b954eb7733faf66cac4e34c"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-50",
+      "rows": 255,
+      "sourceColumns": 4,
+      "seed": 38376,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 255,
+            "cells": 2550,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "b32352386664bb38f29fe53c778cca31c8aacab06123f6d518c20dfc43a86a18"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 255,
+            "cells": 2550,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "b32352386664bb38f29fe53c778cca31c8aacab06123f6d518c20dfc43a86a18"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-51",
+      "rows": 81,
+      "sourceColumns": 13,
+      "seed": 63778,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 81,
+            "cells": 2025,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "c6d044dbdbba25130919ee2e461b255a0b3cf7487b7b6072faf8845c0b2135dc"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 81,
+            "cells": 2025,
+            "physicalColumns": 25,
+            "rowGroups": 1,
+            "logicalSha256": "c6d044dbdbba25130919ee2e461b255a0b3cf7487b7b6072faf8845c0b2135dc"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-52",
+      "rows": 246,
+      "sourceColumns": 17,
+      "seed": 7976,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 246,
+            "cells": 7872,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "75dabee5eb832121063d8bb64a4b08df2245761ab513e24976f0e4f49da96fca"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 246,
+            "cells": 7872,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "75dabee5eb832121063d8bb64a4b08df2245761ab513e24976f0e4f49da96fca"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-53",
+      "rows": 151,
+      "sourceColumns": 17,
+      "seed": 75657,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 151,
+            "cells": 4832,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "5dbc8d6f38de4cede25b39fa492a6d19e3ffc2384514f441354a844957238f92"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 151,
+            "cells": 4832,
+            "physicalColumns": 32,
+            "rowGroups": 1,
+            "logicalSha256": "5dbc8d6f38de4cede25b39fa492a6d19e3ffc2384514f441354a844957238f92"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-54",
+      "rows": 35,
+      "sourceColumns": 8,
+      "seed": 57986,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 35,
+            "cells": 560,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "68c4f624d902d998efcd30703c673aa47d3b5a01688c9701f2db4347f1a45476"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 35,
+            "cells": 560,
+            "physicalColumns": 16,
+            "rowGroups": 1,
+            "logicalSha256": "68c4f624d902d998efcd30703c673aa47d3b5a01688c9701f2db4347f1a45476"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-55",
+      "rows": 146,
+      "sourceColumns": 10,
+      "seed": 55690,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 146,
+            "cells": 2920,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "0e2fa40b072e84ae7edce1ff5817369ee7b2fe0d56fae3d1a9685bf2d52b4d14"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 146,
+            "cells": 2920,
+            "physicalColumns": 20,
+            "rowGroups": 1,
+            "logicalSha256": "0e2fa40b072e84ae7edce1ff5817369ee7b2fe0d56fae3d1a9685bf2d52b4d14"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-56",
+      "rows": 31,
+      "sourceColumns": 4,
+      "seed": 2204,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 31,
+            "cells": 310,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "063cf6085cc7fa312b72e94bd588ecb26a5ed7fca7c01952a5616c4c752cf753"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 31,
+            "cells": 310,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "063cf6085cc7fa312b72e94bd588ecb26a5ed7fca7c01952a5616c4c752cf753"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-57",
+      "rows": 31,
+      "sourceColumns": 15,
+      "seed": 73842,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 31,
+            "cells": 868,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "7d79002a4b4bed67ce737e2c2ef188b0e88363c6d939fa9fa92cf30be5f3816d"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 31,
+            "cells": 868,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "7d79002a4b4bed67ce737e2c2ef188b0e88363c6d939fa9fa92cf30be5f3816d"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-58",
+      "rows": 93,
+      "sourceColumns": 4,
+      "seed": 79248,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 93,
+            "cells": 930,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "04b9af75349864908d1c9016c981d25bb90d0d2664a1db5cdaec40d97db23de6"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 93,
+            "cells": 930,
+            "physicalColumns": 10,
+            "rowGroups": 1,
+            "logicalSha256": "04b9af75349864908d1c9016c981d25bb90d0d2664a1db5cdaec40d97db23de6"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-59",
+      "rows": 158,
+      "sourceColumns": 5,
+      "seed": 46895,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 158,
+            "cells": 1738,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "66a75a40c6c8af19f507c8cf46a2395c1ca9360495c4b68df39533e1b2a722c1"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 158,
+            "cells": 1738,
+            "physicalColumns": 11,
+            "rowGroups": 1,
+            "logicalSha256": "66a75a40c6c8af19f507c8cf46a2395c1ca9360495c4b68df39533e1b2a722c1"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-60",
+      "rows": 179,
+      "sourceColumns": 11,
+      "seed": 9590,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 179,
+            "cells": 3938,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "4494716b25c7042331a5c1d7c83a0883f4e06550ad0421e7752661350f8618f8"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 179,
+            "cells": 3938,
+            "physicalColumns": 22,
+            "rowGroups": 1,
+            "logicalSha256": "4494716b25c7042331a5c1d7c83a0883f4e06550ad0421e7752661350f8618f8"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-61",
+      "rows": 46,
+      "sourceColumns": 3,
+      "seed": 31534,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 46,
+            "cells": 368,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "4ab4112cb5fef9c1e7012ed5d123f4b40bef56a04a4aada67db1530d9db50b6f"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 46,
+            "cells": 368,
+            "physicalColumns": 8,
+            "rowGroups": 1,
+            "logicalSha256": "4ab4112cb5fef9c1e7012ed5d123f4b40bef56a04a4aada67db1530d9db50b6f"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-62",
+      "rows": 224,
+      "sourceColumns": 15,
+      "seed": 14307,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 224,
+            "cells": 6272,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "ca5a7424ef5b54dd5d7964d81425d97c92789409cca34bacdb8656e4fa9f95aa"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 224,
+            "cells": 6272,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "ca5a7424ef5b54dd5d7964d81425d97c92789409cca34bacdb8656e4fa9f95aa"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    },
+    {
+      "id": "random-63",
+      "rows": 10,
+      "sourceColumns": 15,
+      "seed": 45681,
+      "engines": {
+        "polars": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 10,
+            "cells": 280,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "b9d9b279665054c46f38c6ee53d142648480975ec224a5f0505624c400488008"
+          }
+        },
+        "native": {
+          "returnCode": 0,
+          "stderr": "",
+          "status": "PASS",
+          "oracle": {
+            "rows": 10,
+            "cells": 280,
+            "physicalColumns": 28,
+            "rowGroups": 1,
+            "logicalSha256": "b9d9b279665054c46f38c6ee53d142648480975ec224a5f0505624c400488008"
+          }
+        }
+      },
+      "sourceUnchanged": true,
+      "status": "PASS"
+    }
+  ],
+  "counts": {
+    "PASS": 79,
+    "FAIL": 0
+  }
+}

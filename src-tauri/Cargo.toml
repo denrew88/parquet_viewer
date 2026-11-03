@@ -58,3 +58,8 @@ debug = 1
 
 [profile.dev.package."*"]
 debug = 0
+
+# Preserve the default opt-level=3 while reducing cross-crate code duplication.
+[profile.release]
+lto = "thin"
+codegen-units = 1

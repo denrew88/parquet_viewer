@@ -1,0 +1,17 @@
+{
+  "title": "small-csv.csv - Data Viewer",
+  "url": "http://tauri.localhost/",
+  "fixture": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\validation\\native\\fixtures\\small-csv.csv",
+  "csvProfile": "passed",
+  "boundaryNavigation": "passed",
+  "sort": "passed",
+  "filter": "passed",
+  "copySettings": "passed",
+  "thousandsSeparator": "dot",
+  "artifacts": [
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\validation\\native\\ui\\native-csv.png",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\validation\\native\\ui\\native-csv-profile-dot.png",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\validation\\native\\ui\\native-query-copy-dot-passed.png"
+  ],
+  "sourceRowCount": 10000
+}

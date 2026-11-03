@@ -5,6 +5,14 @@
 
 ## 현재 상태
 
+### 2026-11-04 추가 검증 기록
+
+- [CSV native Parquet 변환 정식 artifacts](csv-native-parquet/README.md): 구현 snapshot, 확대 테스트,
+  성능·수정된 EXE 크기, 실제 Tauri 증거, 실행 파일 해시와 Timestamp fixture를 보존한다.
+  검증된 비교 구현이며 제품 반영·Phase 완료·외부 배포를 뜻하지 않는다.
+
+### 기존 Phase 기록
+
 Phase 0~7 구현과 자동 검증을 진행했고 Phase 8 설계를 완료했다. 현재 추가 기능 범위와 역할은
 `artifacts/phase-8/00-scope.md`, 구현 순서는 `artifacts/phase-8/40-implementation-plan.md`를
 확인한다.

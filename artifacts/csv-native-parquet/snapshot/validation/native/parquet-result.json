@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "format": "Parquet",
+  "rows": 10000,
+  "columns": 20,
+  "firstValue": "0",
+  "lastValue": "99990189981",
+  "schemaAndMetadata": "PASS",
+  "artifact": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\validation\\native\\ui\\native-parquet.png"
+}

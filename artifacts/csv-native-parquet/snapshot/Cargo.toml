@@ -1,0 +1,17 @@
+[package]
+name = "csv-native-parquet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+csv = "1.4"
+polars-arrow = { version = "=0.54.4", default-features = false }
+polars-parquet = { version = "=0.54.4", default-features = false, features = ["zstd"] }
+polars-error = "=0.54.4"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

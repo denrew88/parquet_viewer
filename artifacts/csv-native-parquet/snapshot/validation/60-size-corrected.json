@@ -1,0 +1,191 @@
+{
+  "baseline": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\optimizations\\rust-thin-lto\\optimized-product.exe",
+    "bytes": 108707328,
+    "sha256": "7ad3b87e1b05606c665b1d24bad7d02a81b502ddacb36ab442e38c0c858584df",
+    "machine": "8664",
+    "sections": [
+      {
+        "name": ".text",
+        "virtualBytes": 84240611,
+        "rva": 4096,
+        "rawBytes": 84240896,
+        "offset": 1024
+      },
+      {
+        "name": ".rdata",
+        "virtualBytes": 20547896,
+        "rva": 84246528,
+        "rawBytes": 20548096,
+        "offset": 84241920
+      },
+      {
+        "name": ".data",
+        "virtualBytes": 299152,
+        "rva": 104796160,
+        "rawBytes": 265216,
+        "offset": 104790016
+      },
+      {
+        "name": ".pdata",
+        "virtualBytes": 3298488,
+        "rva": 105099264,
+        "rawBytes": 3298816,
+        "offset": 105055232
+      },
+      {
+        "name": "_RDATA",
+        "virtualBytes": 3344,
+        "rva": 108400640,
+        "rawBytes": 3584,
+        "offset": 108354048
+      },
+      {
+        "name": ".rsrc",
+        "virtualBytes": 87912,
+        "rva": 108404736,
+        "rawBytes": 88064,
+        "offset": 108357632
+      },
+      {
+        "name": ".reloc",
+        "virtualBytes": 261332,
+        "rva": 108494848,
+        "rawBytes": 261632,
+        "offset": 108445696
+      }
+    ],
+    "imports": [
+      "advapi32.dll",
+      "advapi32.dll",
+      "api-ms-win-core-synch-l1-2-0.dll",
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-environment-l1-1-0.dll",
+      "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-locale-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll",
+      "bcrypt.dll",
+      "bcryptprimitives.dll",
+      "comctl32.dll",
+      "crypt32.dll",
+      "dwmapi.dll",
+      "gdi32.dll",
+      "kernel32.dll",
+      "kernel32.dll",
+      "msvcp140.dll",
+      "ntdll.dll",
+      "ole32.dll",
+      "oleaut32.dll",
+      "pdh.dll",
+      "powrprof.dll",
+      "psapi.dll",
+      "rstrtmgr.dll",
+      "shell32.dll",
+      "shlwapi.dll",
+      "user32.dll",
+      "vcruntime140.dll",
+      "vcruntime140_1.dll",
+      "ws2_32.dll"
+    ]
+  },
+  "optimized": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\native-validation.exe",
+    "bytes": 58757632,
+    "sha256": "cd10b4d667c1959679449d60bc2ef3cc5e42924408a3a7f568c7b716ac48563a",
+    "machine": "8664",
+    "sections": [
+      {
+        "name": ".text",
+        "virtualBytes": 45085843,
+        "rva": 4096,
+        "rawBytes": 45086208,
+        "offset": 1024
+      },
+      {
+        "name": ".rdata",
+        "virtualBytes": 11564990,
+        "rva": 45092864,
+        "rawBytes": 11565056,
+        "offset": 45087232
+      },
+      {
+        "name": ".data",
+        "virtualBytes": 286992,
+        "rva": 56659968,
+        "rawBytes": 253440,
+        "offset": 56652288
+      },
+      {
+        "name": ".pdata",
+        "virtualBytes": 1585080,
+        "rva": 56950784,
+        "rawBytes": 1585152,
+        "offset": 56905728
+      },
+      {
+        "name": "_RDATA",
+        "virtualBytes": 3344,
+        "rva": 58535936,
+        "rawBytes": 3584,
+        "offset": 58490880
+      },
+      {
+        "name": ".rsrc",
+        "virtualBytes": 87912,
+        "rva": 58540032,
+        "rawBytes": 88064,
+        "offset": 58494464
+      },
+      {
+        "name": ".reloc",
+        "virtualBytes": 174928,
+        "rva": 58630144,
+        "rawBytes": 175104,
+        "offset": 58582528
+      }
+    ],
+    "imports": [
+      "advapi32.dll",
+      "advapi32.dll",
+      "api-ms-win-core-synch-l1-2-0.dll",
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-environment-l1-1-0.dll",
+      "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-locale-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll",
+      "bcryptprimitives.dll",
+      "comctl32.dll",
+      "dwmapi.dll",
+      "gdi32.dll",
+      "kernel32.dll",
+      "kernel32.dll",
+      "msvcp140.dll",
+      "ntdll.dll",
+      "ole32.dll",
+      "oleaut32.dll",
+      "rstrtmgr.dll",
+      "shell32.dll",
+      "shlwapi.dll",
+      "user32.dll",
+      "vcruntime140.dll",
+      "vcruntime140_1.dll",
+      "ws2_32.dll"
+    ]
+  },
+  "reductionBytes": 49949696,
+  "reductionPercent": 45.94878461183408,
+  "sameMachine": true,
+  "sameImports": false
+}

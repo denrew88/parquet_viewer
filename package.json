@@ -20,8 +20,8 @@
     "test:native:oes": "node scripts/native_oes_smoke.mjs",
     "playwright:install": "playwright install chromium",
     "preview": "vite preview",
-    "release": "tauri build && npm run clean:temp",
-    "release:exe": "tauri build --no-bundle && npm run clean:temp",
+    "release": "node scripts/hdf5_release_build.mjs tauri build && npm run clean:temp",
+    "release:exe": "node scripts/hdf5_release_build.mjs tauri build --no-bundle && npm run clean:temp",
     "clean:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean_release_artifacts.ps1",
     "clean:temp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean_workspace_temp.ps1",
     "tauri": "tauri"
