@@ -4,6 +4,12 @@
 포함한 데스크톱 뷰어의 상세 제품 요구사항과 기술 계약을 정의한다.
 구현 순서와 단계별 완료 조건은 `docs/DEVELOPMENT_PLAN.md`를 따른다.
 
+2026-11-04 후속 경량화와 Storage 안정화는 [Phase 20](../artifacts/phase-20/README.md)으로 통합 관리한다.
+기존 검증본은 Rust csv와 polars-arrow/polars-parquet 하위 crate를 사용하고 DuckDB query 엔진을 유지한다.
+이 등록은 제품 동작을 새로 바꾸거나 원래 full-Polars manifest를 교체하는 작업이 아니다.
+사용자 승인으로 재빌드한 EXE는 src-tauri/target/release/data-viewer.exe이며 Phase 대응·Windows 속성·실제 앱 버전은 모두 0.20.0이다.
+Phase 20 전용 입력은 fixtures/phase-20/에 모으고, 이전 Phase 공용 입력의 소유 경로는 유지한다.
+
 ## 1. 제품 목표
 
 테이블 형태의 로컬 데이터 파일을 빠르고 안전하게 살펴볼 수 있는 읽기 전용 데스크톱
@@ -500,7 +506,9 @@ column filter로 row 집합을 정한 뒤 multi-sort로 순서를
 DataFusion, DuckDB/direct spike 후 선택하고 신규 runtime dependency는 사용자 승인 뒤 추가한다.
 
 temporary data는 Tauri가 resolve한 app-local-data 아래 process/document/query별 경로를 사용한다.
-기본 process hard cap은 10 GiB이며 기본 5 GiB의 디스크 안전 여유 공간을 별도 보존한다. volume
+기본 process hard cap은 10 GiB이며 기본 5 GiB의 디스크 안전 여유 공간을 별도 보존한다.
+Storage 입력은 64 MiB~10 GiB 범위의 소수 GiB를 허용하고 가장 가까운 정수 byte로 저장한다.
+범위 검사는 반올림 전에 적용하며 재열기·재적용으로 저장된 byte 값이 변하지 않게 표시한다. volume
 크기의 비율을 query가 필요로 하는 byte처럼 표시하지 않는다. UI와 wire DTO는 가능한 예상 임시
 데이터, 안전 여유와 hard cap을 서로 구분한다. 완료, 실패,
 취소, 교체와 tab close 시 정리하고 owner lock을 사용해 다른 active process의 파일을 삭제하지 않는다.
@@ -508,7 +516,16 @@ crash orphan은 다음 startup janitor가 lock 획득 가능한 directory만 정
 
 query와 CSV preparation이 받는 DuckDB temporary allowance는 고정 상한을 그대로 사용하지 않고
 현재 query temp, persistent CSV cache, 이미 예약된 동시 query와 `free space - 5 GiB reserve`를
-반영한 남은 공통 예산으로 제한한다. query 시작 시 또는 실행 중 100ms monitor가 공통 예산 압력을
+반영한 남은 공통 예산으로 제한한다. 대기 중인 cold CSV preparation은 변환 permit을 얻기 전에는
+디스크 예산을 예약하지 않는다. 원본 고정을 위한 hardlink는 해당 lease의 정확한 경로와 열린 원본
+handle의 OS file identity가 일치할 때만 추가 저장량에서 제외한다. 동명 복사본, 다른 identity로
+교체된 파일과 미등록 hardlink는 일반 임시 파일로 계산하며 실제 출력·cache와 디스크 여유 공간
+reserve는 계속 계산한다. 실행 중 출력이 초기 예약량을 넘으면 실제 사용량과 예약량 중 큰 값을
+과금해 다른 작업에 같은 공간을 중복 예약하지 않는다. CSV cache 재열기는 현재 남은 공간으로
+작은 catalog metadata를 먼저 복원하며, cold 변환용 대량 예약을 확보하려고 다른 cache를 미리
+삭제하지 않는다. 예약 가능한 공간이 없거나 복원 metadata의 실제 사용량이 한도를 넘을 때만
+필요한 비활성 cache를 회수한다. 외부 CSV 변환기도 실행 중 공통 예산을
+검사하며 공간 부족 시 자식 프로세스를 중단·회수하고 partial을 정리한다. query 시작 시 또는 실행 중 100ms monitor가 공통 예산 압력을
 확인하면 제품이 소유하고 manifest와 artifact 크기를 검증한 비활성 CSV cache만 oldest-first로
 필요한 만큼 회수한다. 같은 process와 다른 process가 lease 중인 cache, 검증되지 않은 cache-like
 directory와 원본 데이터 파일은 회수 대상이 아니다. 회수 후에도 안전 예산을 확보할 수 없거나
@@ -606,3 +623,9 @@ Phase 11 OEF H5 v3 계약 밖의 일반 HDF5는 별도 데이터 소스로 다�
 `multipleDatasets` capability와 선택 UI, axis dataset paging, OES query provider는 각각 별도
 요구사항과 fixture가 승인된 경우에만 추가한다. Excel도 같은 방식으로 sheet 선택 계약을 먼저
 정의한다.
+
+## Phase 20 Parquet 문자열 호환성 보완
+
+Parquet에서 Arrow Utf8View로 복원되는 문자열도 Utf8와 같은 표시·전체 값·복사 의미를 제공한다.
+Dictionary의 value와 nested preview/full canonical 값에도 적용하며 empty/null의 boundary occupancy를 보존한다.
+캐시 prepared.parquet를 직접 열면 내부 물리 컬럼명이 표시되며 원래 CSV 헤더 복원 기능을 뜻하지 않는다.

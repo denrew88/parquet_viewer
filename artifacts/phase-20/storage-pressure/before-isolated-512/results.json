@@ -1,0 +1,955 @@
+{
+  "status": "FAIL",
+  "label": "before-isolated",
+  "limitBytes": 536870912,
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\csv-native-parquet\\bin\\native-validation.exe",
+  "paths": [
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\before-isolated-512\\fixtures\\document-0-1793721388172.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\before-isolated-512\\fixtures\\document-1-1793721388173.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\before-isolated-512\\fixtures\\document-2-1793721388195.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\before-isolated-512\\fixtures\\document-3-1793721388196.csv"
+  ],
+  "runs": [
+    {
+      "warm": false,
+      "targets": [
+        {
+          "documentId": "document-1",
+          "sessionId": "session-1"
+        },
+        {
+          "documentId": "document-2",
+          "sessionId": "session-2"
+        },
+        {
+          "documentId": "document-3",
+          "sessionId": "session-3"
+        },
+        {
+          "documentId": "document-4",
+          "sessionId": "session-4"
+        }
+      ],
+      "initial": [
+        {
+          "documentId": "document-1",
+          "sessionId": "session-1",
+          "state": "preparing",
+          "rowsScanned": 2134016,
+          "totalRows": null,
+          "elapsedMs": 2370,
+          "sourceReadBytes": 356578278,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": null
+        },
+        {
+          "documentId": "document-2",
+          "sessionId": "session-2",
+          "state": "preparing",
+          "rowsScanned": 0,
+          "totalRows": null,
+          "elapsedMs": 2368,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": null
+        },
+        {
+          "documentId": "document-3",
+          "sessionId": "session-3",
+          "state": "failed",
+          "rowsScanned": 0,
+          "totalRows": null,
+          "elapsedMs": 6,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": {
+            "code": "QueryTempLimitExceeded",
+            "message": "Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry."
+          }
+        },
+        {
+          "documentId": "document-4",
+          "sessionId": "session-4",
+          "state": "failed",
+          "rowsScanned": 0,
+          "totalRows": null,
+          "elapsedMs": 6,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": {
+            "code": "QueryTempLimitExceeded",
+            "message": "Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry."
+          }
+        }
+      ],
+      "terminal": [
+        {
+          "documentId": "document-1",
+          "sessionId": "session-1",
+          "state": "failed",
+          "rowsScanned": 5850000,
+          "totalRows": null,
+          "elapsedMs": 10889,
+          "sourceReadBytes": 979274616,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": {
+            "code": "QueryTempLimitExceeded",
+            "message": "Query temporary storage is unavailable (query 979446771 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272655872 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry."
+          }
+        },
+        {
+          "documentId": "document-2",
+          "sessionId": "session-2",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 11642,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753187,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-3",
+          "sessionId": "session-3",
+          "state": "failed",
+          "rowsScanned": 0,
+          "totalRows": null,
+          "elapsedMs": 6,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": {
+            "code": "QueryTempLimitExceeded",
+            "message": "Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry."
+          }
+        },
+        {
+          "documentId": "document-4",
+          "sessionId": "session-4",
+          "state": "failed",
+          "rowsScanned": 0,
+          "totalRows": null,
+          "elapsedMs": 6,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 0,
+          "navigationFrontierRow": 0,
+          "error": {
+            "code": "QueryTempLimitExceeded",
+            "message": "Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry."
+          }
+        }
+      ],
+      "samples": [
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 979446771,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "preparing",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 385035494,
+          "activeQueries": 2
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 12298,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 68103112,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 68103112,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 68103112,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "preparing",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 8799815,
+          "activeQueries": 1
+        },
+        {
+          "states": [
+            "failed",
+            "ready",
+            "failed",
+            "failed"
+          ],
+          "processBytes": 8799815,
+          "activeQueries": 1
+        }
+      ],
+      "usage": {
+        "processBytes": 8799815,
+        "queryTempBytes": 303532,
+        "csvCacheBytes": 8496283,
+        "csvCacheEntries": 1,
+        "csvCachePath": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1",
+        "limitBytes": 536870912,
+        "availableBytes": 793263947776,
+        "activeQueries": 1,
+        "estimatedTempBytes": null,
+        "safetyReserveBytes": 5368709120,
+        "hardCapBytes": 10737418240,
+        "freeBytes": 793263947776
+      }
+    }
+  ],
+  "cacheCleanup": {
+    "deletedBytes": 407015601,
+    "deletedEntries": 3,
+    "skippedActiveBytes": 0,
+    "skippedActiveEntries": 0,
+    "cleanupFailures": [],
+    "remainingCacheBytes": 0,
+    "remainingCacheEntries": 0
+  },
+  "error": "AssertionError [ERR_ASSERTION]: [{\"documentId\":\"document-1\",\"sessionId\":\"session-1\",\"state\":\"failed\",\"rowsScanned\":5850000,\"totalRows\":null,\"elapsedMs\":10889,\"sourceReadBytes\":979274616,\"totalBytes\":979427914,\"cacheOutputBytes\":0,\"navigationFrontierRow\":0,\"error\":{\"code\":\"QueryTempLimitExceeded\",\"message\":\"Query temporary storage is unavailable (query 979446771 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272655872 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry.\"}},{\"documentId\":\"document-2\",\"sessionId\":\"session-2\",\"state\":\"ready\",\"rowsScanned\":65537,\"totalRows\":65537,\"elapsedMs\":11642,\"sourceReadBytes\":136129824,\"totalBytes\":68064912,\"cacheOutputBytes\":8753187,\"navigationFrontierRow\":65537,\"error\":null},{\"documentId\":\"document-3\",\"sessionId\":\"session-3\",\"state\":\"failed\",\"rowsScanned\":0,\"totalRows\":null,\"elapsedMs\":6,\"sourceReadBytes\":0,\"totalBytes\":68064912,\"cacheOutputBytes\":0,\"navigationFrontierRow\":0,\"error\":{\"code\":\"QueryTempLimitExceeded\",\"message\":\"Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry.\"}},{\"documentId\":\"document-4\",\"sessionId\":\"session-4\",\"state\":\"failed\",\"rowsScanned\":0,\"totalRows\":null,\"elapsedMs\":6,\"sourceReadBytes\":0,\"totalBytes\":68064912,\"cacheOutputBytes\":0,\"navigationFrontierRow\":0,\"error\":{\"code\":\"QueryTempLimitExceeded\",\"message\":\"Query temporary storage is unavailable (query 12298 bytes, CSV cache 0 bytes, limit 536870912 bytes, free 793272971264 bytes, safety reserve 5368709120 bytes). Clear inactive CSV cache in Settings or free disk space, then retry.\"}}]\n    at run (file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/artifacts/storage-pressure/native_files.mjs:67:10)\n    at async file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/artifacts/storage-pressure/native_files.mjs:90:3",
+  "output": ""
+}

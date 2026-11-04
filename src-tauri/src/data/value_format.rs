@@ -11,9 +11,9 @@ use arrow_array::{
     DictionaryArray, DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float32Array, Float64Array,
     Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeListArray,
-    LargeStringArray, ListArray, MapArray, StringArray, StructArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt16Array,
-    UInt32Array, UInt64Array, UInt8Array,
+    LargeStringArray, ListArray, MapArray, StringArray, StringViewArray, StructArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_schema::{DataType, TimeUnit};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -243,6 +243,7 @@ pub(crate) fn value_at(array: &dyn Array, index: usize) -> Result<DataValue, Dat
         DataType::Float64 => display_value!(Float64Array, ValueKind::Float),
         DataType::Utf8 => display_value!(StringArray, ValueKind::String),
         DataType::LargeUtf8 => display_value!(LargeStringArray, ValueKind::String),
+        DataType::Utf8View => display_value!(StringViewArray, ValueKind::String),
         DataType::Dictionary(_, _) => {
             let (values, value_index) = resolve_dictionary_value(array, index)?;
             value_at(values, value_index)?
@@ -716,6 +717,10 @@ fn canonical_value_at(array: &dyn Array, index: usize, depth: usize) -> Result<S
             downcast::<StringArray>(array)?.value(index),
         ))
         .expect("strings serialize")),
+        DataType::Utf8View => Ok(serde_json::to_string(truncate_scalar(
+            downcast::<StringViewArray>(array)?.value(index),
+        ))
+        .expect("strings serialize")),
         DataType::LargeUtf8 => Ok(serde_json::to_string(truncate_scalar(
             downcast::<LargeStringArray>(array)?.value(index),
         ))
@@ -796,6 +801,10 @@ fn canonical_full(array: &dyn Array, index: usize, depth: usize) -> Result<Strin
             serde_json::to_string(downcast::<StringArray>(array)?.value(index))
                 .expect("strings serialize"),
         ),
+        DataType::Utf8View => Ok(serde_json::to_string(
+            downcast::<StringViewArray>(array)?.value(index),
+        )
+        .expect("strings serialize")),
         DataType::LargeUtf8 => Ok(serde_json::to_string(
             downcast::<LargeStringArray>(array)?.value(index),
         )
@@ -842,6 +851,77 @@ mod tests {
     use arrow_array::types::{Int32Type, Int8Type};
     use arrow_array::ArrayRef;
     use std::sync::Arc;
+
+    #[test]
+    fn p20_utf8_view_scalar_display_and_full_value_match_utf8() {
+        let long = "긴 문자열🙂\t\n".repeat(300);
+        let values = vec![Some("short"), Some(long.as_str()), Some(""), None];
+        let utf8 = StringArray::from(values.clone());
+        let views = StringViewArray::from(values);
+        for index in 0..utf8.len() {
+            assert_eq!(
+                value_at(&views, index).unwrap(),
+                value_at(&utf8, index).unwrap()
+            );
+            assert_eq!(
+                full_value_at(&views, index).unwrap(),
+                full_value_at(&utf8, index).unwrap()
+            );
+        }
+        assert_eq!(value_at(&views, 0).unwrap().kind, ValueKind::String);
+    }
+
+    #[test]
+    fn p20_utf8_view_dictionary_preserves_values_empty_and_nulls() {
+        let dictionary = DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(vec![Some(0_i8), Some(1), Some(2), None]),
+            Arc::new(StringViewArray::from(vec![
+                Some("한글🙂 and a long value"),
+                Some(""),
+                None,
+            ])) as ArrayRef,
+        )
+        .unwrap();
+        let plain = StringArray::from(vec![Some("한글🙂 and a long value"), Some(""), None, None]);
+        for index in 0..plain.len() {
+            assert_eq!(
+                value_at(&dictionary, index).unwrap(),
+                value_at(&plain, index).unwrap()
+            );
+            assert_eq!(
+                full_value_at(&dictionary, index).unwrap(),
+                full_value_at(&plain, index).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn p20_utf8_view_nested_preview_and_full_value_match_utf8() {
+        let long = "한글🙂\"\n".repeat(600);
+        let values = vec![Some(long.as_str()), Some(""), None];
+        let plain = StructArray::from(vec![(
+            Arc::new(arrow_schema::Field::new("text", DataType::Utf8, true)),
+            Arc::new(StringArray::from(values.clone())) as ArrayRef,
+        )]);
+        let views = StructArray::from(vec![(
+            Arc::new(arrow_schema::Field::new("text", DataType::Utf8View, true)),
+            Arc::new(StringViewArray::from(values)) as ArrayRef,
+        )]);
+        for index in 0..views.len() {
+            assert_eq!(
+                value_at(&views, index).unwrap(),
+                value_at(&plain, index).unwrap()
+            );
+            assert_eq!(
+                full_value_at(&views, index).unwrap(),
+                full_value_at(&plain, index).unwrap()
+            );
+        }
+        assert!(
+            full_value_at(&views, 0).unwrap().display.unwrap().len()
+                > value_at(&views, 0).unwrap().display.unwrap().len()
+        );
+    }
 
     #[test]
     fn decimal_format_preserves_scale_and_sign() {

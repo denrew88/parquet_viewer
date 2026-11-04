@@ -1,0 +1,24 @@
+{
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "input": {
+    "x": 569.390625,
+    "y": 289.71875,
+    "width": 128,
+    "height": 32
+  },
+  "dialog": {
+    "x": 40,
+    "y": 20,
+    "width": 720,
+    "height": 560
+  },
+  "apply": {
+    "x": 661,
+    "y": 536.5,
+    "width": 82,
+    "height": 32
+  }
+}

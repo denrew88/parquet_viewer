@@ -1,0 +1,137 @@
+{
+  "phase": 20,
+  "fixtureRoot": "fixtures/phase-20",
+  "versionFilesUpdated": [
+    "package.json",
+    "src-tauri/tauri.conf.json",
+    "artifacts/experiments/csv-native-parquet/size-variant/tauri.conf.json",
+    "package-lock.json",
+    "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock",
+    "artifacts/experiments/csv-native-parquet/size-variant/Cargo.toml",
+    "artifacts/experiments/csv-native-parquet/size-variant/Cargo.lock"
+  ],
+  "files": [
+    {
+      "previous": "artifacts/phase-20/native/fixtures/timestamp.csv",
+      "path": "fixtures/phase-20/timestamp.csv",
+      "bytes": 1424,
+      "sha256": "874899d3b98e95979b0bcbc4ca4cf42228e16223d6f5eb0929cc2412d330328e",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/native/fixtures/timestamp.README.md",
+      "path": "fixtures/phase-20/timestamp.README.md",
+      "bytes": 981,
+      "sha256": "c972f96ef57c2481c36fc2e7d758379aa726dd47a62654b30e83b5a069a9307c",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/storage-decimal/small.csv",
+      "path": "fixtures/phase-20/storage-decimal.csv",
+      "bytes": 29,
+      "sha256": "52ad3a8efe4646a2f0a954980b019514f332ede75082bed4a34dc35782d339b4",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/experiments/csv-native-parquet/validation/performance/final/long-utf8/source.csv",
+      "path": "fixtures/phase-20/performance/long-utf8/source.csv",
+      "bytes": 42174823,
+      "sha256": "18e111795ecf59818dbeb7846bd35849c61c8b487ba2f894d8d2cd060b07eaed",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/native/snapshot/validation/performance/final/long-utf8/profile.json",
+      "path": "fixtures/phase-20/performance/long-utf8/profile.json",
+      "bytes": 5045,
+      "sha256": "41a6dc677326034a45ade28fce7953e725294bc10082947e58de2c31602bfb2c",
+      "action": "copy-required-input-from-immutable-snapshot"
+    },
+    {
+      "previous": "artifacts/experiments/csv-native-parquet/validation/performance/final/low-cardinality/source.csv",
+      "path": "fixtures/phase-20/performance/low-cardinality/source.csv",
+      "bytes": 64031376,
+      "sha256": "93dceb8421d878156607f1a39196294bd9ac156b2d6947424277cf02d8cfc489",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/native/snapshot/validation/performance/final/low-cardinality/profile.json",
+      "path": "fixtures/phase-20/performance/low-cardinality/profile.json",
+      "bytes": 10652,
+      "sha256": "43916efda3c7d78ac314a62868a1f3c515c19a307ba7bdd64aa9a4eda2d930c4",
+      "action": "copy-required-input-from-immutable-snapshot"
+    },
+    {
+      "previous": "artifacts/experiments/csv-native-parquet/validation/performance/final/numeric/source.csv",
+      "path": "fixtures/phase-20/performance/numeric/source.csv",
+      "bytes": 39126693,
+      "sha256": "ac61b5a1709ceaaf1e12581aca97d24c0681fc3771356e6c86dec9b26ae42fa1",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/native/snapshot/validation/performance/final/numeric/profile.json",
+      "path": "fixtures/phase-20/performance/numeric/profile.json",
+      "bytes": 8582,
+      "sha256": "99a70b0e100d56d0ddc8314a2c4047ea9194469971a5ef0539db22102b2cfc6c",
+      "action": "copy-required-input-from-immutable-snapshot"
+    },
+    {
+      "previous": "artifacts/experiments/csv-native-parquet/validation/performance/final/wide-65/source.csv",
+      "path": "fixtures/phase-20/performance/wide-65/source.csv",
+      "bytes": 68064912,
+      "sha256": "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/phase-20/native/snapshot/validation/performance/final/wide-65/profile.json",
+      "path": "fixtures/phase-20/performance/wide-65/profile.json",
+      "bytes": 45733,
+      "sha256": "50cb7760a0b0ad78ada1af8e260066455a43e32a98aac6cab251eccde6cf9ecf",
+      "action": "copy-required-input-from-immutable-snapshot"
+    },
+    {
+      "previous": "artifacts/experiments/csv-engine-compare/fixtures/high-5850000x15.csv",
+      "path": "fixtures/phase-20/performance/main-high/high-5850000x15.csv",
+      "bytes": 979427914,
+      "sha256": "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+      "action": "move"
+    },
+    {
+      "previous": "artifacts/experiments/csv-engine-compare/fixtures/main-profile.json",
+      "path": "fixtures/phase-20/performance/main-high/profile.json",
+      "bytes": 10669,
+      "sha256": "6da0a1d268187b14468f31b8beb5f8684278781e107850143fcc42c0cac42d9a",
+      "action": "move"
+    },
+    {
+      "path": "fixtures/phase-20/utf8-view.parquet",
+      "bytes": 602,
+      "sha256": "2941265ed43c8eab163636d373fe6a70f2928773bff2615260bf909674d64da7",
+      "action": "generated-regression-fixture"
+    }
+  ],
+  "sharedFixturePolicy": "All Phase 20 performance inputs, including the 5.85M main-high CSV and its profile, are owned by fixtures/phase-20. Earlier Phase fixtures remain in fixtures/phase-N; experiment mirrors are not canonical inputs.",
+  "mainHighReferenceUpdates": [
+    "artifacts/phase-20/native/build.ps1",
+    "artifacts/phase-20/storage-pressure/native_files.mjs",
+    "artifacts/experiments/csv-native-parquet/run_compare.py",
+    "artifacts/experiments/csv-native-parquet/validation/data_matrix.py",
+    "artifacts/experiments/csv-native-parquet/validation/performance.py",
+    "artifacts/experiments/csv-native-parquet/validation/worker_safety.py",
+    "artifacts/experiments/csv-native-parquet/validation/native/cancel_large.mjs",
+    "artifacts/experiments/csv-native-parquet/validation/native/large_auto.mjs",
+    "artifacts/experiments/csv-native-parquet/validation/quality/quality_matrix.py",
+    "artifacts/phase-20/native/snapshot/build_size.ps1",
+    "artifacts/phase-20/native/snapshot/run_compare.py",
+    "artifacts/phase-20/native/snapshot/validation/data_matrix.py",
+    "artifacts/phase-20/native/snapshot/validation/performance.py",
+    "artifacts/phase-20/native/snapshot/validation/worker_safety.py",
+    "artifacts/phase-20/native/snapshot/validation/native/cancel_large.mjs",
+    "artifacts/phase-20/native/snapshot/validation/native/large_auto.mjs",
+    "artifacts/phase-20/native/snapshot/validation/quality/quality_matrix.py",
+    "artifacts/experiments/csv-engine-compare/smoke_failures.py",
+    "artifacts/experiments/csv-engine-compare/generate_fixtures.py",
+    "artifacts/experiments/csv-engine-compare/validate_fixture.py",
+    "artifacts/experiments/csv-engine-compare/capture_metadata.py"
+  ]
+}

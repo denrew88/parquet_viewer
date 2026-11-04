@@ -1,0 +1,365 @@
+{
+  "date": "2026-11-04",
+  "status": "FORMAL_USER_APPROVED",
+  "approval": "지금 한 거 다 정식 artifacts로 놓고",
+  "scope": [
+    "Native CSV prior formal archive references",
+    "Small Storage budget multi-CSV fix",
+    "Decimal GiB UI fix",
+    "Stable development runner and work policy"
+  ],
+  "latestExecutable": {
+    "path": "artifacts/csv-native-parquet/bin/data-viewer.exe",
+    "bytes": 58785792,
+    "sha256": "d34e48c7a0f04c69166fc7cb2b10e58b926792e0824059ae65319a65f7e62a03",
+    "localOnly": true
+  },
+  "evidencePolicy": "Earlier binary hashes remain historical; latest binary is the decimal Storage UI validation build. No source or evidence duplication.",
+  "futurePromotion": "Ask once before formal promotion or replacement; draft builds and temporary logs are not approval.",
+  "excluded": [
+    "Intermediate raw logs",
+    "Browser profiles",
+    "Generated large CSV/Parquet outputs",
+    "Full regression capture copies",
+    "Build/tool caches"
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 9855,
+      "sha256": "925cbc9a3cf9f7fc7d4d9fa0afbd40cf90f741946ae6010fe5afba585eb82704",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/README.md",
+      "bytes": 3679,
+      "sha256": "7f45310763e5d97547645b2d4c686949f53ad71240913798f1fd6176801b42d8",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/10-manifest.json",
+      "bytes": 139503,
+      "sha256": "41eb6b015336f2cf0913825b3ae6727ac75f8d8eeb5c88ed1b0403d85d008d0c",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/20-build.json",
+      "bytes": 400,
+      "sha256": "431c75c81e6b414f6607f47c7b1a1a6d83ba46f6488bce1e35ac11eac5a3712e",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/README.md",
+      "bytes": 6310,
+      "sha256": "6ecdf25878849ed79e7c135a8e912d102622c0ab43b11ac415ce26248deca0ab",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/bin/data-viewer.exe",
+      "bytes": 58785792,
+      "sha256": "d34e48c7a0f04c69166fc7cb2b10e58b926792e0824059ae65319a65f7e62a03",
+      "localOnly": true
+    },
+    {
+      "path": "artifacts/csv-native-parquet/build.ps1",
+      "bytes": 6012,
+      "sha256": "ccad208fe55cd4bc91cc311af11b3c9ba743e57a1f0ae1acd2d7afcc3467eb12",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/snapshot/Cargo.lock",
+      "bytes": 30293,
+      "sha256": "08912ee8ca8e9430db472a7373008319763a0f2a9d430438784023b24f13349f",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/snapshot/Cargo.toml",
+      "bytes": 407,
+      "sha256": "21103f9f8a669f874e8c307421c5d33837c299df427ddc61f88b65fa33ab299b",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/csv-native-parquet/snapshot/src/main.rs",
+      "bytes": 24947,
+      "sha256": "f78d359e3a025bfeef2d68110f037dd2a24aafe79dfc4ac79c450b7005fea07c",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/development-workflow/README.md",
+      "bytes": 1329,
+      "sha256": "4342e19a3166c1d1b0922490497d34bdff619b12ad26d774334024d72be5435d",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/90-results.md",
+      "bytes": 3725,
+      "sha256": "6d15e98c5525c0fe1a500f4d470fd42f06688c77fb11ca0f9fc36bd8440b1d9d",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/95-review.md",
+      "bytes": 7324,
+      "sha256": "91c386e283bdfecfed0ca375568451a12c702a3d9ae09658579969a338c16926",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/README.md",
+      "bytes": 808,
+      "sha256": "c960d5a5e4529dff94be841f68f24d8ab8f1dbcd2fdb3f55d85b7c6d786319df",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/native-result.json",
+      "bytes": 3845,
+      "sha256": "8b1726cada6dad52010cac3f9e3cda7b2b18a6d1d74b4bad93db99cce8b0a769",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/native.mjs",
+      "bytes": 4024,
+      "sha256": "39ed3505c18b318b78e43b035ec5dd58021be8955ffe349e07b19b4fdb0e17dd",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/playwright.config.ts",
+      "bytes": 517,
+      "sha256": "2e8c90ff33622b325c618e49329f0a7de623ede7141d4011336b665cd69834f8",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/geometry-1024.json",
+      "bytes": 318,
+      "sha256": "03a71e103397badc00fbd1aaa51c42521e697604ec63095849477db333a4b295",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/geometry-1440.json",
+      "bytes": 318,
+      "sha256": "beade859fd87ebbb549d92b9dd0a276b34d23b0e59b63cc355f3d81cf6fa3655",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/geometry-800.json",
+      "bytes": 316,
+      "sha256": "ce2a017467cabc774e5b956a67549728ca1023cef848a615496fa00eb41dcc8d",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/native-0.3.png",
+      "bytes": 49013,
+      "sha256": "c6cb6c24601bbd91a068bf0a72fbd8342d1111b6d4b340e15ad2bd54391202cc",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/storage-1024.png",
+      "bytes": 47433,
+      "sha256": "a42792dbe0fa310ba0636bf4fd2b59f934805b39954e68416ad284003ca0def6",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/storage-1440.png",
+      "bytes": 50720,
+      "sha256": "c6687cf719ef39ba0a1472f0a6240dca9032eddb0eccbb89377d844321ef617c",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-decimal/ui/storage-800.png",
+      "bytes": 34715,
+      "sha256": "b28322d59f573b8affe259ae354f75218a8706c7f286fb52961c2c659143a914",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/00-scope.md",
+      "bytes": 1886,
+      "sha256": "98aebf175b112b7eb8afdf87305a21a68a3fc95f9c4ebf7f591b06dd9905198e",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/10-test-plan.md",
+      "bytes": 10402,
+      "sha256": "2a4fa246a0b11fd5314b2f8d909b0e587ea62793a3cce75775c3cc6b6550807a",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/50-integration.md",
+      "bytes": 3708,
+      "sha256": "2b83b46704bc1a11a1aba3310702c40fde97e58cc41481d79e65ab2ce639d5a1",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/80-evidence.json",
+      "bytes": 10479,
+      "sha256": "8383c117da8e52c9f69798a388e3be66f09fea515d0adaa9783dfe6880113220",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/90-results.md",
+      "bytes": 6622,
+      "sha256": "8945d9fc8ef8a649a5a27f716f951a84e3a13c9c6496ecabb1f629e937c2bc8b",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/95-review.md",
+      "bytes": 8199,
+      "sha256": "b780be7effeb0eb3163b68f65523cb8e317d84ca605145910985c3d3b53068d0",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/README.md",
+      "bytes": 1042,
+      "sha256": "6ecb8560add37e34adb2e02dc480603c74998b4db5155f1d581b88c7432f2c18",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/before-isolated-512/results.json",
+      "bytes": 25288,
+      "sha256": "7517f816e755ac74b20e961df630b65fdf14d82fbdf2bafcd4d6ccc70cf46561",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/before-warm-fix-512.json",
+      "bytes": 50006,
+      "sha256": "a702566f42e05cd02d7855291aae0942e03e9b6dd6b2e3a21b7c498a49a68b4c",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/blocked-launch-512.json",
+      "bytes": 2138,
+      "sha256": "850250542335334a14a9b0de7d5cee7c61cedbc0bd50d364ee80f02f26e6f834",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/finalize.py",
+      "bytes": 11639,
+      "sha256": "2ff878b161be4b5c7cec7e45ecc9de432dd22725672cd02770813c7bc033fdca",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/fixed-1024/results.json",
+      "bytes": 38951,
+      "sha256": "43f69a8c882bc80fc8f2f6866fe93d08b531b9a8d737688cd52da3bf367fc404",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/fixed-512/results.json",
+      "bytes": 42372,
+      "sha256": "c2ddcf9b5a1892546ebba873b88d3e6b46b60d50c66056c0fdbd973163dccccc",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/native_files.mjs",
+      "bytes": 10482,
+      "sha256": "f7a3df9a6bf276cc2f2fc8e37d609c9a9d21e0378c54a4bb7176733c3d669277",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/run_checks.ps1",
+      "bytes": 1945,
+      "sha256": "cbfa7ddc1eb46df507e713890ed5f265e8392372697a61e7340cfdeaead9757f",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/sync_runtime.cjs",
+      "bytes": 1545,
+      "sha256": "a54a17812dc83349c8b3766585c40fed077000b93868e72522b41934ee0d28ce",
+      "localOnly": false
+    },
+    {
+      "path": "artifacts/storage-pressure/worker-adapter.patch",
+      "bytes": 8150,
+      "sha256": "c05363cb86f1632ddee2d10cccf44158cfe9c81a463f18e91b96552d70760367",
+      "localOnly": false
+    },
+    {
+      "path": "docs/AI_WORK_POLICY.md",
+      "bytes": 9499,
+      "sha256": "e35a298eee8e44420e0ec2d2ed0985806692acb3bd5bacaa24093a0f541e67ce",
+      "localOnly": false
+    },
+    {
+      "path": "docs/DEVELOPMENT_PLAN.md",
+      "bytes": 58746,
+      "sha256": "d5d62b5c068df74490cfffb16bb76291825c4962374db29a831a354fec56b00b",
+      "localOnly": false
+    },
+    {
+      "path": "docs/PROJECT_SPEC.md",
+      "bytes": 49912,
+      "sha256": "f132e0d5165ee1844fa2122e4639fb25db22694d89d4da61c5648515de9b3a98",
+      "localOnly": false
+    },
+    {
+      "path": "e2e/phase16.spec.ts",
+      "bytes": 26538,
+      "sha256": "620298559482dbdb20eaf7215aa103d9a8b81fe9cfa7f9d281ebda0b129786de",
+      "localOnly": false
+    },
+    {
+      "path": "e2e/workspace-ui.spec.ts",
+      "bytes": 16978,
+      "sha256": "b52e80e78ee172b412e869437ac1e9c5c96083fa92806e91f264c89e2e311b63",
+      "localOnly": false
+    },
+    {
+      "path": "scripts/dev-check.mjs",
+      "bytes": 4886,
+      "sha256": "e7415d135868c48f0308e8265a5c33ad3550abd1e93b6800725d2c6019a503fe",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "bytes": 188556,
+      "sha256": "114c2f72473d6667e975a8be0f7fc0effbadc2db0bc12d03221e7c6d02dc1f5e",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "bytes": 1981,
+      "sha256": "5d5f8288d3cd22fc6606aedfda2c63207012d509cf332f4a252c529667859dfd",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/src/data/csv_polars.rs",
+      "bytes": 52799,
+      "sha256": "b055293a71afbc4763a1d480a4535afb6311dfc7b5c9ba1e6544a77be8b4c6c0",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/src/data/csv_source.rs",
+      "bytes": 190483,
+      "sha256": "de20d4256b00adca2a1f261c7cd1f1b7e20aaf2cb85dd3eb035b939a1f2e32db",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/src/query/engine.rs",
+      "bytes": 372473,
+      "sha256": "dfde7e6dda34345339e23e3983854f0c7389f01e0f74ed8f586a1983f3e8b186",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/src/storage/csv_cache.rs",
+      "bytes": 100694,
+      "sha256": "2c6be60e4a870a8513921b039694d1b7bef73d427706ca297098ca719dca7d18",
+      "localOnly": false
+    },
+    {
+      "path": "src-tauri/src/storage/temp.rs",
+      "bytes": 44801,
+      "sha256": "be16174704d2b5288950feeae766fb6f4bd6cebde96773f54434dce7516fbd2f",
+      "localOnly": false
+    },
+    {
+      "path": "src/settings/AppSettingsDialog.test.tsx",
+      "bytes": 13045,
+      "sha256": "596650974dfc8be7bf5363ed626cc45b868490fed0ebd7dc1c8a218918229d95",
+      "localOnly": false
+    },
+    {
+      "path": "src/settings/AppSettingsDialog.tsx",
+      "bytes": 34857,
+      "sha256": "1eec78a2f56a7abca7f27abd954aa2b8f0e194a7ff0ead42851567f6c2173a2d",
+      "localOnly": false
+    }
+  ],
+  "duplicateCleanup": "2026-11-04-duplicate-cleanup.json; user-authorized removal of identical originals, documentation hashes updated"
+}

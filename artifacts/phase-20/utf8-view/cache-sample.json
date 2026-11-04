@@ -1,0 +1,11 @@
+{
+  "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\01aa4930b2cc22d6\\prepared.parquet",
+  "column": "__dv_base_raw_0",
+  "values": [
+    "9223372036854775808",
+    "9223372036854775808",
+    "9223372036854775808",
+    "NULL",
+    "9223372036854775807"
+  ]
+}

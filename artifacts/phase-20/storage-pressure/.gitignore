@@ -1,0 +1,5 @@
+*/fixtures/
+*/webview/
+*.log
+/before-512/
+/before-clean-512/

@@ -1,0 +1,85 @@
+{
+  "status": "FORMAL_PROMOTED",
+  "files": [
+    {
+      "path": "src-tauri/target/release/data-viewer.exe",
+      "bytes": 58787840,
+      "sha256": "10275191912bf83dab8e4800e74561d1a38da698d2246064f06be853b2839e3c"
+    },
+    {
+      "path": "fixtures/phase-20/utf8-view.parquet",
+      "bytes": 602,
+      "sha256": "2941265ed43c8eab163636d373fe6a70f2928773bff2615260bf909674d64da7"
+    },
+    {
+      "path": "src-tauri/src/data/value_format.rs",
+      "bytes": 41508,
+      "sha256": "b519f11ef0e49ecacce588e5890d28f577f799ee1b8f6de0775fbd7ce66f8095"
+    },
+    {
+      "path": "src-tauri/src/data/parquet_source.rs",
+      "bytes": 81398,
+      "sha256": "7f26b30abde1f98efdc5124b3b6b9298c6a7e6b3dd8320114d8017a801cef54e"
+    },
+    {
+      "path": "artifacts/experiments/csv-native-parquet/size-variant/src/data/value_format.rs",
+      "bytes": 41508,
+      "sha256": "b519f11ef0e49ecacce588e5890d28f577f799ee1b8f6de0775fbd7ce66f8095"
+    },
+    {
+      "path": "artifacts/experiments/csv-native-parquet/size-variant/src/data/parquet_source.rs",
+      "bytes": 81398,
+      "sha256": "7f26b30abde1f98efdc5124b3b6b9298c6a7e6b3dd8320114d8017a801cef54e"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/00-scope.md",
+      "bytes": 1694,
+      "sha256": "f5ef151d7c02a24bc99565db1aec7c0ea8ea04953d8a6d7c9582f86a9fa2d3b0"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/20-build.json",
+      "bytes": 1036,
+      "sha256": "21f5bd4bbeceec03b28b1507a2a9a3ade90a5bd5734fb8c0052a86a18916a977"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/90-results.md",
+      "bytes": 2378,
+      "sha256": "24569a59c62db392a697df31434b201a2e1639569de8d1bc678686745038db8c"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/cache-sample.json",
+      "bytes": 333,
+      "sha256": "e02143fee6b0e0550959fc627725674fdfee35a4036105800dda84ed92e8088b"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/cargo-build.log",
+      "bytes": 1424,
+      "sha256": "8e07a5cf47fd3db862ec75644d7874358bd278a449b274f298d23b538e766398"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/clippy.log",
+      "bytes": 1434,
+      "sha256": "febd73b79d36244d76f867e17a8b194a87c1f551f08e3cf5430b4c9ac124985f"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/native-result.json",
+      "bytes": 1370,
+      "sha256": "89b05f292e6c770eadd44d4fd3b43015d89b9a473775c6f45e422758b2178647"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/rust-full.log",
+      "bytes": 68656,
+      "sha256": "42070d51450611fd460063d3e11eef536eb19e2a680223679a0b1797cea0e7ca"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/targeted.log",
+      "bytes": 2880,
+      "sha256": "300394ca19a158516944a6a65e722997c65b745e0ebfd079be08c366fb827e65"
+    },
+    {
+      "path": "artifacts/phase-20/utf8-view/windows-version.json",
+      "bytes": 167,
+      "sha256": "98ba3f11e5e26479dc8996f973d47758813fa65a28c2db248d8a7937d3e161ba"
+    }
+  ]
+}

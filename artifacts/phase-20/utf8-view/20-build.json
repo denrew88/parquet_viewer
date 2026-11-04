@@ -1,0 +1,30 @@
+{
+  "phase": 20,
+  "version": "0.20.0",
+  "status": "FORMAL_PROMOTED",
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 58787840,
+  "sha256": "10275191912bf83dab8e4800e74561d1a38da698d2246064f06be853b2839e3c",
+  "rebuilds": 1,
+  "rust": {
+    "passed": 319,
+    "failed": 0,
+    "ignored": 16
+  },
+  "targetedTests": 5,
+  "format": "PASS",
+  "allTargetsClippy": "PASS",
+  "native": "PASS",
+  "formalExecutableUnchanged": false,
+  "sourceSha256": {
+    "data/value_format.rs": "b519f11ef0e49ecacce588e5890d28f577f799ee1b8f6de0775fbd7ce66f8095",
+    "data/parquet_source.rs": "7f26b30abde1f98efdc5124b3b6b9298c6a7e6b3dd8320114d8017a801cef54e"
+  },
+  "fixture": {
+    "path": "fixtures/phase-20/utf8-view.parquet",
+    "bytes": 602,
+    "sha256": "2941265ed43c8eab163636d373fe6a70f2928773bff2615260bf909674d64da7"
+  },
+  "testedPath": "src-tauri/target/release/candidates/phase-20-utf8-view/data-viewer.exe",
+  "promotionApproval": "지금은 이미 정식 artifacts잖니 그냥 교체해"
+}

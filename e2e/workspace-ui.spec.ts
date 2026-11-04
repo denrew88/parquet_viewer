@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openMockFile } from "./helpers";
+import fs from "node:fs/promises";
 
 type CsvQueryProbe = { executeQuery: number; readQueryPage: number };
 
@@ -288,7 +289,8 @@ test("validates application settings and storage controls", async ({ page }) => 
   await limit.fill("0.01");
   await expect(dialog.getByRole("alert")).toContainText("64 MiB");
   await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
-  await limit.fill("0.125");
+  await limit.fill("0.3");
+  expect(await limit.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
   await dialog.getByRole("button", { name: "Clear inactive query data" }).click();
   await expect(dialog.getByText(/Inactive query data cleared/)).toBeVisible();
   await dialog.getByRole("button", { name: "Clear inactive CSV cache" }).click();
@@ -303,6 +305,35 @@ test("validates application settings and storage controls", async ({ page }) => 
   await expect(dialog).toHaveCount(0);
 
   await page.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    dialog.getByRole("spinbutton", { name: "Query temporary storage limit" }),
+  ).toHaveValue("0.3");
+  await dialog
+    .getByRole("spinbutton", { name: "Query temporary storage limit" })
+    .scrollIntoViewIfNeeded();
+  const limitBounds = await dialog
+    .getByRole("spinbutton", { name: "Query temporary storage limit" })
+    .boundingBox();
+  const viewport = page.viewportSize();
+  expect(limitBounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(limitBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(limitBounds!.x + limitBounds!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(limitBounds!.y + limitBounds!.height).toBeLessThanOrEqual(viewport!.height);
+  await dialog.screenshot({ path: `artifacts/storage-decimal/ui/storage-${viewport!.width}.png` });
+  await fs.writeFile(
+    `artifacts/storage-decimal/ui/geometry-${viewport!.width}.json`,
+    JSON.stringify(
+      {
+        viewport,
+        input: limitBounds,
+        dialog: await dialog.boundingBox(),
+        apply: await dialog.getByRole("button", { name: "Apply" }).boundingBox(),
+      },
+      null,
+      2,
+    ),
+  );
   await expect(
     page.getByRole("dialog", { name: "Application settings" }).getByRole("button", {
       name: "All Text",

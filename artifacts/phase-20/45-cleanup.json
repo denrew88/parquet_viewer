@@ -1,0 +1,64 @@
+{
+  "phase": 20,
+  "authorization": "phase-20에 필요없는 파일들 정리좀 해라",
+  "policy": "Only Phase 20 generated/intermediate/duplicate files; current manifest files protected. No build or product source change.",
+  "removedFiles": 1445,
+  "removedLogicalBytes": 11698005056,
+  "spaceNote": "Logical size includes hardlinks; physical disk recovery is not equal to this total.",
+  "categories": {
+    "Duplicate full E2E log": {
+      "files": 1,
+      "logicalBytes": 24214
+    },
+    "Intermediate backend run log": {
+      "files": 9,
+      "logicalBytes": 175056
+    },
+    "Python bytecode cache": {
+      "files": 1,
+      "logicalBytes": 12993
+    },
+    "Generated per-run inputs or WebView profile": {
+      "files": 858,
+      "logicalBytes": 11672488124
+    },
+    "Generated report, repeated historical captures or WebView profile": {
+      "files": 175,
+      "logicalBytes": 13051190
+    },
+    "Obsolete one-time promotion/report generator": {
+      "files": 1,
+      "logicalBytes": 2491
+    },
+    "Per-case or intermediate JSON; final aggregate evidence retained": {
+      "files": 313,
+      "logicalBytes": 10285091
+    },
+    "Intermediate native experiment log": {
+      "files": 24,
+      "logicalBytes": 298784
+    },
+    "Archived full-app source duplicate; converter, worker and configuration retained": {
+      "files": 58,
+      "logicalBytes": 1571530
+    },
+    "Superseded failed-run capture": {
+      "files": 2,
+      "logicalBytes": 67548
+    },
+    "Superseded reports and one-time generator": {
+      "files": 3,
+      "logicalBytes": 28035
+    }
+  },
+  "removedDirectories": [
+    "storage-pressure/*/fixtures",
+    "storage-pressure/*/webview",
+    "storage-decimal/webview",
+    "storage-decimal/playwright-report",
+    "storage-decimal/regression",
+    "storage-pressure/__pycache__",
+    "native/historical-tools"
+  ],
+  "preserved": "Current executable, central fixtures, active harnesses, final aggregate evidence/reviews/logs/screenshots and key converter source/config"
+}

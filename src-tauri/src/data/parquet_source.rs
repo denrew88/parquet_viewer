@@ -4,7 +4,7 @@ use crate::domain::{
     FormatDescriptor, FormatDetailsContent, FormatDetailsSection, RowCountState, RowCountStatus,
     RowGroupSummary, SourceCapability,
 };
-use arrow_array::{Array, LargeStringArray, RecordBatch, StringArray};
+use arrow_array::{Array, LargeStringArray, RecordBatch, StringArray, StringViewArray};
 use arrow_schema::DataType;
 use parquet::arrow::{
     arrow_reader::{ParquetRecordBatchReaderBuilder, RowSelection},
@@ -1341,6 +1341,10 @@ fn arrow_value_occupied(array: &dyn Array, index: usize) -> Option<bool> {
             .as_any()
             .downcast_ref::<LargeStringArray>()
             .map(|values| !values.value(index).is_empty()),
+        DataType::Utf8View => array
+            .as_any()
+            .downcast_ref::<StringViewArray>()
+            .map(|values| !values.value(index).is_empty()),
         DataType::Dictionary(_, _) => {
             let (values, value_index) =
                 super::value_format::resolve_dictionary_value(array, index).ok()?;
@@ -1464,6 +1468,66 @@ mod tests {
     use arrow_array::{ArrayRef, BooleanArray, Float64Array, Int32Array, StringArray};
     use arrow_schema::{DataType, Field, Schema};
     use parquet::arrow::ArrowWriter;
+
+    #[test]
+    fn p20_utf8_view_parquet_roundtrip_reads_visible_and_full_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("string-view.parquet");
+        let text = "long string value 한글🙂";
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Utf8View,
+            true,
+        )]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(StringViewArray::from(vec![
+                Some("short"),
+                Some(text),
+                Some(""),
+                None,
+            ]))],
+        )
+        .unwrap();
+        let mut writer = ArrowWriter::try_new(File::create(&path).unwrap(), schema, None).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+        let source = ParquetSource::open(&path).unwrap();
+        assert_eq!(source.summary().columns[0].logical_type, "Utf8View");
+        let page = source.read_page(0, 200).unwrap();
+        assert_eq!(
+            page.rows[0][0],
+            crate::domain::DataValue::displayed(ValueKind::String, "short")
+        );
+        assert_eq!(page.rows[1][0].display.as_deref(), Some(text));
+        assert_eq!(page.rows[2][0].display.as_deref(), Some(""));
+        assert_eq!(page.rows[3][0].state, DataValueState::Null);
+        assert_eq!(
+            source
+                .read_cell_value_full(1, "value")
+                .unwrap()
+                .display
+                .as_deref(),
+            Some(text)
+        );
+    }
+
+    #[test]
+    fn p20_utf8_view_occupancy_distinguishes_empty_null_and_text() {
+        let values =
+            StringViewArray::from(vec![Some(""), None, Some("long string value"), Some(" ")]);
+        for (index, occupied) in [false, false, true, true].into_iter().enumerate() {
+            assert_eq!(arrow_value_occupied(&values, index), Some(occupied));
+        }
+        let dictionary = arrow_array::DictionaryArray::<Int8Type>::try_new(
+            arrow_array::Int8Array::from(vec![Some(2_i8), Some(0), Some(1), None]),
+            Arc::new(values) as ArrayRef,
+        )
+        .unwrap();
+        for (index, occupied) in [true, false, false, false].into_iter().enumerate() {
+            assert_eq!(arrow_value_occupied(&dictionary, index), Some(occupied));
+        }
+    }
     use parquet::file::properties::{EnabledStatistics, WriterProperties};
     use std::sync::Arc;
     use tempfile::TempDir;

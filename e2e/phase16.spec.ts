@@ -494,6 +494,19 @@ test.describe("Phase 16 CSV preparation interaction gate", () => {
     await expect
       .poll(async () => (await phase16Probe(page)).executeQuery)
       .toBeGreaterThan(directBefore.executeQuery);
+    // Phase 16 blocks new Data interactions, not every already-started task.
+    // Finish this direct-fallback query's first page before measuring the
+    // separate Retry/blocker interaction; otherwise its late page request is
+    // incorrectly attributed to clicking the inert Filter button.
+    await expect
+      .poll(async () => (await phase16Probe(page)).readQueryPage)
+      .toBeGreaterThan(directBefore.readQueryPage);
+    await expect(page.getByRole("grid", { name: "Data preview" })).toHaveAttribute(
+      "data-query-id",
+      /frontend-query-/,
+    );
+    await expect(page.getByLabel("Page navigation")).toHaveAttribute("aria-busy", "false");
+    await expect(page.getByRole("gridcell", { name: "Kim, Mina", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Copy selection" }).click();
     await expect
       .poll(async () => (await phase16Probe(page)).startCopy)
@@ -504,7 +517,11 @@ test.describe("Phase 16 CSV preparation interaction gate", () => {
     await expect(page.getByTestId("csv-preparation-blocker")).toBeVisible();
     const blocked = await phase16Probe(page);
     await clickCenter(page, page.getByRole("button", { name: "Filter name", exact: true }));
-    expect(dataCounterTotal(await phase16Probe(page))).toBe(dataCounterTotal(blocked));
+    const afterBlockedClick = await phase16Probe(page);
+    expect(
+      dataCounterTotal(afterBlockedClick),
+      JSON.stringify({ blocked, after: afterBlockedClick }),
+    ).toBe(dataCounterTotal(blocked));
 
     await setPreparationState(page, "ready");
     await expect(page.getByTestId("csv-preparation-blocker")).toHaveCount(0, { timeout: 2_500 });

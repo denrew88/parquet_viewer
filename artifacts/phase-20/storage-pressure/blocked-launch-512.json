@@ -1,0 +1,33 @@
+{
+  "status": "FAIL",
+  "label": "fixed",
+  "limitBytes": 536870912,
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\csv-native-parquet\\bin\\data-viewer.exe",
+  "paths": [
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\fixed-512\\fixtures\\document-0-1793753154729.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\fixed-512\\fixtures\\document-1-1793753154729.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\fixed-512\\fixtures\\document-2-1793753154729.csv",
+    "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\storage-pressure\\fixed-512\\fixtures\\document-3-1793753154730.csv"
+  ],
+  "runs": [],
+  "binarySha256": "cd19e906f43ced0451318760acec9ec5721088443de2e286108dd729ab13b3b6",
+  "sourceHashesBefore": [
+    "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5"
+  ],
+  "error": "Error: spawn UNKNOWN\n    at ChildProcess.spawn (node:internal/child_process:487:11)\n    at spawn (node:child_process:813:9)\n    at file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/artifacts/storage-pressure/native_files.mjs:136:9\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "launchDiagnosis": {
+    "code": 1,
+    "stdout": "OSError(22, '���ø����̼� ���� ��å���� �� ������ �����߽��ϴ�', None, 4551, None) winerror 4551\r\n",
+    "stderr": ""
+  },
+  "output": "",
+  "sourceHashesAfter": [
+    "082765c087900be8cbc95dda57bf7ef5f7e4e7e2c973b44c69a1570daf7635cd",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5",
+    "37ae91b27b85caa4cc363d0504b88f17f1a4b8a621258f2739fd1a1072a32cc5"
+  ]
+}

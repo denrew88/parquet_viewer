@@ -1,0 +1,157 @@
+{
+  "status": "PASS",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\csv-native-parquet\\bin\\data-viewer.exe",
+  "sha256": "d34e48c7a0f04c69166fc7cb2b10e58b926792e0824059ae65319a65f7e62a03",
+  "settings": {
+    "schemaVersion": 4,
+    "copyPreset": "excel",
+    "copyCustomOptions": {
+      "preset": "custom",
+      "delimiter": "|",
+      "includeHeaders": false,
+      "quoteMode": "minimal",
+      "quoteCharacter": "\"",
+      "escapeMode": "double",
+      "lineEnding": "crlf",
+      "nullRepresentation": "NULL",
+      "emptyStringRepresentation": "quoted-empty",
+      "booleanRepresentation": "lowercase",
+      "dateTimeRepresentation": {
+        "mode": "display"
+      }
+    },
+    "csvDefaultParsingMode": "auto",
+    "queryTempLimitBytes": 322122547,
+    "copyLimits": {
+      "maxCells": 1000000,
+      "maxBytes": 67108864
+    },
+    "displayFormats": {
+      "integer": {
+        "grouping": "none"
+      },
+      "floatingPoint": {
+        "notation": "general",
+        "precision": 17
+      },
+      "decimal": {
+        "scale": {
+          "mode": "preserve"
+        },
+        "grouping": "none"
+      },
+      "date": {
+        "format": "YYYY-MM-DD"
+      },
+      "timestamp": {
+        "dateFormat": "YYYY-MM-DD",
+        "dateTimeSeparator": "space",
+        "timeFormat": "hourMinuteSecond",
+        "fractionalDigits": {
+          "mode": "preserve"
+        },
+        "timezoneSuffix": "hidden"
+      },
+      "duration": {
+        "style": "daysClock",
+        "fractionalDigits": {
+          "mode": "preserve"
+        },
+        "unitSuffix": "hidden"
+      },
+      "boolean": {
+        "representation": "lowercase"
+      },
+      "binary": {
+        "encoding": "hex",
+        "previewBytes": 32
+      },
+      "string": {
+        "renderLineBreaks": true,
+        "wrapLongLines": true,
+        "maximumVisibleLines": 2
+      },
+      "nested": {
+        "format": "compact"
+      }
+    }
+  },
+  "usage": {
+    "processBytes": 432486389,
+    "queryTempBytes": 10,
+    "csvCacheBytes": 432486379,
+    "csvCacheEntries": 4,
+    "csvCachePath": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1",
+    "limitBytes": 322122547,
+    "availableBytes": 792339136512,
+    "activeQueries": 0,
+    "estimatedTempBytes": null,
+    "safetyReserveBytes": 5368709120,
+    "hardCapBytes": 10737418240,
+    "freeBytes": 792339136512
+  },
+  "preparation": {
+    "documentId": "document-1",
+    "sessionId": "session-1",
+    "state": "ready",
+    "rowsScanned": 3,
+    "totalRows": 3,
+    "elapsedMs": 242,
+    "sourceReadBytes": 29,
+    "totalBytes": 29,
+    "cacheOutputBytes": 277813,
+    "navigationFrontierRow": 3,
+    "error": null
+  },
+  "page": {
+    "documentId": "document-1",
+    "sessionId": "session-1",
+    "page": {
+      "offset": 0,
+      "limit": 3,
+      "totalRows": 3,
+      "hasMore": false,
+      "columns": [
+        "id"
+      ],
+      "rows": [
+        [
+          {
+            "kind": "int",
+            "display": "1",
+            "state": "valid",
+            "sourceDisplay": "1",
+            "unit": null,
+            "timezone": null,
+            "rawDisplay": "1",
+            "diagnostic": null
+          }
+        ],
+        [
+          {
+            "kind": "int",
+            "display": "2",
+            "state": "valid",
+            "sourceDisplay": "2",
+            "unit": null,
+            "timezone": null,
+            "rawDisplay": "2",
+            "diagnostic": null
+          }
+        ],
+        [
+          {
+            "kind": "int",
+            "display": "3",
+            "state": "valid",
+            "sourceDisplay": "3",
+            "unit": null,
+            "timezone": null,
+            "rawDisplay": "3",
+            "diagnostic": null
+          }
+        ]
+      ]
+    }
+  }
+}

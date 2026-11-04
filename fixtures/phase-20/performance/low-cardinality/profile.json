@@ -1,0 +1,444 @@
+{
+  "profile": {
+    "mode": "custom",
+    "generation": 1,
+    "columns": [
+      {
+        "sourceIndex": 0,
+        "sourceName": "field_0",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 1,
+        "sourceName": "field_1",
+        "targetType": "uint64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 2,
+        "sourceName": "field_2",
+        "targetType": "float64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 3,
+        "sourceName": "field_3",
+        "targetType": "boolean",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 4,
+        "sourceName": "field_4",
+        "targetType": "text",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 5,
+        "sourceName": "field_5",
+        "targetType": "decimal",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 6,
+        "sourceName": "field_6",
+        "targetType": "skip",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 7,
+        "sourceName": "field_7",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 8,
+        "sourceName": "field_8",
+        "targetType": "uint64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 9,
+        "sourceName": "field_9",
+        "targetType": "float64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 10,
+        "sourceName": "field_10",
+        "targetType": "boolean",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 11,
+        "sourceName": "field_11",
+        "targetType": "text",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 12,
+        "sourceName": "field_12",
+        "targetType": "decimal",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 13,
+        "sourceName": "field_13",
+        "targetType": "skip",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 14,
+        "sourceName": "field_14",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      }
+    ]
+  },
+  "resolvedTargets": [
+    "int64",
+    "uint64",
+    "float64",
+    "boolean",
+    "text",
+    "decimal",
+    "int64",
+    "uint64",
+    "float64",
+    "boolean",
+    "text",
+    "decimal",
+    "int64"
+  ],
+  "headerUsed": true
+}

@@ -1,0 +1,52 @@
+# Low storage budget / multiple CSV regression test plan
+
+2026-11-04. Execution mode: test design, Phase 18 follow-up bugfix. Product code is not modified by Quality. Root approved scope: move cold CSV reclaim/allocation behind the single preparation permit, waiting Preparing requests reserve zero bytes, retain synchronous warm restore, preserve typed actual-capacity failures with improved wording. This plan does not change Phase status or existing safety contracts.
+
+## Existing contract
+
+- `docs/DEVELOPMENT_PLAN.md` Phase 18: query/cache common limit, inactive-only LRU, active same/foreign-process leases protected, typed actionable storage errors, cleanup after cancel/replacement/failure.
+- `docs/PROJECT_SPEC.md`: opened document tabs are not automatically evicted.
+- Current free-space reserve is 5 GiB, independently of configured app budget. A user's 1 GiB setting must not be interpreted as permission to ignore the volume reserve.
+- Do not fill C: or delete user files for reproduction. Use deterministic small-budget integration fixtures and scripted free-space probes; add one 1 GiB real native scenario after implementation stabilizes.
+
+## Test matrix
+
+| ID | Layer / owner | Fixture and trigger | Expected result |
+|---|---|---|---|
+| T-SP-001 | Rust integration / implementation | One blocked CSV provider and at least three simultaneously requested distinct CSV documents; actual final outputs small enough to fit common cap | Queued preparations remain accepted/pending instead of failing solely because waiting requests hold unused reservations. Only active preparations consume reservations; all terminate Ready when released. |
+| T-SP-002 | Rust integration + native / implementation and root | Warm persistent-cache hit with very little remaining storage but enough for its actual tiny database metadata; include residual space below a proposed 16 MiB metadata cap (e.g. 2 MiB) | Reopen succeeds without reserving a large cold-conversion allowance or evicting other useful inactive caches just to reach an arbitrary reservation target. No source read/conversion fallback; all four existing caches preserved across warm reopen. Allocate from current residual first, reclaim only when allocation has no usable allowance or actual metadata growth needs space. Check actual budget again before Ready. |
+| T-SP-003 | Rust unit + integration / implementation | Active ready CSV cache plus inactive cache; new preparation and query require space | Minimal eligible LRU recovery, active files/leases/hash intact. Final common usage obeys limit; no phantom reservation after Ready. |
+| T-SP-004 | Rust integration / implementation + review / Quality | Multiple genuinely active prepared CSV outputs exceed configured cap even without unused reservations | Root-approved policy: one typed actionable storage failure with clean retry after freeing capacity. No active cache deletion, forced tab close, cap increase or silent data loss. This case cannot be claimed fixed merely by suppressing errors. |
+| T-SP-005 | Rust cancellation / implementation | Queued CSV cancellation, tab close, profile/header replacement, shutdown before permit | No conversion starts, no reservation/directory leak, cancellation within existing bounded poll budget, replacement session wins, no stale Ready. |
+| T-SP-006 | Rust unit / implementation | Free space above/equal/below 5 GiB reserve; low configured limit separately | Correct checked arithmetic and typed failures. User budget and disk reserve remain separate; no arithmetic underflow or changed reserve without explicit contract decision. |
+| T-SP-007 | Rust integration / implementation | Failing conversion after creating partial, failing publication, source mutation and retry | Partial/result staging removed, active query and reservation return to baseline, prior valid cache and source hashes unchanged, subsequent fitting job succeeds. |
+| T-SP-008 | Rust subprocess / existing gates + Quality | Other process leases valid cache while local pressure occurs | Foreign active entry protected; only validated local-owned eligible entries reclaimed. Reuse TMP18-005/006/007 gates. |
+| T-SP-009 | Actual Tauri / root or platform | Unique app identifier; 1 GiB setting; three distinct CSVs whose combined final caches fit; rapid opening and then repeated switching/reopening | Real CSV worker path executes; all tabs usable with correct first/last values, no repeated errors or cache rewrite storm. Record configured limit, per-file bytes, cache/temp usage, terminal states and source hashes. |
+| T-SP-010 | Actual Tauri / root or platform | Same 1 GiB setting, outputs no longer fit simultaneously | Verify the approved T-SP-004 policy and ability to continue/retry after capacity released. Never count a generous-limit test as this boundary. |
+| T-SP-011 | Regression / root | fmt, Clippy `-D warnings`, storage/query unit + integration suite; full Rust suite once after stable implementation | PASS without lowered assertions; ignored/blocked existing gates listed explicitly. No frontend UI changes expected unless policy surfaces require them. |
+| T-SP-012 | Packaging/provenance / root | Main `src-tauri` and current native size-variant used by formal build | Storage/query changes match across runtime sources; released `data-viewer.exe` built from fixed source and hash recorded. Archived snapshot remains historical, not silently rewritten. |
+| T-SP-013 | Rust unit / implementation | Registered pinned source hardlink whose source logical size exceeds budget; real generated output below budget | Source alias adds no incremental data allocation and is excluded only after matching registered OS file identity; generated output and small metadata still counted, with no transient overcharge before registration. |
+| T-SP-014 | Rust security unit / implementation + review / Quality | Same snapshot filename regular copy, unregistered hardlink, registered path replaced with different identity, failed identity validation | Every unverified file is fully charged. Never exempt by basename, extension or link count alone. |
+| T-SP-015 | Lifecycle / implementation | Registered hardlink during success/cancel/failure, snapshot unlink and lease drop | Usage, reservation accounting, committed usage and cleanup accounting agree. Unregistration cannot briefly charge source size while alias exists; source file preserved, registration bounded and cleaned. |
+| T-SP-016 | Actual native / root | Original 979,427,914-byte MAIN CSV, 512 MiB and 1 GiB limits, output below cap and adequate volume free space | Original failure is reproduced with old EXE and fixed EXE succeeds without charging the existing source hardlink as newly written storage. Record actual output/cache/temp bytes; low C free-space reserve remains enforced separately. |
+| T-SP-017 | Rust budget unit / implementation + review / Quality | Active CSV output grows beyond original reservation, e.g. actual 407 MiB versus reserved 256 MiB; source hardlink excluded through registered identity | Limit accounting charges `max(reserved, actual)` for each active path, plus cache and unreserved bytes. A new allocation cannot claim the 151 MiB already written above reservation. Free-space remaining still subtracts only reservation not yet written because actual output already reduced physical free space. No double charge for excluded aliases. |
+
+## Independent verification
+
+Quality reviews changes and runs selected race/boundary regression gates after root creates `50-integration.md`. Check old/new behavior where reproducible, not just test names. If UI behavior changes, apply `UI_VALIDATION.md`: interaction, DOM geometry, three viewport screenshot review and actual Tauri evidence; browser mock does not replace native disk behavior.
+
+## Code review findings before implementation
+
+1. `query/engine.rs:757`: CSV uses `configured_limit / MAX_CONCURRENT_QUERIES`, where max queries = 2. Reservation occurs at :763, before `acquire_csv_preparation_permit` in worker around :875. With 1 GiB and blocked first conversion, queued second request can reserve another 512 MiB, so third may fail before it even joins the conversion queue. This is a concrete regression candidate requiring deterministic reproduction.
+2. Cache hit is known before reservation, but both hit/miss share reclaim/reserve setup. A warm hit may fail for lack of a large reservation even if the cache already exists and only tiny metadata is needed.
+3. Ready artifacts retain `_persistent_lease`; this correctly prevents deleting opened document caches, but means enough truly active CSV caches can exceed any small cap. This is a capacity-policy decision, distinct from phantom reservation bugs.
+4. Volume free space <= 5 GiB fails regardless of app limit. Low-volume behavior must be measured separately from 1 GiB budget pressure.
+5. At review start, `storage/temp.rs`, `storage/csv_cache.rs`, `query/engine.rs` are hash-identical in product and native size-variant. Fixes must be built into the actual formal executable, not only original product code.
+
+## Confirmed native baseline finding
+
+Root's `before-isolated512` actual old-EXE run failed even with no CSV cache: query accounting reported 979,446,771 bytes. The worker's `polars-source.snapshot.csv` is a hardlink to the existing 979,427,914-byte input; recursive logical-length accounting charged the original source again despite no additional data allocation. T-SP-013~016 cover this independently from queued reservations. Root requested a fail-closed, registered-identity exemption design; filename-only skipping is explicitly disallowed. Quality reviewed the design without modifying product code. Full runtime result remains root-owned evidence.
+
+After the first fixes, root's native 512 MiB cold run reached Ready for all four CSVs with correct pages/source hashes, but warm reopen converted three small CSVs again. The warm-hit path requested a 256 MiB reclaim target despite already having a large valid cache and enough residual space for metadata, evicting the three smaller inactive caches. This is now a reproduced warm-path regression, not merely the initial speculative risk. T-SP-002 includes prevention of unnecessary cache eviction; a smaller fixed reclaim target alone does not fix the same pattern near a full budget.
+
+No tests have been executed at this design stage. No independent post-implementation approval yet.

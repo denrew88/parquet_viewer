@@ -45,6 +45,7 @@ const MAX_QUERY_TASKS: usize = 128;
 const MAX_QUERY_RESULTS: usize = 64;
 const MAX_CONCURRENT_QUERIES: usize = 2;
 const MAX_CONCURRENT_CSV_PREPARATIONS: usize = 1;
+const CSV_CACHE_RESTORE_TEMP_CAP_BYTES: u64 = 16 * 1024 * 1024;
 const OCCUPANCY_BLOCK_STAGES: [usize; 4] = [256, 4_096, 16_384, 65_536];
 const OCCUPANCY_MAX_COLUMNS: usize = 8;
 const OCCUPANCY_PROCESS_BYTES: usize = 16 * 1024 * 1024;
@@ -754,36 +755,59 @@ impl QueryService {
                 return Err(error);
             }
         };
-        let query_temp_cap = self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
-        if let Err(error) = self.csv_cache.reclaim_for_query(query_temp_cap) {
-            source.provider.preparation_aborted();
-            set_csv_preparation_state(&task, CsvPreparationState::Failed, Some(error.clone()));
-            return Err(error);
-        }
-        let lease = match self.temp.allocate_bounded(
-            document_id,
-            &format!("csv-prepared-{preparation_id}"),
-            query_temp_cap,
-        ) {
-            Ok(lease) => lease,
-            Err(error) => {
+        if let Some(hit) = cache_hit {
+            // A cache hit creates a small catalog view, not another CSV output.
+            // Reserve only existing headroom first; reclaiming a cold query's
+            // allowance would evict reusable peers even when metadata fits.
+            let query_temp_cap = (self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64)
+                .min(CSV_CACHE_RESTORE_TEMP_CAP_BYTES);
+            if let Err(error) = self.csv_cache.refresh_usage() {
                 source.provider.preparation_aborted();
-                if let Ok(mut preparations) = self.csv_preparations.lock() {
-                    if preparations
-                        .get(&key)
-                        .is_some_and(|known| Arc::ptr_eq(known, &task))
-                    {
-                        preparations.remove(&key);
-                    }
-                }
                 set_csv_preparation_state(&task, CsvPreparationState::Failed, Some(error.clone()));
                 return Err(error);
             }
-        };
-        let database_path = lease.path().join("prepared.duckdb");
-        let query_temp_allowance = lease.allowance_bytes();
+            let allocate = || {
+                self.temp.allocate_bounded(
+                    document_id,
+                    &format!("csv-prepared-{preparation_id}"),
+                    query_temp_cap,
+                )
+            };
+            let allocation = match allocate() {
+                Err(error)
+                    if error.code == DataErrorCode::QueryTempLimitExceeded
+                        && self
+                            .temp
+                            .bounded_allowance(query_temp_cap)
+                            .is_ok_and(|budget| budget.allowance_bytes == 0) =>
+                {
+                    self.csv_cache.reclaim_for_query(1).and_then(|_| allocate())
+                }
+                result => result,
+            };
+            let lease = match allocation {
+                Ok(lease) => lease,
+                Err(error) => {
+                    source.provider.preparation_aborted();
+                    if let Ok(mut preparations) = self.csv_preparations.lock() {
+                        if preparations
+                            .get(&key)
+                            .is_some_and(|known| Arc::ptr_eq(known, &task))
+                        {
+                            preparations.remove(&key);
+                        }
+                    }
+                    set_csv_preparation_state(
+                        &task,
+                        CsvPreparationState::Failed,
+                        Some(error.clone()),
+                    );
+                    return Err(error);
+                }
+            };
+            let database_path = lease.path().join("prepared.duckdb");
+            let query_temp_allowance = lease.allowance_bytes();
 
-        if let Some(hit) = cache_hit {
             let restore = (|| {
                 if !source_fingerprint_matches(
                     &source.path,
@@ -819,6 +843,13 @@ impl QueryService {
                     return Err(DataError::query_failed(
                         "The CSV source changed while a persistent cache entry was being restored.",
                     ));
+                }
+                // Very wide schemas or unusually long names can make catalog
+                // metadata exceed the reservation. Enforce actual shared usage
+                // before this session becomes Ready, reclaiming only if needed.
+                self.csv_cache.reclaim_under_pressure()?;
+                if let Some(message) = self.temp.budget_violation()? {
+                    return Err(DataError::query_temp_limit(message));
                 }
                 Ok::<_, DataError>((connection, hit))
             })();
@@ -874,9 +905,55 @@ impl QueryService {
             let Some(_permit) =
                 acquire_csv_preparation_permit(&csv_preparation_limiter, &worker_task.cancel)
             else {
+                source.provider.preparation_aborted();
                 set_csv_preparation_state(&worker_task, CsvPreparationState::Cancelled, None);
                 return;
             };
+            // Waiting CSVs must not reserve disk before their worker can run.
+            // Otherwise two queued preparations consume a small limit entirely
+            // even though only one converter is allowed to create artifacts.
+            let query_temp_cap = temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
+            let allocation = (|| {
+                csv_cache.reclaim_for_query(query_temp_cap)?;
+                if worker_task.cancel.load(Ordering::Acquire) {
+                    return Err(DataError::task_cancelled());
+                }
+                let lease = temp.allocate_bounded(
+                    &worker_key.0,
+                    &format!("csv-prepared-{preparation_id}"),
+                    query_temp_cap,
+                )?;
+                #[cfg(feature = "polars-csv-provider")]
+                if let Some(file) = source_file.as_ref() {
+                    lease.register_pinned_source_alias(
+                        &lease
+                            .path()
+                            .join(crate::data::csv_polars::SOURCE_SNAPSHOT_NAME),
+                        file,
+                    )?;
+                }
+                Ok::<_, DataError>(lease)
+            })();
+            let lease = match allocation {
+                Ok(lease) => lease,
+                Err(error) => {
+                    source.provider.preparation_aborted();
+                    let cancelled = worker_task.cancel.load(Ordering::Acquire)
+                        || error.code == DataErrorCode::TaskCancelled;
+                    set_csv_preparation_state(
+                        &worker_task,
+                        if cancelled {
+                            CsvPreparationState::Cancelled
+                        } else {
+                            CsvPreparationState::Failed
+                        },
+                        (!cancelled).then_some(error),
+                    );
+                    return;
+                }
+            };
+            let database_path = lease.path().join("prepared.duckdb");
+            let query_temp_allowance = lease.allowance_bytes();
             let result = build_csv_prepared_artifact(
                 &source,
                 &database_path,
@@ -4430,6 +4507,276 @@ mod tests {
     }
 
     #[test]
+    fn csv_storage_pressure_queued_files_share_half_and_one_gib_without_early_reservations() {
+        for limit in [512 * 1024 * 1024, 1024 * 1024 * 1024] {
+            let sources = tempfile::tempdir().unwrap();
+            let (_local_data, service) = service_with_limit(limit);
+            let permit = acquire_csv_preparation_permit(
+                &service.csv_preparation_limiter,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+            let baseline = service.temp.usage().unwrap();
+            let before_allowance = service
+                .temp
+                .bounded_allowance(limit)
+                .unwrap()
+                .allowance_bytes;
+            let mut specifications = Vec::new();
+            for index in 0..4 {
+                let path = sources.path().join(format!("file-{index}.csv"));
+                std::fs::write(&path, format!("value,numeric\nfile-{index},42\n")).unwrap();
+                let mut source = DataSource::open(&path).unwrap();
+                source.configure_csv(HeaderMode::Present).unwrap();
+                let spec = source.query_source_spec().unwrap();
+                let status = service
+                    .prepare_csv_session(&format!("pressure-{index}"), "session", spec.clone())
+                    .expect("a waiting CSV must not fail allocation before its worker runs");
+                assert_eq!(status.state, CsvPreparationState::Preparing);
+                specifications.push(spec);
+            }
+            let waiting = service.temp.usage().unwrap();
+            assert_eq!(waiting.active_queries, baseline.active_queries);
+            assert_eq!(waiting.query_temp_bytes, baseline.query_temp_bytes);
+            assert_eq!(
+                service
+                    .temp
+                    .bounded_allowance(limit)
+                    .unwrap()
+                    .allowance_bytes,
+                before_allowance
+            );
+            service
+                .cancel_csv_preparation("pressure-3", "session")
+                .unwrap();
+            assert_eq!(
+                wait_csv_preparation(&service, "pressure-3", "session").state,
+                CsvPreparationState::Cancelled
+            );
+            drop(permit);
+            for (index, spec) in specifications.iter().take(3).enumerate() {
+                let document = format!("pressure-{index}");
+                let ready = wait_csv_preparation(&service, &document, "session");
+                assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+                let page = service
+                    .read_prepared_csv_page(
+                        &document,
+                        "session",
+                        spec.clone(),
+                        0,
+                        1,
+                        &[String::from("value")],
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    page.rows[0][0].display.as_deref(),
+                    Some(format!("file-{index}").as_str())
+                );
+            }
+            // A cache hit remains usable immediately, independently of the cold converter queue.
+            let permit = acquire_csv_preparation_permit(
+                &service.csv_preparation_limiter,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+            let hits_before = service.csv_cache.audit().hits;
+            let warm = service
+                .prepare_csv_session("pressure-warm", "session", specifications[0].clone())
+                .unwrap();
+            assert_eq!(
+                warm.state,
+                CsvPreparationState::Ready,
+                "cache audit: {:?}",
+                service.csv_cache.audit()
+            );
+            assert_eq!(service.csv_cache.audit().hits, hits_before + 1);
+            assert_eq!(warm.source_read_bytes, 0);
+            drop(permit);
+            for index in 0..4 {
+                service
+                    .drop_session(&format!("pressure-{index}"), "session")
+                    .unwrap();
+            }
+            service.drop_session("pressure-warm", "session").unwrap();
+            assert_eq!(
+                service.temp.usage().unwrap().active_queries,
+                baseline.active_queries
+            );
+            assert!(service.temp.usage().unwrap().process_bytes < limit);
+            for (index, spec) in specifications.iter().enumerate() {
+                assert_eq!(
+                    std::fs::read_to_string(&spec.path).unwrap(),
+                    format!("value,numeric\nfile-{index},42\n")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn csv_storage_pressure_warm_restore_uses_available_metadata_headroom_without_eviction() {
+        let limit = 64 * 1024 * 1024;
+        for headroom in [24 * 1024 * 1024, 2 * 1024 * 1024] {
+            let sources = tempfile::tempdir().unwrap();
+            let (_local_data, service) = service_with_limit(limit);
+            let mut specifications = Vec::new();
+            for index in 0..3 {
+                let path = sources.path().join(format!("cached-{index}.csv"));
+                std::fs::write(&path, format!("value\ncached-{index}\n")).unwrap();
+                let mut source = DataSource::open(&path).unwrap();
+                source.configure_csv(HeaderMode::Present).unwrap();
+                let spec = source.query_source_spec().unwrap();
+                let document = format!("seed-{index}");
+                service
+                    .prepare_csv_session(&document, "session", spec.clone())
+                    .unwrap();
+                let ready = wait_csv_preparation(&service, &document, "session");
+                assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+                service.drop_session(&document, "session").unwrap();
+                specifications.push(spec);
+            }
+            let entry_paths = service.csv_cache.entry_paths();
+            assert_eq!(entry_paths.len(), 3);
+            let pressure = service.temp.allocate("pressure", "occupied").unwrap();
+            let occupied = service.usage().unwrap().process_bytes;
+            let output = std::fs::File::create(pressure.path().join("active-query.bin")).unwrap();
+            output.set_len(limit - occupied - headroom).unwrap();
+            drop(output);
+            assert_eq!(
+                service
+                    .temp
+                    .bounded_allowance(limit)
+                    .unwrap()
+                    .allowance_bytes,
+                headroom
+            );
+            let before = service.csv_cache.audit();
+            for (index, spec) in specifications.iter().enumerate() {
+                let document = format!("warm-{index}");
+                let ready = service
+                    .prepare_csv_session(&document, "session", spec.clone())
+                    .unwrap();
+                assert_eq!(ready.state, CsvPreparationState::Ready, "{:?}", ready.error);
+                assert_eq!(ready.source_read_bytes, 0);
+                assert!(service.usage().unwrap().process_bytes <= limit);
+                let page = service
+                    .read_prepared_csv_page(
+                        &document,
+                        "session",
+                        spec.clone(),
+                        0,
+                        1,
+                        &[String::from("value")],
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    page.rows[0][0].display.as_deref(),
+                    Some(format!("cached-{index}").as_str())
+                );
+            }
+            let after = service.csv_cache.audit();
+            assert_eq!(after.hits, before.hits + 3);
+            assert_eq!(after.evictions, before.evictions);
+            assert!(entry_paths.iter().all(|path| path.exists()));
+            for index in 0..3 {
+                service
+                    .drop_session(&format!("warm-{index}"), "session")
+                    .unwrap();
+            }
+            drop(pressure);
+            assert_eq!(service.temp.usage().unwrap().active_queries, 0);
+        }
+    }
+
+    #[test]
+    fn csv_storage_pressure_queued_cancel_notifies_abort_without_allocating() {
+        let (_directory, service) = service_with_limit(512 * 1024 * 1024);
+        let permit = acquire_csv_preparation_permit(
+            &service.csv_preparation_limiter,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let aborted = Arc::new(AtomicBool::new(false));
+        let mut spec = controllable_preparation_spec("queued-abort", false);
+        spec.provider = Arc::new(AbortAwarePreparationProvider {
+            aborted: Arc::clone(&aborted),
+        });
+        service
+            .prepare_csv_session("queued-abort", "session", spec)
+            .unwrap();
+        service
+            .cancel_csv_preparation("queued-abort", "session")
+            .unwrap();
+        assert_eq!(
+            wait_csv_preparation(&service, "queued-abort", "session").state,
+            CsvPreparationState::Cancelled
+        );
+        assert!(aborted.load(Ordering::Acquire));
+        assert_eq!(service.temp.usage().unwrap().active_queries, 0);
+        drop(permit);
+    }
+
+    #[test]
+    fn csv_storage_pressure_queued_replacement_and_shutdown_do_not_start_or_reserve() {
+        let (_directory, service) = service_with_limit(512 * 1024 * 1024);
+        let permit = acquire_csv_preparation_permit(
+            &service.csv_preparation_limiter,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let calls = Arc::new(AtomicU64::new(0));
+        let gate = Arc::new(PreparationGate::default());
+        service
+            .prepare_csv_session(
+                "queued-replace",
+                "session",
+                gated_preparation_spec("queued-old", Arc::clone(&calls), Arc::clone(&gate)),
+            )
+            .unwrap();
+        let previous = service
+            .csv_preparations
+            .lock()
+            .unwrap()
+            .get(&(String::from("queued-replace"), String::from("session")))
+            .unwrap()
+            .clone();
+        service
+            .prepare_csv_session(
+                "queued-replace",
+                "session",
+                gated_preparation_spec("queued-new", Arc::clone(&calls), gate),
+            )
+            .unwrap();
+        wait_csv_preparation_worker(&previous, std::time::Duration::from_secs(1)).unwrap();
+        assert_eq!(
+            preparation_status(&previous).unwrap().state,
+            CsvPreparationState::Cancelled
+        );
+        let replacement = service
+            .csv_preparations
+            .lock()
+            .unwrap()
+            .get(&(String::from("queued-replace"), String::from("session")))
+            .unwrap()
+            .clone();
+        assert!(!Arc::ptr_eq(&previous, &replacement));
+        assert_eq!(service.temp.usage().unwrap().active_queries, 0);
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+        let process_directory = service.temp.process_directory().to_owned();
+        service.shutdown();
+        assert_eq!(
+            preparation_status(&replacement).unwrap().state,
+            CsvPreparationState::Cancelled
+        );
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+        assert!(service.csv_preparations.lock().unwrap().is_empty());
+        assert!(replacement.artifact.lock().unwrap().is_none());
+        assert!(!process_directory.exists());
+        drop(permit);
+    }
+
+    #[test]
     fn csv_prepared_session_reuses_exact_identity_for_page_boundary_and_cleanup() {
         let source_directory = tempfile::tempdir().unwrap();
         let path = source_directory.path().join("prepared.csv");
@@ -6205,11 +6552,41 @@ mod tests {
                 aborted: Arc::clone(&aborted),
             }),
         };
-        let error = service
+        service
             .prepare_csv_session("abort-document", "abort-session", spec)
-            .unwrap_err();
-        assert_eq!(error.code, DataErrorCode::QueryTempLimitExceeded);
+            .unwrap();
+        let status = wait_csv_preparation(&service, "abort-document", "abort-session");
+        assert_eq!(status.state, CsvPreparationState::Failed);
+        assert_eq!(
+            status.error.unwrap().code,
+            DataErrorCode::QueryTempLimitExceeded
+        );
         assert!(aborted.load(Ordering::Acquire));
+        assert_eq!(service.temp.usage().unwrap().active_queries, 0);
+        service.set_temp_limit(512 * 1024 * 1024);
+        let sources = tempfile::tempdir().unwrap();
+        let path = sources.path().join("retry.csv");
+        std::fs::write(&path, "value\nrecovered\n").unwrap();
+        let mut source = DataSource::open(&path).unwrap();
+        source.configure_csv(HeaderMode::Present).unwrap();
+        service
+            .prepare_csv_session(
+                "abort-document",
+                "abort-session",
+                source.query_source_spec().unwrap(),
+            )
+            .unwrap();
+        let retried = wait_csv_preparation(&service, "abort-document", "abort-session");
+        assert_eq!(
+            retried.state,
+            CsvPreparationState::Ready,
+            "{:?}",
+            retried.error
+        );
+        service
+            .drop_session("abort-document", "abort-session")
+            .unwrap();
+        assert_eq!(service.temp.usage().unwrap().active_queries, 0);
     }
 
     #[cfg(windows)]

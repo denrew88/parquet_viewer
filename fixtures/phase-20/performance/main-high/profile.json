@@ -1,0 +1,446 @@
+{
+  "profile": {
+    "mode": "custom",
+    "generation": 1,
+    "columns": [
+      {
+        "sourceIndex": 0,
+        "sourceName": "row_id",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 1,
+        "sourceName": "group_id",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 2,
+        "sourceName": "category",
+        "targetType": "text",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 3,
+        "sourceName": "active",
+        "targetType": "boolean",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 4,
+        "sourceName": "optional_value",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 5,
+        "sourceName": "event_time",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 6,
+        "sourceName": "amount",
+        "targetType": "decimal",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 7,
+        "sourceName": "label",
+        "targetType": "text",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 8,
+        "sourceName": "code",
+        "targetType": "text",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 9,
+        "sourceName": "metric_00",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 10,
+        "sourceName": "metric_01",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 11,
+        "sourceName": "metric_02",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 12,
+        "sourceName": "metric_03",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 13,
+        "sourceName": "metric_04",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      },
+      {
+        "sourceIndex": 14,
+        "sourceName": "metric_05",
+        "targetType": "int64",
+        "trim": false,
+        "nullTokens": [
+          "NULL",
+          "N/A"
+        ],
+        "trueTokens": [
+          "true",
+          "TRUE",
+          "1"
+        ],
+        "falseTokens": [
+          "false",
+          "FALSE",
+          "0"
+        ],
+        "decimalSeparator": ".",
+        "thousandSeparator": null,
+        "temporalFormats": [],
+        "timezonePolicy": "preserve",
+        "timezoneOffsetMinutes": null,
+        "durationUnit": null,
+        "durationInputFormat": null,
+        "failurePolicy": "preserveInvalid"
+      }
+    ]
+  },
+  "resolvedTargets": [
+    "int64",
+    "int64",
+    "text",
+    "boolean",
+    "int64",
+    "int64",
+    "decimal",
+    "text",
+    "text",
+    "int64",
+    "int64",
+    "int64",
+    "int64",
+    "int64",
+    "int64"
+  ],
+  "headerUsed": true
+}

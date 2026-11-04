@@ -1,0 +1,20 @@
+{
+  "phase": 20,
+  "phaseVersion": "0.20.0",
+  "embeddedVersion": "0.20.0",
+  "rebuilt": true,
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 58787840,
+  "sha256": "10275191912bf83dab8e4800e74561d1a38da698d2246064f06be853b2839e3c",
+  "appIdentity": "com.denrew88.data-viewer-native-validation-20261103",
+  "artifactStatus": "formal",
+  "promotionApproval": "지금은 이미 정식 artifacts잖니 그냥 교체해",
+  "sourceManifest": "artifacts/experiments/csv-native-parquet/size-variant/Cargo.toml",
+  "runtimeEvidence": "artifacts/phase-20/utf8-view/native-result.json",
+  "change": "Utf8View display/full-value/nested/dictionary/occupancy fix",
+  "rust": {
+    "passed": 319,
+    "failed": 0,
+    "ignored": 16
+  }
+}

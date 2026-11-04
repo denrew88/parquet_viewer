@@ -1,5 +1,16 @@
 # 개발 계획
 
+## 2026-11-04 Phase 20 정식 등록
+
+CSV 변환 경량화, 작은 Storage 한도의 여러 CSV 오류, 소수 GiB UI 수정을
+**Phase 20**으로 통합했다. [범위](../artifacts/phase-20/00-scope.md),
+[검증 대응표](../artifacts/phase-20/10-test-plan.md), [등록 판정](../artifacts/phase-20/90-review.md)을 따른다.
+기존 검증된 EXE를 src-tauri/target/release/data-viewer.exe로 옮겼다.
+최초 등록 이후 사용자의 명시적 재빌드 지시로 프로젝트·실제 EXE 버전을 모두 0.20.0으로 정렬했다.
+Rust/React 동작 코드는 유지하고 기존 경량화 빌드 경로를 한 번 재빌드했다. Phase 20 fixture는 fixtures/phase-20/로 이동했다.
+Windows 속성·health_check·Tauri 버전과 fixture 실제 page를 확인했다. 이후 Utf8View 표시·전체 값·빈 셀 탐색 수정도 Phase 20에 반영했다.
+후속 Rust 319개와 실제 앱의 cache Parquet 직접 열기가 PASS다. [결과](../artifacts/phase-20/utf8-view/90-results.md). 전체 gate 미실행 사항은 기존 기록에 유지한다.
+
 ## 2026-07-24 최신 실행 상태
 
 - Phase 0~8 제품 구현과 실행 가능한 자동 gate를 모두 실행했다.
@@ -64,7 +75,7 @@
 
 ## 진행 규칙
 
-- 단계는 Phase 0부터 Phase 19까지 순서대로 진행한다.
+- 단계는 Phase 0부터 Phase 20까지 관리한다. 이후 정식 승격도 해당 Phase 번호에 맞춰 문서·경로·버전 기록을 함께 정리한다.
 - 사용자 요청이 우선하지만, 선행 단계의 계약과 테스트 기반 없이 후속 기능을 임시로
   구현하지 않는다.
 - 각 Phase를 시작할 때 상태를 `진행 중`으로 바꾸고 시작 날짜를 기록한다.
@@ -843,6 +854,7 @@ typed 오류를 반환한다.
 ### 해야 할 일
 
 - 현재 query/cache byte, 동시 reservation과 free-space reserve를 반영한 DuckDB allowance
+- 0.5~1 GiB 한도의 여러 CSV: 대기 작업의 조기 reservation 방지 및 검증된 원본 hardlink의 중복 과금 방지
 - query 시작과 100ms monitor에서 검증된 inactive CSV cache의 deterministic LRU 최소 회수
 - 같은 process와 다른 process의 active cache lease, foreign directory와 원본 파일 보호
 - temp limit, disk-full과 temp directory I/O의 `QueryTempLimitExceeded` 정규화 및 경로 비노출

@@ -1,0 +1,9 @@
+{
+  "bytes": 58786816,
+  "sha256": "7c9b3db2f698bd9d237005ad5caf39ba9174f13dfbf730a02f41a12e5dd7ce4f",
+  "version": "0.20.0",
+  "compileStatus": "PASS",
+  "compileSeconds": 215,
+  "wrapperMetadataFailure": "Get-FileHash unavailable in child PowerShell; hash helper repaired without recompilation",
+  "formalPath": "src-tauri/target/release/data-viewer.exe"
+}

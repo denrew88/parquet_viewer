@@ -76,6 +76,7 @@ pub struct QueryTempManager {
     limit_bytes: AtomicU64,
     external_cache_bytes: AtomicU64,
     reservations: Arc<Mutex<HashMap<PathBuf, u64>>>,
+    pinned_source_aliases: Arc<Mutex<HashMap<PathBuf, PinnedSourceAlias>>>,
 }
 
 #[derive(Debug)]
@@ -84,6 +85,15 @@ pub struct QueryTempLease {
     active_paths: Arc<Mutex<HashSet<PathBuf>>>,
     active_queries: Arc<AtomicUsize>,
     reservations: Arc<Mutex<HashMap<PathBuf, u64>>>,
+    pinned_source_aliases: Arc<Mutex<HashMap<PathBuf, PinnedSourceAlias>>>,
+}
+
+#[derive(Debug)]
+struct PinnedSourceAlias {
+    identity: (u64, u64),
+    // Keeping the original file open prevents its OS identity from being
+    // recycled while a registered alias is exempt from allocated-byte usage.
+    _pinned_source: File,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +134,7 @@ impl QueryTempManager {
             limit_bytes: AtomicU64::new(effective_limit(limit_bytes)),
             external_cache_bytes: AtomicU64::new(0),
             reservations: Arc::new(Mutex::new(HashMap::new())),
+            pinned_source_aliases: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -204,6 +215,7 @@ impl QueryTempManager {
             active_paths: Arc::clone(&self.active_paths),
             active_queries: Arc::clone(&self.active_queries),
             reservations: Arc::clone(&self.reservations),
+            pinned_source_aliases: Arc::clone(&self.pinned_source_aliases),
         })
     }
 
@@ -222,13 +234,18 @@ impl QueryTempManager {
     ) -> Result<QueryTempBudget, DataError> {
         let free_bytes = fs2::available_space(&self.process_directory)
             .map_err(|error| temp_io(&self.process_directory, error))?;
-        let query_temp_bytes = directory_bytes(&self.process_directory)?;
+        let query_temp_bytes = self.accounted_directory_bytes(&self.process_directory)?;
         let cache_bytes = self.external_cache_bytes.load(Ordering::Acquire);
         let mut active_bytes = 0_u64;
+        let mut charged_reservations = 0_u64;
         let mut reserved_remaining = 0_u64;
         for (path, reservation) in reservations {
-            let bytes = directory_bytes_best_effort(path);
+            let bytes = self.accounted_directory_bytes(path).unwrap_or(0);
             active_bytes = active_bytes.saturating_add(bytes);
+            // CSV output can grow beyond its initial DuckDB spill reservation.
+            // Charge the larger amount so a concurrent query cannot reserve
+            // space that the converter has already consumed.
+            charged_reservations = charged_reservations.saturating_add((*reservation).max(bytes));
             reserved_remaining =
                 reserved_remaining.saturating_add(reservation.saturating_sub(bytes));
         }
@@ -236,7 +253,7 @@ impl QueryTempManager {
         Ok(calculate_query_budget(
             self.limit_bytes.load(Ordering::Acquire),
             cache_bytes.saturating_add(unreserved_bytes),
-            reservations.values().copied().sum(),
+            charged_reservations,
             free_bytes,
             reserved_remaining,
             per_query_cap,
@@ -246,7 +263,7 @@ impl QueryTempManager {
     pub fn usage(&self) -> Result<QueryTempUsage, DataError> {
         let free_bytes = fs2::available_space(&self.process_directory)
             .map_err(|error| temp_io(&self.process_directory, error))?;
-        let query_temp_bytes = directory_bytes(&self.process_directory)?;
+        let query_temp_bytes = self.accounted_directory_bytes(&self.process_directory)?;
         let csv_cache_bytes = self.external_cache_bytes.load(Ordering::Acquire);
         Ok(QueryTempUsage {
             process_bytes: query_temp_bytes.saturating_add(csv_cache_bytes),
@@ -265,7 +282,7 @@ impl QueryTempManager {
     }
 
     pub fn clear_inactive(&self) -> Result<QueryTempCleanupResult, DataError> {
-        let bytes_before = directory_bytes_best_effort(&self.root);
+        let bytes_before = self.accounted_directory_bytes(&self.root)?;
         let active = self
             .active_paths
             .lock()
@@ -291,7 +308,7 @@ impl QueryTempManager {
             }
         }
         let remaining_usage = self.usage()?;
-        let bytes_after = directory_bytes_best_effort(&self.root);
+        let bytes_after = self.accounted_directory_bytes(&self.root)?;
         Ok(QueryTempCleanupResult {
             deleted_bytes: bytes_before.saturating_sub(bytes_after),
             orphan_failure_count: failures.len(),
@@ -317,7 +334,7 @@ impl QueryTempManager {
 
     fn limit_error_from_usage(&self, usage: &QueryTempUsage) -> DataError {
         DataError::query_temp_limit(format!(
-            "Query temporary storage is unavailable (query {} bytes, CSV cache {} bytes, limit {} bytes, free {} bytes, safety reserve {} bytes). Clear inactive CSV cache in Settings or free disk space, then retry.",
+            "Query temporary storage is unavailable (query {} bytes, CSV cache {} bytes, limit {} bytes, free {} bytes, safety reserve {} bytes). Close other CSV tabs or increase the storage limit. Clear inactive CSV cache in Settings or free disk space, then retry.",
             usage.query_temp_bytes,
             usage.csv_cache_bytes,
             usage.limit_bytes,
@@ -341,7 +358,15 @@ impl QueryTempManager {
     }
 
     pub(crate) fn process_temp_bytes(&self) -> Result<u64, DataError> {
-        directory_bytes(&self.process_directory)
+        self.accounted_directory_bytes(&self.process_directory)
+    }
+
+    fn accounted_directory_bytes(&self, path: &Path) -> Result<u64, DataError> {
+        let aliases = self
+            .pinned_source_aliases
+            .lock()
+            .map_err(|_| temp_unavailable())?;
+        directory_bytes_with_aliases(path, &aliases)
     }
 
     pub(crate) fn configured_limit(&self) -> u64 {
@@ -393,8 +418,47 @@ impl QueryTempLease {
             .unwrap_or(0)
     }
 
+    /// Register an exact parent-owned source alias before the worker creates
+    /// it. A file with this name is excluded only while its OS identity equals
+    /// the retained input handle; copied or replaced files are still charged.
+    pub(crate) fn register_pinned_source_alias(
+        &self,
+        alias: &Path,
+        source: &File,
+    ) -> Result<(), DataError> {
+        if alias.parent() != Some(self.path.as_path()) {
+            return Err(DataError::invalid_request(
+                "A pinned source alias must belong to its temporary lease.",
+            ));
+        }
+        let pinned_source = source.try_clone().map_err(|error| temp_io(alias, error))?;
+        let identity = file_identity(&pinned_source).map_err(|error| temp_io(alias, error))?;
+        let mut aliases = self
+            .pinned_source_aliases
+            .lock()
+            .map_err(|_| temp_unavailable())?;
+        if aliases.contains_key(alias) {
+            return Err(DataError::invalid_request(
+                "The pinned source alias is already registered.",
+            ));
+        }
+        aliases.insert(
+            alias.to_owned(),
+            PinnedSourceAlias {
+                identity,
+                _pinned_source: pinned_source,
+            },
+        );
+        Ok(())
+    }
+
     pub(crate) fn commit_usage(&self) {
-        let bytes = directory_bytes_best_effort(&self.path);
+        let bytes = self
+            .pinned_source_aliases
+            .lock()
+            .ok()
+            .and_then(|aliases| directory_bytes_with_aliases(&self.path, &aliases).ok())
+            .unwrap_or_else(|| directory_bytes_best_effort(&self.path));
         if let Ok(mut reservations) = self.reservations.lock() {
             if let Some(reservation) = reservations.get_mut(&self.path) {
                 *reservation = bytes;
@@ -413,6 +477,11 @@ impl Drop for QueryTempLease {
         }
         self.active_queries.fetch_sub(1, Ordering::AcqRel);
         let _ = remove_with_retry(&self.path, std::time::Duration::from_millis(100));
+        // Unlink before unregistering, so a concurrent monitor never charges
+        // a valid source hardlink merely because its lease is being dropped.
+        if let Ok(mut aliases) = self.pinned_source_aliases.lock() {
+            aliases.retain(|path, _| path.parent() != Some(self.path.as_path()));
+        }
         if let Some(parent) = self.path.parent() {
             let _ = fs::remove_dir(parent);
         }
@@ -543,20 +612,108 @@ fn read_directories(path: &Path) -> Result<Vec<PathBuf>, DataError> {
         .collect())
 }
 
-fn directory_bytes(path: &Path) -> Result<u64, DataError> {
+fn directory_bytes_with_aliases(
+    path: &Path,
+    aliases: &HashMap<PathBuf, PinnedSourceAlias>,
+) -> Result<u64, DataError> {
     let mut bytes = 0_u64;
-    for entry in fs::read_dir(path).map_err(|error| temp_io(path, error))? {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(temp_io(path, error)),
+    };
+    for entry in entries {
         let entry = entry.map_err(|error| temp_io(path, error))?;
-        let metadata = entry
-            .metadata()
-            .map_err(|error| temp_io(&entry.path(), error))?;
+        // Workers and lease cleanup can unlink files while usage is sampled.
+        // A vanished entry consumes no bytes; other I/O errors remain typed.
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(temp_io(&entry.path(), error)),
+        };
         bytes = bytes.saturating_add(if metadata.is_dir() {
-            directory_bytes(&entry.path())?
+            directory_bytes_with_aliases(&entry.path(), aliases)?
         } else {
-            metadata.len()
+            accounted_file_bytes(&entry.path(), &metadata, aliases)
         });
     }
     Ok(bytes)
+}
+
+fn accounted_file_bytes(
+    path: &Path,
+    metadata: &fs::Metadata,
+    aliases: &HashMap<PathBuf, PinnedSourceAlias>,
+) -> u64 {
+    if let Some(alias) = aliases.get(path) {
+        if File::open(path)
+            .and_then(|file| file_identity(&file))
+            .is_ok_and(|identity| identity == alias.identity)
+        {
+            return 0;
+        }
+    }
+    metadata.len()
+}
+
+#[cfg(windows)]
+fn file_identity(file: &File) -> std::io::Result<(u64, u64)> {
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct ByHandleFileInformation {
+        attributes: u32,
+        creation_time: FileTime,
+        last_access_time: FileTime,
+        last_write_time: FileTime,
+        volume_serial_number: u32,
+        file_size_high: u32,
+        file_size_low: u32,
+        number_of_links: u32,
+        file_index_high: u32,
+        file_index_low: u32,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandle(
+            file: *mut std::ffi::c_void,
+            information: *mut ByHandleFileInformation,
+        ) -> i32;
+    }
+
+    let mut information = ByHandleFileInformation::default();
+    // SAFETY: the file handle remains owned for the call and the writable
+    // structure matches the canonical Win32 BY_HANDLE_FILE_INFORMATION layout.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &mut information) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok((
+        u64::from(information.volume_serial_number),
+        (u64::from(information.file_index_high) << 32) | u64::from(information.file_index_low),
+    ))
+}
+
+#[cfg(unix)]
+fn file_identity(file: &File) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata()?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(any(windows, unix)))]
+fn file_identity(_file: &File) -> std::io::Result<(u64, u64)> {
+    Err(std::io::Error::other(
+        "Pinned source alias accounting requires a stable OS file identity.",
+    ))
 }
 
 fn directory_bytes_best_effort(path: &Path) -> u64 {
@@ -658,6 +815,136 @@ mod tests {
         assert!(error.message.contains("Clear inactive CSV cache"));
         assert!(!error.message.contains("C:/private"));
         assert!(!error.message.contains("disk full"));
+    }
+
+    #[test]
+    fn storage_pressure_reservations_cover_growth_beyond_original_allowance() {
+        let local = tempfile::tempdir().unwrap();
+        let limit = 8 * 1024 * 1024;
+        let manager = QueryTempManager::open(local.path(), limit).unwrap();
+        let baseline = manager.usage().unwrap().query_temp_bytes;
+        let first = manager
+            .allocate_bounded("first", "csv", 4 * 1024 * 1024)
+            .unwrap();
+        let output = File::create(first.path().join("prepared.parquet")).unwrap();
+        let actual_bytes = 6 * 1024 * 1024;
+        output.set_len(actual_bytes).unwrap();
+        drop(output);
+        assert_eq!(first.allowance_bytes(), 4 * 1024 * 1024);
+        let expected_remaining = limit - baseline - actual_bytes;
+        let budget = manager.bounded_allowance(limit).unwrap();
+        assert_eq!(budget.limit_remaining_bytes, expected_remaining);
+        assert_eq!(budget.allowance_bytes, expected_remaining);
+        let second = manager
+            .allocate_bounded("second", "query", 4 * 1024 * 1024)
+            .unwrap();
+        assert_eq!(second.allowance_bytes(), expected_remaining);
+        assert_eq!(manager.bounded_allowance(limit).unwrap().allowance_bytes, 0);
+        assert!(
+            baseline + actual_bytes.max(first.allowance_bytes()) + second.allowance_bytes()
+                <= limit
+        );
+        drop(second);
+        assert_eq!(
+            manager.bounded_allowance(limit).unwrap().allowance_bytes,
+            expected_remaining
+        );
+        drop(first);
+        assert_eq!(
+            manager.bounded_allowance(limit).unwrap().allowance_bytes,
+            limit - baseline
+        );
+    }
+
+    #[test]
+    fn storage_pressure_pinned_alias_does_not_charge_source_and_all_accounting_agrees() {
+        let local = tempfile::tempdir().unwrap();
+        let input = local.path().join("input.csv");
+        let source = File::create(&input).unwrap();
+        source.set_len(8 * 1024 * 1024).unwrap();
+        drop(source);
+        let pinned = File::open(&input).unwrap();
+        let limit = 1024 * 1024;
+        let manager = QueryTempManager::open(local.path(), limit).unwrap();
+        let baseline = manager.usage().unwrap().query_temp_bytes;
+        let lease = manager.allocate_bounded("document", "csv", limit).unwrap();
+        let alias = lease.path().join("polars-source.snapshot.csv");
+        lease.register_pinned_source_alias(&alias, &pinned).unwrap();
+        // Registration precedes creation, eliminating the monitor race window.
+        assert_eq!(manager.usage().unwrap().query_temp_bytes, baseline);
+        fs::hard_link(&input, &alias).unwrap();
+        fs::write(lease.path().join("prepared.parquet"), vec![0; 16 * 1024]).unwrap();
+        let expected = baseline + 16 * 1024;
+        assert_eq!(manager.usage().unwrap().query_temp_bytes, expected);
+        assert_eq!(manager.process_temp_bytes().unwrap(), expected);
+        assert!(manager.budget_violation().unwrap().is_none());
+        lease.commit_usage();
+        assert_eq!(lease.allowance_bytes(), 16 * 1024);
+        assert_eq!(
+            manager.bounded_allowance(limit).unwrap().allowance_bytes,
+            limit - expected
+        );
+        assert_eq!(manager.clear_inactive().unwrap().deleted_bytes, 0);
+        assert!(manager
+            .pinned_source_aliases
+            .lock()
+            .unwrap()
+            .contains_key(&alias));
+        drop(lease);
+        assert!(manager.pinned_source_aliases.lock().unwrap().is_empty());
+        assert!(!alias.exists());
+        assert_eq!(manager.usage().unwrap().query_temp_bytes, baseline);
+        assert_eq!(fs::metadata(&input).unwrap().len(), 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn storage_pressure_only_exact_registered_file_identity_is_exempt() {
+        let local = tempfile::tempdir().unwrap();
+        let input = local.path().join("input.csv");
+        fs::write(&input, vec![0; 8192]).unwrap();
+        let pinned = File::open(&input).unwrap();
+        let manager = QueryTempManager::open(local.path(), 1024 * 1024).unwrap();
+        let lease = manager
+            .allocate_bounded("document", "csv", 1024 * 1024)
+            .unwrap();
+        let baseline = manager.usage().unwrap().query_temp_bytes;
+        let alias = lease.path().join("polars-source.snapshot.csv");
+        fs::copy(&input, &alias).unwrap();
+        assert_eq!(
+            manager.process_temp_bytes().unwrap(),
+            baseline + 8192,
+            "the filename alone never grants an exemption"
+        );
+        lease.register_pinned_source_alias(&alias, &pinned).unwrap();
+        assert_eq!(
+            manager.process_temp_bytes().unwrap(),
+            baseline + 8192,
+            "a registered path containing a copy must still be charged"
+        );
+        fs::remove_file(&alias).unwrap();
+        fs::hard_link(&input, &alias).unwrap();
+        assert_eq!(manager.process_temp_bytes().unwrap(), baseline);
+        let unregistered = lease.path().join("unregistered-hardlink.csv");
+        fs::hard_link(&input, &unregistered).unwrap();
+        assert_eq!(
+            manager.process_temp_bytes().unwrap(),
+            baseline + 8192,
+            "an unregistered hardlink must be charged"
+        );
+        fs::remove_file(&unregistered).unwrap();
+        fs::remove_file(&alias).unwrap();
+        fs::write(&alias, b"replacement").unwrap();
+        assert_eq!(
+            manager.process_temp_bytes().unwrap(),
+            baseline + 11,
+            "replacing a registered alias with another file restores accounting"
+        );
+        assert!(lease
+            .register_pinned_source_alias(&local.path().join("outside.csv"), &pinned)
+            .is_err());
+        drop(lease);
+        assert!(manager.pinned_source_aliases.lock().unwrap().is_empty());
+        assert_eq!(fs::read(&input).unwrap(), vec![0; 8192]);
     }
 
     #[test]

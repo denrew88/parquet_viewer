@@ -19,6 +19,13 @@ import { ValueDisplayFormatsSection } from "./ValueDisplayFormatsSection";
 
 const GIB = 1024 * 1024 * 1024;
 const MIB = 1024 * 1024;
+function editableGiB(bytes: number): string {
+  for (let digits = 0; digits <= 10; digits += 1) {
+    const value = Number((bytes / GIB).toFixed(digits));
+    if (Math.round(value * GIB) === bytes) return String(value);
+  }
+  return String(bytes / GIB);
+}
 const focusableSelector = [
   "button:not([disabled])",
   "input:not([disabled])",
@@ -117,27 +124,28 @@ export function AppSettingsDialog({
   const [confirmingCsvCacheClear, setConfirmingCsvCacheClear] = useState(false);
   const [csvMode, setCsvMode] = useState(initialSettings.csvDefaultParsingMode);
   const [queryLimitGiB, setQueryLimitGiB] = useState(
-    String(initialSettings.queryTempLimitBytes / GIB),
+    editableGiB(initialSettings.queryTempLimitBytes),
   );
   const [copyMaxCells, setCopyMaxCells] = useState(String(initialSettings.copyLimits.maxCells));
   const [copyMaxMiB, setCopyMaxMiB] = useState(String(initialSettings.copyLimits.maxBytes / MIB));
   const [displayFormats, setDisplayFormats] = useState<DisplayFormats>(() =>
     structuredClone(initialSettings.displayFormats),
   );
-  const queryLimitBytes = Number(queryLimitGiB) * GIB;
+  const queryLimitInputBytes = Number(queryLimitGiB) * GIB;
+  const queryLimitBytes = Math.round(queryLimitInputBytes);
   const copyMaxCellsValue = Number(copyMaxCells);
   const copyMaxBytesValue = Number(copyMaxMiB) * MIB;
   const queryLimitError = useMemo(() => {
     if (
       queryLimitGiB.trim() === "" ||
       !Number.isSafeInteger(queryLimitBytes) ||
-      queryLimitBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
-      queryLimitBytes > MAX_QUERY_TEMP_LIMIT_BYTES
+      queryLimitInputBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
+      queryLimitInputBytes > MAX_QUERY_TEMP_LIMIT_BYTES
     ) {
       return "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB.";
     }
     return null;
-  }, [queryLimitBytes, queryLimitGiB]);
+  }, [queryLimitBytes, queryLimitInputBytes, queryLimitGiB]);
   const copyMaxCellsError = useMemo(() => {
     if (
       copyMaxCells.trim() === "" ||
@@ -688,7 +696,7 @@ export function AppSettingsDialog({
                   max="10"
                   min="0.0625"
                   onChange={(event) => setQueryLimitGiB(event.target.value)}
-                  step="0.0625"
+                  step="any"
                   type="number"
                   value={queryLimitGiB}
                 />

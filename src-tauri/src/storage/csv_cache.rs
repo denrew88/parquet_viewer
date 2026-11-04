@@ -766,7 +766,7 @@ impl CsvPersistentCache {
             }
             let Some(((key, _, _, path), lock)) = candidate else {
                 return Err(DataError::query_temp_limit(
-                    "CSV persistent cache cannot satisfy the temporary storage budget while active entries are leased.",
+                    "CSV persistent cache cannot satisfy the temporary storage budget while active entries are leased. Close other CSV tabs or increase the storage limit, then retry.",
                 ));
             };
             fs::remove_dir_all(&path).map_err(|error| DataError::io(&path, error))?;

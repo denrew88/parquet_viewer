@@ -1,0 +1,316 @@
+{
+  "date": "2026-11-04",
+  "status": "PASS",
+  "rust": {
+    "passed": 314,
+    "failed": 0,
+    "ignored": 16,
+    "storagePressureTests": 9
+  },
+  "sharedRuntimeSha256": {
+    "query/engine.rs": "dfde7e6dda34345339e23e3983854f0c7389f01e0f74ed8f586a1983f3e8b186",
+    "storage/temp.rs": "be16174704d2b5288950feeae766fb6f4bd6cebde96773f54434dce7516fbd2f",
+    "storage/csv_cache.rs": "2c6be60e4a870a8513921b039694d1b7bef73d427706ca297098ca719dca7d18",
+    "data/csv_source.rs": "de20d4256b00adca2a1f261c7cd1f1b7e20aaf2cb85dd3eb035b939a1f2e32db"
+  },
+  "workerPatchSha256": "c05363cb86f1632ddee2d10cccf44158cfe9c81a463f18e91b96552d70760367",
+  "nativeWorkerSha256": "4bbd986363296377338ab667b13d29fdc4b63e227b760852e11e2fbd0c28eaca",
+  "nativeConverterRetained": true,
+  "binary": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\csv-native-parquet\\bin\\data-viewer.exe",
+    "sha256": "2b9ad299c2d75177528eccd1430b756ff491f8816c01a2719d15447ab5d63cf6",
+    "bytes": 58786304
+  },
+  "native": [
+    {
+      "limitBytes": 536870912,
+      "cold": [
+        {
+          "documentId": "document-1",
+          "sessionId": "session-1",
+          "state": "ready",
+          "rowsScanned": 5850000,
+          "totalRows": 5850000,
+          "elapsedMs": 12237,
+          "sourceReadBytes": 1958855828,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 407265378,
+          "navigationFrontierRow": 5850000,
+          "error": null
+        },
+        {
+          "documentId": "document-2",
+          "sessionId": "session-2",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 13824,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753167,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-3",
+          "sessionId": "session-3",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 14562,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753167,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-4",
+          "sessionId": "session-4",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 13061,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753167,
+          "navigationFrontierRow": 65537,
+          "error": null
+        }
+      ],
+      "warm": [
+        {
+          "documentId": "document-5",
+          "sessionId": "session-5",
+          "state": "ready",
+          "rowsScanned": 5850000,
+          "totalRows": 5850000,
+          "elapsedMs": 69,
+          "sourceReadBytes": 0,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 5850000,
+          "error": null
+        },
+        {
+          "documentId": "document-6",
+          "sessionId": "session-6",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 47,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-7",
+          "sessionId": "session-7",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 51,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-8",
+          "sessionId": "session-8",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 58,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        }
+      ],
+      "coldFinalUsageBytes": 433678604,
+      "warmFinalUsageBytes": 433584108,
+      "sourceHashesUnchanged": true
+    },
+    {
+      "limitBytes": 1073741824,
+      "cold": [
+        {
+          "documentId": "document-1",
+          "sessionId": "session-1",
+          "state": "ready",
+          "rowsScanned": 5850000,
+          "totalRows": 5850000,
+          "elapsedMs": 11112,
+          "sourceReadBytes": 1958855828,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 407265380,
+          "navigationFrontierRow": 5850000,
+          "error": null
+        },
+        {
+          "documentId": "document-2",
+          "sessionId": "session-2",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 12532,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753169,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-3",
+          "sessionId": "session-3",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 11808,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753169,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-4",
+          "sessionId": "session-4",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 13244,
+          "sourceReadBytes": 136129824,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 8753169,
+          "navigationFrontierRow": 65537,
+          "error": null
+        }
+      ],
+      "warm": [
+        {
+          "documentId": "document-5",
+          "sessionId": "session-5",
+          "state": "ready",
+          "rowsScanned": 5850000,
+          "totalRows": 5850000,
+          "elapsedMs": 72,
+          "sourceReadBytes": 0,
+          "totalBytes": 979427914,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 5850000,
+          "error": null
+        },
+        {
+          "documentId": "document-6",
+          "sessionId": "session-6",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 49,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-7",
+          "sessionId": "session-7",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 50,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        },
+        {
+          "documentId": "document-8",
+          "sessionId": "session-8",
+          "state": "ready",
+          "rowsScanned": 65537,
+          "totalRows": 65537,
+          "elapsedMs": 50,
+          "sourceReadBytes": 0,
+          "totalBytes": 68064912,
+          "cacheOutputBytes": 274432,
+          "navigationFrontierRow": 65537,
+          "error": null
+        }
+      ],
+      "coldFinalUsageBytes": 433678621,
+      "warmFinalUsageBytes": 433584117,
+      "sourceHashesUnchanged": true
+    }
+  ],
+  "capacityFailure": {
+    "documentId": "document-9",
+    "sessionId": "session-9",
+    "state": "failed",
+    "rowsScanned": 5850000,
+    "totalRows": null,
+    "elapsedMs": 12085,
+    "sourceReadBytes": 979274616,
+    "totalBytes": 979427914,
+    "cacheOutputBytes": 0,
+    "navigationFrontierRow": 0,
+    "error": {
+      "code": "QueryTempLimitExceeded",
+      "message": "Query temporary storage is unavailable (query 386139965 bytes, CSV cache 432486371 bytes, limit 536870912 bytes, free 792400318464 bytes, safety reserve 5368709120 bytes). Close other CSV tabs or increase the storage limit. Clear inactive CSV cache in Settings or free disk space, then retry."
+    }
+  },
+  "capacityRetry": {
+    "documentId": "document-9",
+    "sessionId": "session-9",
+    "state": "ready",
+    "rowsScanned": 5850000,
+    "totalRows": 5850000,
+    "elapsedMs": 11712,
+    "sourceReadBytes": 1958855828,
+    "totalBytes": 979427914,
+    "cacheOutputBytes": 407265384,
+    "navigationFrontierRow": 5850000,
+    "error": null
+  },
+  "nativeCacheAudit": [
+    {
+      "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\01aa4930b2cc22d6\\prepared.parquet",
+      "rows": 65537,
+      "createdBy": "Polars",
+      "bytes": 7383873
+    },
+    {
+      "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\328c6104a315d625\\prepared.parquet",
+      "rows": 5850000,
+      "createdBy": "Polars",
+      "bytes": 385023196
+    },
+    {
+      "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\a757a944ae6ea57a\\prepared.parquet",
+      "rows": 65537,
+      "createdBy": "Polars",
+      "bytes": 7383873
+    },
+    {
+      "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\e89d56bdfbfcddd2\\prepared.parquet",
+      "rows": 65537,
+      "createdBy": "Polars",
+      "bytes": 7383873
+    }
+  ],
+  "limitations": [
+    "16 existing ignored Rust gates",
+    "Native verification uses actual Tauri IPC; no new visual/viewport acceptance claim",
+    "5GiB disk free-space reserve retained; genuine active-cache capacity failure remains typed",
+    "No installer/NSIS or external release upload performed",
+    "Original full-Polars product was not separately rebuilt; formal native variant tested and built with shared runtime source parity"
+  ]
+}

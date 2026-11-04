@@ -50,6 +50,39 @@ describe("AppSettingsDialog", () => {
     );
   });
 
+  it.each(["0.3", "0.1", "1.1", "0.0625", "10"])(
+    "accepts %s GiB, saves integer bytes, and reopens without changing the limit",
+    async (value) => {
+      const user = userEvent.setup();
+      const { onApply, view } = renderDialog();
+      const input = screen.getByRole("spinbutton", { name: "Query temporary storage limit" });
+      await user.clear(input);
+      await user.type(input, value);
+      expect(input).toBeValid();
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+      const saved = onApply.mock.calls[0][0];
+      expect(saved.queryTempLimitBytes).toBe(Math.round(Number(value) * 1024 ** 3));
+      view.unmount();
+      const reopened = renderDialog({ initialSettings: saved });
+      expect(screen.getByRole("spinbutton", { name: "Query temporary storage limit" })).toHaveValue(
+        Number(value),
+      );
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+      expect(reopened.onApply).toHaveBeenCalledWith(saved);
+    },
+  );
+
+  it.each(["0.0624999999", "10.0000000001", "0", ""])(
+    "rejects out-of-range %s GiB before rounding",
+    (value) => {
+      renderDialog();
+      fireEvent.change(screen.getByRole("spinbutton", { name: "Query temporary storage limit" }), {
+        target: { value },
+      });
+      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    },
+  );
+
   it("blocks invalid storage limits and exposes the copy settings entry", async () => {
     const user = userEvent.setup();
     const { onApply, onOpenCopySettings } = renderDialog();

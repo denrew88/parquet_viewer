@@ -1584,6 +1584,7 @@ impl CsvQueryProvider {
         let pinned_source = context.source_file.ok_or_else(|| {
             DataError::query_failed("Polars CSV preparation requires a pinned source handle.")
         })?;
+        let mut check_worker_budget = || (context.progress)(source_row);
         super::csv_polars::run_product_worker(
             &context.source.path,
             pinned_source,
@@ -1591,7 +1592,10 @@ impl CsvQueryProvider {
             self.spec.header_used,
             &self.spec.profile,
             &resolved_targets,
-            context.cancel,
+            super::csv_polars::WorkerControl {
+                cancel: context.cancel,
+                check: &mut check_worker_budget,
+            },
         )?;
         if context.cancel.load(Ordering::Acquire) {
             let _ = fs::remove_file(&parquet_partial);

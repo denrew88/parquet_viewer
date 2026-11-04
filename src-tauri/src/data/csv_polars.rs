@@ -27,7 +27,7 @@ const WORKER_RESULT_NAME: &str = "polars-worker-result.json";
 const WORKER_RESULT_PARTIAL_NAME: &str = "polars-worker-result.json.partial";
 const WORKER_PROTOCOL_VERSION: u32 = 1;
 const PREPARED_PARTIAL_NAME: &str = "prepared.parquet.partial";
-pub(super) const SOURCE_SNAPSHOT_NAME: &str = "polars-source.snapshot.csv";
+pub(crate) const SOURCE_SNAPSHOT_NAME: &str = "polars-source.snapshot.csv";
 const WORKER_JSON_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -111,6 +111,11 @@ pub(super) fn build_product_sink(spec: PolarsPreparedSinkSpec<'_>) -> Result<Laz
         .map_err(polars_error)
 }
 
+pub(super) struct WorkerControl<'a> {
+    pub cancel: &'a AtomicBool,
+    pub check: &'a mut dyn FnMut() -> Result<(), DataError>,
+}
+
 pub(super) fn run_product_worker(
     source: &Path,
     pinned_source: &File,
@@ -118,9 +123,9 @@ pub(super) fn run_product_worker(
     header_used: bool,
     profile: &CsvParsingProfile,
     resolved_targets: &[CsvTargetType],
-    cancel: &AtomicBool,
+    control: WorkerControl<'_>,
 ) -> Result<(), DataError> {
-    if cancel.load(Ordering::Acquire) {
+    if control.cancel.load(Ordering::Acquire) {
         return Err(DataError::task_cancelled());
     }
     let staging_root =
@@ -171,7 +176,13 @@ pub(super) fn run_product_worker(
             return Err(error);
         }
     };
-    let status = match wait_for_worker(&mut child, &job, cancel, &staging_root) {
+    let status = match wait_for_worker(
+        &mut child,
+        &job,
+        control.cancel,
+        &staging_root,
+        control.check,
+    ) {
         Ok(status) => status,
         Err(error) => {
             job.terminate();
@@ -573,6 +584,7 @@ fn wait_for_worker(
     job: &WorkerJob,
     cancel: &AtomicBool,
     staging_root: &Path,
+    check: &mut dyn FnMut() -> Result<(), DataError>,
 ) -> Result<std::process::ExitStatus, DataError> {
     loop {
         if cancel.load(Ordering::Acquire) {
@@ -585,6 +597,10 @@ fn wait_for_worker(
             cleanup_worker_files(staging_root);
             return Err(DataError::task_cancelled());
         }
+        // Poll the shared storage budget while the external converter writes.
+        // Its output is not bounded by DuckDB's spill allowance, so interrupting
+        // the parent's connection alone cannot stop an oversized worker.
+        check()?;
         if let Some(status) = child.try_wait().map_err(|error| {
             DataError::query_failed(format!("Cannot poll Polars worker: {error}"))
         })? {
@@ -688,9 +704,29 @@ fn probe_pinned_source_snapshot_with<F>(
 where
     F: FnOnce(&Path, &Path) -> std::io::Result<()>,
 {
-    let probe = staging_root.join(format!("polars-source.probe-{}.csv", worker_nonce()));
-    let _guard = SnapshotProbeGuard(probe.clone());
+    // Reuse the parent-registered alias path so even the short capability
+    // probe is never charged as another full copy of the source CSV.
+    let probe = staging_root.join(SOURCE_SNAPSHOT_NAME);
+    match fs::symlink_metadata(&probe) {
+        Ok(_) => {
+            return Err(DataError::query_failed(
+                "Pinned CSV source probe path already exists.",
+            ))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(DataError::io(&probe, error)),
+    }
+    // This lease owns its staging directory. Install cleanup before the
+    // operation so a failed creation that leaves a partial file is also safe.
+    let mut guard = SnapshotProbeGuard {
+        path: probe.clone(),
+        cleanup: true,
+    };
     hard_link(source, &probe).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            // A competing creator won after the check; its file is not ours.
+            guard.cleanup = false;
+        }
         DataError::query_failed(format!(
             "Cannot create pinned CSV source probe {}: {error}",
             probe.display()
@@ -714,11 +750,16 @@ where
     Ok(())
 }
 
-struct SnapshotProbeGuard(PathBuf);
+struct SnapshotProbeGuard {
+    path: PathBuf,
+    cleanup: bool,
+}
 
 impl Drop for SnapshotProbeGuard {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        if self.cleanup {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -1041,10 +1082,69 @@ mod tests {
             true,
             &profile,
             &[CsvTargetType::Text],
-            &cancel,
+            WorkerControl {
+                cancel: &cancel,
+                check: &mut || Ok(()),
+            },
         )
         .unwrap_err();
         assert_eq!(error.code, crate::domain::DataErrorCode::TaskCancelled);
+    }
+
+    #[test]
+    fn storage_pressure_worker_budget_error_terminates_child_and_cleans_staging() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.csv");
+        let staging = directory.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        fs::write(&source, "value\nhello\n").unwrap();
+        let pinned = File::open(&source).unwrap();
+        let started = std::time::Instant::now();
+        let error = run_product_worker(
+            &source,
+            &pinned,
+            &staging,
+            true,
+            &profile(&[CsvTargetType::Text]),
+            &[CsvTargetType::Text],
+            WorkerControl {
+                cancel: &AtomicBool::new(false),
+                check: &mut || Err(DataError::query_temp_limit("injected worker storage limit")),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.code,
+            crate::domain::DataErrorCode::QueryTempLimitExceeded
+        );
+        assert_eq!(error.message, "injected worker storage limit");
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_eq!(fs::read(&source).unwrap(), b"value\nhello\n");
+        assert_eq!(fs::read_dir(&staging).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn storage_pressure_snapshot_probe_preserves_existing_alias_on_creation_failure() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.csv");
+        let staging = directory.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        fs::write(&source, b"source").unwrap();
+        let pinned = File::open(&source).unwrap();
+        let alias = staging.join(SOURCE_SNAPSHOT_NAME);
+        fs::write(&alias, b"existing sentinel").unwrap();
+        assert!(probe_pinned_source_snapshot(&source, &pinned, &staging).is_err());
+        assert_eq!(fs::read(&alias).unwrap(), b"existing sentinel");
+        assert_eq!(fs::read(&source).unwrap(), b"source");
+        fs::remove_file(&alias).unwrap();
+        let error =
+            probe_pinned_source_snapshot_with(&source, &pinned, &staging, |_, destination| {
+                fs::write(destination, b"concurrent sentinel")?;
+                Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists))
+            })
+            .unwrap_err();
+        assert_eq!(error.code, crate::domain::DataErrorCode::QueryFailed);
+        assert_eq!(fs::read(&alias).unwrap(), b"concurrent sentinel");
     }
 
     #[test]
@@ -1333,7 +1433,10 @@ mod tests {
             true,
             &profile,
             &targets,
-            &cancel,
+            WorkerControl {
+                cancel: &cancel,
+                check: &mut || Ok(()),
+            },
         )
         .unwrap_err();
         let cancelled_at = cancelled_rx.recv().unwrap();

@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\artifacts\\experiments\\csv-native-parquet\\data-viewer.exe",
+  "sha256": "7c9b3db2f698bd9d237005ad5caf39ba9174f13dfbf730a02f41a12e5dd7ce4f",
+  "fixtures": [
+    {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-20\\storage-decimal.csv",
+      "rows": 3,
+      "sha256": "52ad3a8efe4646a2f0a954980b019514f332ede75082bed4a34dc35782d339b4",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-20\\timestamp.csv",
+      "rows": 16,
+      "sha256": "874899d3b98e95979b0bcbc4ca4cf42228e16223d6f5eb0929cc2412d330328e",
+      "unchanged": true
+    }
+  ],
+  "health": {
+    "status": "ok",
+    "appVersion": "0.20.0"
+  },
+  "tauriVersion": "0.20.0"
+}

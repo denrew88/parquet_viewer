@@ -1,0 +1,39 @@
+{
+  "status": "PASS",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-20-utf8-view\\data-viewer.exe",
+  "sha256": "10275191912bf83dab8e4800e74561d1a38da698d2246064f06be853b2839e3c",
+  "fixtures": [
+    {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-20\\storage-decimal.csv",
+      "rows": 3,
+      "sha256": "52ad3a8efe4646a2f0a954980b019514f332ede75082bed4a34dc35782d339b4",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-20\\timestamp.csv",
+      "rows": 16,
+      "sha256": "874899d3b98e95979b0bcbc4ca4cf42228e16223d6f5eb0929cc2412d330328e",
+      "unchanged": true
+    }
+  ],
+  "health": {
+    "status": "ok",
+    "appVersion": "0.20.0"
+  },
+  "tauriVersion": "0.20.0",
+  "nativeUiStringViewVisible": true,
+  "stringViews": [
+    {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\fixtures\\phase-20\\utf8-view.parquet",
+      "column": "value",
+      "rows": 6,
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-native-validation-20261103\\csv-cache-v1\\01aa4930b2cc22d6\\prepared.parquet",
+      "column": "__dv_base_raw_0",
+      "rows": 5,
+      "unchanged": true
+    }
+  ]
+}
