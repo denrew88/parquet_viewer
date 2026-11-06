@@ -36,6 +36,8 @@ fixtures/*
 !fixtures/phase-11/**
 !fixtures/phase-20/
 !fixtures/phase-20/**
+!fixtures/phase-21/
+!fixtures/phase-21/**
 # Large synthetic benchmark inputs stay local; hashes and profiles are retained.
 fixtures/phase-20/performance/*/source.csv
 fixtures/phase-20/performance/main-high/high-5850000x15.csv
@@ -49,6 +51,15 @@ artifacts/**/*-attempt-*
 artifacts/**/*-unsandboxed*
 artifacts/experiments/
 artifacts/optimizations/
+
+# Phase 21 raw runs stay local; retain summaries, reviews and final UI evidence.
+artifacts/phase-21/native/*.json
+artifacts/phase-21/native/native-after-data-validation.png
+artifacts/phase-21/native/native-column-values.png
+artifacts/phase-21/native/native-ui-cache-preview-*.png
+
+# Legacy generated Storage captures; current Phase evidence is retained separately.
+artifacts/storage-decimal/
 
 # Editor directories and files
 .vscode/*

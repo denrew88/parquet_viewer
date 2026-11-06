@@ -272,7 +272,7 @@ test("validates application settings and storage controls", async ({ page }) => 
   await expect(dialog.getByText("Browser mock (no persistent cache)")).toBeVisible();
   await expect(dialog.getByText(/20\.00 GiB available on disk/)).toBeVisible();
 
-  const limit = dialog.getByRole("spinbutton", { name: "Query temporary storage limit" });
+  const limit = dialog.getByRole("spinbutton", { name: "Overall managed storage limit" });
   const copyCells = dialog.getByRole("spinbutton", { name: "Maximum cells" });
   const copyMiB = dialog.getByRole("spinbutton", { name: "Maximum clipboard size" });
   await expect(copyCells).toHaveValue("1000000");
@@ -306,13 +306,13 @@ test("validates application settings and storage controls", async ({ page }) => 
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(
-    dialog.getByRole("spinbutton", { name: "Query temporary storage limit" }),
+    dialog.getByRole("spinbutton", { name: "Overall managed storage limit" }),
   ).toHaveValue("0.3");
   await dialog
-    .getByRole("spinbutton", { name: "Query temporary storage limit" })
+    .getByRole("spinbutton", { name: "Overall managed storage limit" })
     .scrollIntoViewIfNeeded();
   const limitBounds = await dialog
-    .getByRole("spinbutton", { name: "Query temporary storage limit" })
+    .getByRole("spinbutton", { name: "Overall managed storage limit" })
     .boundingBox();
   const viewport = page.viewportSize();
   expect(limitBounds).not.toBeNull();

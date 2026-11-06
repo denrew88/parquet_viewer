@@ -12,7 +12,7 @@ import {
 } from "../copy/model";
 import { COPY_PRESETS, DEFAULT_COPY_PRESET } from "../copy/presets";
 
-export const APP_SETTINGS_SCHEMA_VERSION = 4 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 5 as const;
 export const DEFAULT_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const MIN_QUERY_TEMP_LIMIT_BYTES = 64 * 1024 * 1024;
 export const MAX_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
@@ -102,11 +102,17 @@ export interface AppSettingsV3 extends Omit<AppSettingsV2, "schemaVersion"> {
 }
 
 export interface AppSettingsV4 extends Omit<AppSettingsV2, "schemaVersion"> {
-  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly schemaVersion: 4;
   readonly displayFormats: DisplayFormats;
 }
 
-export type AppSettings = AppSettingsV4;
+export interface AppSettingsV5 extends Omit<AppSettingsV4, "schemaVersion"> {
+  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly csvCacheLimitBytes: number;
+  readonly csvCacheDirectory: string | null;
+}
+
+export type AppSettings = AppSettingsV5;
 
 export interface SettingsValidationIssue {
   readonly path: string;
@@ -149,8 +155,13 @@ const settingsKeys = [
   "queryTempLimitBytes",
   "copyLimits",
   "displayFormats",
+  "csvCacheLimitBytes",
+  "csvCacheDirectory",
 ] as const;
-const v2SettingsKeys = settingsKeys.filter((key) => key !== "displayFormats");
+const v4SettingsKeys = settingsKeys.filter(
+  (key) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
+);
+const v2SettingsKeys = v4SettingsKeys.filter((key) => key !== "displayFormats");
 const v1SettingsKeys = v2SettingsKeys.filter((key) => key !== "copyLimits");
 const copyLimitKeys = ["maxCells", "maxBytes"] as const;
 const copyOptionKeys = [
@@ -674,6 +685,8 @@ export function defaultAppSettings(): AppSettings {
     copyCustomOptions: COPY_PRESETS.custom,
     csvDefaultParsingMode: "auto",
     queryTempLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+    csvCacheLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+    csvCacheDirectory: null,
     copyLimits: DEFAULT_COPY_LIMITS,
     displayFormats: DEFAULT_DISPLAY_FORMATS,
   });
@@ -686,9 +699,11 @@ export function parseAppSettings(value: unknown): AppSettings {
   const isV1 = item.schemaVersion === 1;
   const isV2 = item.schemaVersion === 2;
   const isV3 = item.schemaVersion === 3;
+  const isV4 = item.schemaVersion === 4;
+  const isLegacy = isV1 || isV2 || isV3 || isV4;
   const issues = exactKeys(
     item,
-    isV1 ? v1SettingsKeys : isV2 ? v2SettingsKeys : settingsKeys,
+    isV1 ? v1SettingsKeys : isV2 ? v2SettingsKeys : isV3 || isV4 ? v4SettingsKeys : settingsKeys,
     "settings",
   );
   const customOptions = parseCustomOptions(item.copyCustomOptions, issues);
@@ -699,7 +714,7 @@ export function parseAppSettings(value: unknown): AppSettings {
       : isV3
         ? parseLegacyV3DisplayFormats(item.displayFormats, issues)
         : parseDisplayFormats(item.displayFormats, issues);
-  if (!isV1 && !isV2 && !isV3 && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
+  if (!isLegacy && item.schemaVersion !== APP_SETTINGS_SCHEMA_VERSION) {
     issues.push({ path: "settings.schemaVersion", message: "Unsupported settings version." });
   }
   if (!copyPresets.includes(item.copyPreset as CopyPreset)) {
@@ -719,6 +734,37 @@ export function parseAppSettings(value: unknown): AppSettings {
       message: `Expected an integer from ${MIN_QUERY_TEMP_LIMIT_BYTES} to ${MAX_QUERY_TEMP_LIMIT_BYTES}.`,
     });
   }
+  const csvCacheLimitBytes = isLegacy ? DEFAULT_QUERY_TEMP_LIMIT_BYTES : item.csvCacheLimitBytes;
+  const csvCacheDirectory = isLegacy ? null : item.csvCacheDirectory;
+  if (
+    typeof csvCacheLimitBytes !== "number" ||
+    !Number.isSafeInteger(csvCacheLimitBytes) ||
+    csvCacheLimitBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
+    csvCacheLimitBytes > MAX_QUERY_TEMP_LIMIT_BYTES
+  ) {
+    issues.push({
+      path: "settings.csvCacheLimitBytes",
+      message: "Expected an integer from 67108864 to 10737418240.",
+    });
+  }
+  if (
+    csvCacheDirectory !== null &&
+    (typeof csvCacheDirectory !== "string" ||
+      csvCacheDirectory.trim() !== csvCacheDirectory ||
+      !csvCacheDirectory ||
+      csvCacheDirectory.includes("\0") ||
+      new TextEncoder().encode(csvCacheDirectory).length > 4096 ||
+      !(
+        csvCacheDirectory.startsWith("/") ||
+        (csvCacheDirectory.startsWith("\\\\") && csvCacheDirectory.length > 2) ||
+        /^[A-Za-z]:[\\/]/.test(csvCacheDirectory)
+      ))
+  ) {
+    issues.push({
+      path: "settings.csvCacheDirectory",
+      message: "Expected an absolute managed cache path or null.",
+    });
+  }
   if (issues.length > 0 || !customOptions || !copyLimits || !displayFormats)
     throw new InvalidAppSettingsError(issues);
   return freezeSettings({
@@ -727,6 +773,8 @@ export function parseAppSettings(value: unknown): AppSettings {
     copyCustomOptions: customOptions,
     csvDefaultParsingMode: item.csvDefaultParsingMode as CsvDefaultParsingMode,
     queryTempLimitBytes: item.queryTempLimitBytes as number,
+    csvCacheLimitBytes: csvCacheLimitBytes as number,
+    csvCacheDirectory: csvCacheDirectory as string | null,
     copyLimits,
     displayFormats,
   });

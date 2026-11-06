@@ -1,3 +1,5 @@
+import { CacheLocationControls } from "./CacheLocationControls";
+import type { CacheManagementBackend } from "../column-values/backend";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Copy, Database, FileType2, LoaderCircle, X } from "lucide-react";
 import { COPY_PRESETS } from "../copy/presets";
@@ -78,6 +80,9 @@ function formatStorage(bytes: number): string {
 }
 
 export interface AppSettingsDialogProps {
+  cacheBackend?: CacheManagementBackend;
+  openDocumentCount?: number;
+  onCacheLocationChanged?(): Promise<void>;
   initialSettings: AppSettings;
   isObscured?: boolean;
   isSaving?: boolean;
@@ -98,6 +103,9 @@ export interface AppSettingsDialogProps {
 
 export function AppSettingsDialog({
   initialSettings,
+  cacheBackend,
+  openDocumentCount = 0,
+  onCacheLocationChanged,
   isObscured = false,
   isSaving = false,
   saveError = null,
@@ -114,6 +122,19 @@ export function AppSettingsDialog({
   onClearTemp,
   onClearCsvCache,
 }: AppSettingsDialogProps) {
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [cacheLimitGiB, setCacheLimitGiB] = useState(
+    editableGiB(initialSettings.csvCacheLimitBytes),
+  );
+  const cacheLimitInputBytes = Number(cacheLimitGiB) * GIB;
+  const cacheLimitBytes = Math.round(cacheLimitInputBytes);
+  const cacheLimitError =
+    cacheLimitGiB.trim() === "" ||
+    !Number.isSafeInteger(cacheLimitBytes) ||
+    cacheLimitInputBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
+    cacheLimitInputBytes > MAX_QUERY_TEMP_LIMIT_BYTES
+      ? "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB."
+      : null;
   const dialogRef = useRef<HTMLDivElement>(null);
   const csvCacheClearButtonRef = useRef<HTMLButtonElement>(null);
   const csvCacheConfirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -211,7 +232,13 @@ export function AppSettingsDialog({
   }, [queryTempClearing]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key === "Escape" && !isSaving && !queryTempClearing && !csvCacheClearing) {
+    if (
+      event.key === "Escape" &&
+      !isSaving &&
+      !queryTempClearing &&
+      !csvCacheClearing &&
+      !migrationBusy
+    ) {
       event.preventDefault();
       onCancel();
       return;
@@ -250,7 +277,7 @@ export function AppSettingsDialog({
           <button
             aria-label="Close settings"
             className="dialog-icon-button"
-            disabled={isSaving || queryTempClearing || csvCacheClearing}
+            disabled={isSaving || queryTempClearing || csvCacheClearing || migrationBusy}
             onClick={onCancel}
             title="Close settings"
             type="button"
@@ -683,14 +710,16 @@ export function AppSettingsDialog({
               <Database aria-hidden="true" />
               <div>
                 <h3 id="storage-heading">Storage</h3>
-                <p>Query working data and reusable CSV cache are managed separately.</p>
+                <p>
+                  Temporary working data and reusable CSV cache share the overall storage limit.
+                </p>
               </div>
             </div>
             <label className="settings-number-field">
-              Query temporary storage limit
+              Overall managed storage limit
               <span>
                 <input
-                  aria-label="Query temporary storage limit"
+                  aria-label="Overall managed storage limit"
                   aria-describedby="query-temp-limit-help"
                   aria-invalid={queryLimitError !== null}
                   max="10"
@@ -785,10 +814,62 @@ export function AppSettingsDialog({
                       : "—"}
                   </strong>
                 </div>
+                <label className="settings-number-field">
+                  CSV cache maximum size
+                  <span>
+                    <input
+                      aria-label="CSV cache maximum size"
+                      type="number"
+                      min="0.0625"
+                      max="10"
+                      step="any"
+                      value={cacheLimitGiB}
+                      onChange={(event) => setCacheLimitGiB(event.target.value)}
+                      aria-invalid={cacheLimitError !== null}
+                      disabled={migrationBusy}
+                    />
+                    <span>GiB</span>
+                  </span>
+                </label>
+                <p
+                  className={
+                    cacheLimitError ? "settings-field-error" : "settings-field-description"
+                  }
+                  role={cacheLimitError ? "alert" : undefined}
+                >
+                  {cacheLimitError ??
+                    `Effective cache limit: ${formatStorage(Math.min(cacheLimitBytes, queryLimitBytes))}. The overall storage limit also applies.`}
+                </p>
+                {tempUsage && (
+                  <p className="settings-field-description">
+                    In use: {formatStorage(tempUsage.csvCacheActiveBytes ?? 0)} · Reclaimable:{" "}
+                    {formatStorage(
+                      Math.max(0, tempUsage.csvCacheBytes - (tempUsage.csvCacheActiveBytes ?? 0)),
+                    )}
+                    . Lowering the limit only removes inactive cache; active items are kept.
+                  </p>
+                )}
                 <div className="storage-path">
                   <span>Location</span>
                   <code title={tempUsage?.csvCachePath}>{tempUsage?.csvCachePath ?? "—"}</code>
                 </div>
+                {cacheBackend && onCacheLocationChanged && (
+                  <CacheLocationControls
+                    backend={cacheBackend}
+                    openDocumentCount={openDocumentCount}
+                    disabled={
+                      isSaving ||
+                      queryTempClearing ||
+                      csvCacheClearing ||
+                      queryLimitError !== null ||
+                      cacheLimitError !== null ||
+                      queryLimitBytes !== initialSettings.queryTempLimitBytes ||
+                      cacheLimitBytes !== initialSettings.csvCacheLimitBytes
+                    }
+                    onBusyChange={setMigrationBusy}
+                    onComplete={onCacheLocationChanged}
+                  />
+                )}
                 <p className="storage-consequence">
                   Clearing removes inactive prepared data. Source CSV files are never changed, but
                   the next open may need to prepare them again. Cache entries in active use are
@@ -862,7 +943,7 @@ export function AppSettingsDialog({
 
         <footer className="settings-dialog__actions">
           <button
-            disabled={isSaving || queryTempClearing || csvCacheClearing}
+            disabled={isSaving || queryTempClearing || csvCacheClearing || migrationBusy}
             onClick={onCancel}
             type="button"
           >
@@ -873,6 +954,8 @@ export function AppSettingsDialog({
               isSaving ||
               queryTempClearing ||
               csvCacheClearing ||
+              migrationBusy ||
+              cacheLimitError !== null ||
               queryLimitError !== null ||
               copyMaxCellsError !== null ||
               copyMaxBytesError !== null
@@ -883,6 +966,7 @@ export function AppSettingsDialog({
                   ...initialSettings,
                   csvDefaultParsingMode: csvMode,
                   queryTempLimitBytes: queryLimitBytes,
+                  csvCacheLimitBytes: cacheLimitBytes,
                   copyLimits: {
                     maxCells: copyMaxCellsValue,
                     maxBytes: copyMaxBytesValue,

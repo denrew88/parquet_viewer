@@ -1,0 +1,79 @@
+{
+  "candidate": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21\\data-viewer.exe",
+    "bytes": 59623936,
+    "sha256": "8458ca9afe1252dad9f9a828e9bc830bf40ecbd3e4a21c9a532bba95f02d9173",
+    "fileVersion": "0.21.0",
+    "productVersion": "0.21.0"
+  },
+  "nativeAcceptance": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21-native\\data-viewer.exe",
+    "bytes": 59623424,
+    "sha256": "ebb5ed654fe8afb2a1ae2827bfbab5a7d4a40a63c62cc4a87130e4c38878bad9",
+    "fileVersion": "0.21.0",
+    "productVersion": "0.21.0"
+  },
+  "installer": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21\\Data Viewer_0.21.0_x64-setup.exe",
+    "bytes": 13641516,
+    "sha256": "339d091c57d79d9837a9b4598ca7c88cfa2c2cf91d64f0ff29b52a9fb87c822a",
+    "state": "historical pre-category-fix installer; not rebuilt for this focused fix"
+  },
+  "existingFormal": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+    "bytes": 59545600,
+    "sha256": "6d3367db12a2e152e771cb360a18ee8558f97215884a063e2e69900f230c2716",
+    "fileVersion": "0.21.0",
+    "productVersion": "0.21.0"
+  },
+  "appVersion": "0.21.0",
+  "state": "draft; cursor navigation/resource/native clipboard gates PASS; actual cross-volume migration and formal promotion pending",
+  "candidateSizeChangeBytes": 78336,
+  "beforeCategoryFix": {
+    "candidate": {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21\\data-viewer.exe",
+      "bytes": 59545600,
+      "sha256": "6d3367db12a2e152e771cb360a18ee8558f97215884a063e2e69900f230c2716"
+    },
+    "nativeAcceptance": {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21-native\\data-viewer.exe",
+      "bytes": 59545600,
+      "sha256": "4f0638e56862f2122cfa7ed185e16ac25c51784d85d2b667d0be0362bd965167"
+    },
+    "existingFormalAtInitialBuild": {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+      "bytes": 58787840,
+      "sha256": "10275191912bf83dab8e4800e74561d1a38da698d2246064f06be853b2839e3c"
+    }
+  },
+  "updatedAtUtc": "2026-11-06T02:50:59.3864244Z",
+  "categoryFixEvidence": "native/category-regression-1g.json; grouping and first pages PASS twice; overall FAIL due to separate last-page OOM",
+  "rootReplacement": "not performed; user-copied root EXE preserved",
+  "beforeCursorFix": {
+    "candidate": {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21\\data-viewer.exe",
+      "bytes": 59546112,
+      "sha256": "c6a9f1a6065004865bc945e01f8298cd05577d597830ffba2398b424a371be32",
+      "fileVersion": "0.21.0",
+      "productVersion": "0.21.0"
+    },
+    "nativeAcceptance": {
+      "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-21-native\\data-viewer.exe",
+      "bytes": 59546112,
+      "sha256": "a164233432d75c6cde20c28f84b6ae636b9c8f8a649bbff6c765992ed4f12a67",
+      "fileVersion": "0.21.0",
+      "productVersion": "0.21.0"
+    },
+    "state": "draft; category grouping quota regression fixed; late-offset native OOM and migration gates remain"
+  },
+  "cursorFixEvidence": {
+    "frontendTests": 495,
+    "browserE2e": 135,
+    "rustModuleTests": 21,
+    "constrained5850000": "PASS: 128MiB memory / 512MiB temp, 4 orders first/middle/tail",
+    "nativeNavigation": "PASS: cursor-regression-1g.json",
+    "nativeCopy": "PASS after user unlock: 1407 rows / 2814 cells / 40814 bytes; exact physical clipboard TSV; original settings and clipboard text restored",
+    "scope": "Column values only; no main grid, quota or security change",
+    "clipboardClosureLog": "artifacts/dev-check/2026-11-06T02-48-20-265Z-phase21-native-cursor-copy.log"
+  }
+}

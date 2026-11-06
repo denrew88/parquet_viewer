@@ -54,6 +54,8 @@ impl ClipboardWriter for TauriClipboardWriter {
 /// replace this adapter with a format-specific hyperslab/row-group implementation
 /// without changing operation, staging, cancellation, or clipboard atomicity.
 pub trait CopyRowReader: Send + Sync + 'static {
+    /// Return at most `limit` rows. A bounded nonempty batch may be shorter;
+    /// `has_more` distinguishes that case from the end of the source.
     fn read_rows(
         &self,
         offset: u64,
@@ -511,7 +513,10 @@ fn execute_copy(
             .reader
             .read_rows(cursor, take, &request.selection.column_ids)
             .map_err(source_failure)?;
-        if page.offset != cursor || page.columns != request.selection.column_ids {
+        if page.offset != cursor
+            || page.columns != request.selection.column_ids
+            || page.rows.len() > take
+        {
             return Err(failure(
                 CopyFailureReason::SourceRead,
                 "The copy source returned a stale range or projection.",
@@ -563,7 +568,8 @@ fn execute_copy(
                 .clamp(1, max_rows_by_cells as u64) as usize;
             batch_rows = rows_by_bytes;
         }
-        if row_count < take as u64 && cursor < request.selection.row_end_exclusive {
+        if row_count < take as u64 && cursor < request.selection.row_end_exclusive && !page.has_more
+        {
             return Err(failure(
                 CopyFailureReason::SourceRead,
                 "The copy selection extends beyond the available rows.",
@@ -942,6 +948,19 @@ mod tests {
 
     struct SlowReader(MemoryReader);
 
+    struct BoundedReader(MemoryReader);
+
+    impl CopyRowReader for BoundedReader {
+        fn read_rows(
+            &self,
+            offset: u64,
+            limit: usize,
+            columns: &[String],
+        ) -> Result<DataPage, DataError> {
+            self.0.read_rows(offset, limit.min(1), columns)
+        }
+    }
+
     impl CopyRowReader for SlowReader {
         fn read_rows(
             &self,
@@ -1069,6 +1088,45 @@ mod tests {
             ["alpha\r\nbeta"]
         );
         assert!(directory.path().read_dir().unwrap().next().is_none());
+    }
+
+    #[test]
+    fn bounded_short_batches_continue_but_premature_eof_never_commits() {
+        for (available, expected_state) in [
+            (2, CopyOperationState::Complete),
+            (1, CopyOperationState::Failed),
+            (0, CopyOperationState::Failed),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let manager = CopyManager::default();
+            let clipboard = Arc::new(MemoryClipboard::default());
+            manager
+                .start(
+                    request("bounded-short-copy", 1024),
+                    Arc::new(BoundedReader(MemoryReader {
+                        rows: (0..available)
+                            .map(|index| {
+                                vec![DataValue::displayed(ValueKind::String, index.to_string())]
+                            })
+                            .collect(),
+                    })),
+                    clipboard.clone(),
+                    directory.path().to_path_buf(),
+                )
+                .unwrap();
+            let status = wait_terminal(&manager, "bounded-short-copy");
+            assert_eq!(status.state, expected_state);
+            if available == 2 {
+                assert_eq!(clipboard.writes.lock().unwrap().as_slice(), ["0\r\n1"]);
+            } else {
+                assert_eq!(
+                    status.failure.unwrap().reason,
+                    CopyFailureReason::SourceRead
+                );
+                assert!(clipboard.writes.lock().unwrap().is_empty());
+            }
+            assert!(directory.path().read_dir().unwrap().next().is_none());
+        }
     }
 
     #[test]

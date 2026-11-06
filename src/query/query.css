@@ -581,6 +581,10 @@
   gap: 2px;
 }
 
+.query-column-actions--values {
+  right: 6px;
+}
+
 .column-order-trigger {
   position: absolute;
   z-index: 3;

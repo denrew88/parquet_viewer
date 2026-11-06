@@ -1,3 +1,6 @@
+pub(crate) mod cache_migration;
+pub(crate) mod column_values;
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
@@ -365,6 +368,8 @@ pub struct AppState {
     csv_validation_tasks: Arc<Mutex<HashMap<String, CsvValidationTask>>>,
     boundary_navigation_tasks: Mutex<HashMap<(String, String, String), BoundaryNavigationTask>>,
     query_service: Mutex<Option<Arc<QueryService>>>,
+    cache_migration: Arc<cache_migration::CacheMigrationControl>,
+    applied_csv_cache_limit: AtomicU64,
     copy_manager: Arc<CopyManager>,
 }
 
@@ -466,27 +471,21 @@ impl AppState {
     }
 
     pub(crate) fn initialize_query_temp(&self, app: &AppHandle) -> Result<(), DataError> {
-        let local_data = application_directory(app, ApplicationDirectoryKind::LocalData)?;
-        let mut service = self.query_service.lock().map_err(|_| DataError {
-            code: DataErrorCode::Io,
-            message: String::from("The query service registry is unavailable."),
-        })?;
-        if service.is_none() {
-            *service = Some(Arc::new(QueryService::open(
-                local_data,
-                crate::domain::DEFAULT_QUERY_TEMP_LIMIT_BYTES,
-            )?));
+        if let Err(error) = self.query_service(app) {
+            // Keep Settings reachable when a removable cache drive is offline.
+            // Operations still return the storage error until the user chooses a usable location.
+            eprintln!("Storage initialization deferred: {error}. Choose a CSV cache location in Settings.");
         }
         Ok(())
     }
 
     fn query_service(&self, app: &AppHandle) -> Result<Arc<QueryService>, DataError> {
+        self.cache_migration.ensure_idle()?;
         let config = application_directory(app, ApplicationDirectoryKind::Config)?;
-        let limit = match SettingsStore::new(config).load() {
-            Ok(settings) => settings.query_temp_limit_bytes,
-            Err(error) if error.code == DataErrorCode::SettingsInvalid => {
-                crate::domain::DEFAULT_QUERY_TEMP_LIMIT_BYTES
-            }
+        let store = SettingsStore::new(config.clone());
+        let mut settings = match store.load() {
+            Ok(settings) => settings,
+            Err(error) if error.code == DataErrorCode::SettingsInvalid => AppSettingsV1::default(),
             Err(error) => return Err(error),
         };
         let mut service = self.query_service.lock().map_err(|_| DataError {
@@ -494,11 +493,41 @@ impl AppState {
             message: String::from("The query service registry is unavailable."),
         })?;
         if let Some(service) = service.as_ref() {
-            service.set_temp_limit(limit);
+            service.ensure_csv_cache_directory(settings.csv_cache_directory.as_deref())?;
+            service.set_temp_limit(settings.query_temp_limit_bytes);
+            if self.applied_csv_cache_limit.load(Ordering::Relaxed)
+                != settings.csv_cache_limit_bytes
+            {
+                service.set_csv_cache_limit(settings.csv_cache_limit_bytes)?;
+                self.applied_csv_cache_limit
+                    .store(settings.csv_cache_limit_bytes, Ordering::Relaxed);
+            }
             return Ok(Arc::clone(service));
         }
         let local_data = application_directory(app, ApplicationDirectoryKind::LocalData)?;
-        let opened = Arc::new(QueryService::open(local_data, limit)?);
+        crate::storage::recover_csv_cache_migration(
+            &local_data,
+            settings.csv_cache_directory.as_deref().map(Path::new),
+            || {
+                store
+                    .load()
+                    .map(|saved| saved.csv_cache_directory.map(PathBuf::from))
+            },
+        )?;
+        settings = match store.load() {
+            Ok(settings) => settings,
+            Err(error) if error.code == DataErrorCode::SettingsInvalid => AppSettingsV1::default(),
+            Err(error) => return Err(error),
+        };
+        let opened = Arc::new(QueryService::open_with_cache(
+            local_data,
+            settings.query_temp_limit_bytes,
+            settings.csv_cache_directory.as_deref().map(Path::new),
+            settings.csv_cache_limit_bytes,
+        )?);
+        opened.bind_cache_settings_directory(&config)?;
+        self.applied_csv_cache_limit
+            .store(settings.csv_cache_limit_bytes, Ordering::Relaxed);
         *service = Some(Arc::clone(&opened));
         Ok(opened)
     }
@@ -558,6 +587,12 @@ impl AppState {
     }
 
     fn open_paths(&self, mut request: OpenPathsRequest) -> Result<OpenPathsResponse, DataError> {
+        let _admission = self
+            .cache_migration
+            .admission
+            .read()
+            .map_err(|_| DataError::query_failed("File admission is unavailable."))?;
+        self.cache_migration.ensure_idle()?;
         validate_open_request(&request)?;
         self.register_request(&request.request_id)?;
 
@@ -1367,14 +1402,51 @@ pub fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettingsV1, DataError> {
+    let _admission = state.cache_migration.enter()?;
+    state.cache_migration.ensure_idle()?;
+    let local_data = application_directory(&app, ApplicationDirectoryKind::LocalData)?;
+    let _cache_settings_lock = crate::storage::lock_csv_cache_control(&local_data)?;
     let directory = application_directory(&app, ApplicationDirectoryKind::Config)?;
-    let saved = SettingsStore::new(directory).save(&settings)?;
+    let store = SettingsStore::new(directory);
+    let previous = match store.load() {
+        Ok(settings) => settings,
+        Err(error) if error.code == DataErrorCode::SettingsInvalid => AppSettingsV1::default(),
+        Err(error) => return Err(error),
+    };
+    cache_migration::validate_directory_unchanged(&previous, &settings)?;
+    settings.validate().map_err(|message| DataError {
+        code: DataErrorCode::SettingsInvalid,
+        message,
+    })?;
     if let Ok(service) = state.query_service.lock() {
         if let Some(service) = service.as_ref() {
-            service.set_temp_limit(saved.query_temp_limit_bytes);
+            service.ensure_csv_cache_directory(previous.csv_cache_directory.as_deref())?;
+            service.set_temp_limit(settings.query_temp_limit_bytes);
+            if let Err(error) = service.set_csv_cache_limit(settings.csv_cache_limit_bytes) {
+                service.set_temp_limit(previous.query_temp_limit_bytes);
+                state.applied_csv_cache_limit.store(0, Ordering::Relaxed);
+                return Err(error);
+            }
+            state
+                .applied_csv_cache_limit
+                .store(settings.csv_cache_limit_bytes, Ordering::Relaxed);
         }
     }
-    Ok(saved)
+    match store.save(&settings) {
+        Ok(saved) => Ok(saved),
+        Err(error) => {
+            if let Ok(service) = state.query_service.lock() {
+                if let Some(service) = service.as_ref() {
+                    service.set_temp_limit(previous.query_temp_limit_bytes);
+                    let _ = service.set_csv_cache_limit(previous.csv_cache_limit_bytes);
+                    state
+                        .applied_csv_cache_limit
+                        .store(previous.csv_cache_limit_bytes, Ordering::Relaxed);
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]
@@ -1383,6 +1455,7 @@ pub fn execute_query(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<QueryStatus, DataError> {
+    let _admission = state.cache_migration.enter()?;
     let source = state
         .documents
         .with_source(&request.document_id, &request.session_id, |source| {
@@ -1402,6 +1475,7 @@ pub fn start_copy(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<CopyOperationStatus, DataError> {
+    let _admission = state.cache_migration.enter()?;
     request.validate()?;
     let settings = get_settings(app.clone())?;
     if request.max_cells > settings.copy_limits.max_cells
@@ -1807,6 +1881,7 @@ pub fn configure_csv(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OpenFileResponse, DataError> {
+    let _admission = state.cache_migration.enter()?;
     let response = state.configure_csv(&document_id, &session_id, header_mode)?;
     if let Ok(source) = state
         .documents

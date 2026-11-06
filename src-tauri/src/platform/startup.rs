@@ -13,6 +13,12 @@ pub struct PendingOpenQueue {
 }
 
 impl PendingOpenQueue {
+    pub fn is_empty(&self) -> bool {
+        self.requests
+            .lock()
+            .map(|requests| requests.is_empty())
+            .unwrap_or(false)
+    }
     pub fn push(&self, request: OpenPathsRequest) {
         if let Ok(mut requests) = self.requests.lock() {
             requests.push_back(request);

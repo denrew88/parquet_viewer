@@ -1,0 +1,25 @@
+{
+  "panel": {
+    "x": 820,
+    "y": 20,
+    "width": 600,
+    "height": 860,
+    "bottom": 880,
+    "right": 1420
+  },
+  "footer": {
+    "top": 793.578125,
+    "bottom": 879,
+    "right": 1419
+  },
+  "closeSvg": {
+    "width": 18,
+    "height": 18
+  },
+  "scrollWidth": 598,
+  "clientWidth": 598,
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  }
+}

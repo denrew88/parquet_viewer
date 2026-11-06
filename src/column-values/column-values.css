@@ -1,0 +1,214 @@
+.column-values-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #10182855;
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px;
+  overscroll-behavior: contain;
+}
+.column-values-panel {
+  width: min(600px, 100%);
+  max-height: 100%;
+  background: var(--surface, #fff);
+  color: var(--text, #17212f);
+  border: 1px solid #d7dce4;
+  border-radius: 12px;
+  box-shadow: 0 16px 56px #15233a33;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.column-values-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  gap: 12px;
+}
+.column-values-panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.column-values-panel header p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 460px;
+}
+.column-values-panel button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #cdd5df;
+  background: #fff;
+  color: inherit;
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+.column-values-panel button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.column-values-panel button svg {
+  width: 15px;
+  height: 15px;
+  vertical-align: middle;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.column-values-panel header .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  flex: 0 0 32px;
+}
+.column-values-panel header .icon-button svg {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.column-values-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 0 20px 12px;
+}
+.column-values-controls label {
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.column-values-controls select,
+.column-values-search input {
+  min-width: 0;
+  font: inherit;
+  border: 1px solid #cdd5df;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fff;
+  color: inherit;
+}
+.column-values-search {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 12px;
+}
+.column-values-search input {
+  flex: 1;
+}
+.column-values-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-block: 1px solid #e6e9ee;
+  font-size: 13px;
+}
+.column-values-summary span {
+  color: #5c6879;
+}
+.column-values-table {
+  flex: 1;
+  min-height: 80px;
+  overflow: auto;
+  position: relative;
+}
+.column-values-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.column-values-table th,
+.column-values-table td {
+  padding: 9px 20px;
+  text-align: left;
+  border-bottom: 1px solid #eef0f4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.column-values-table th {
+  position: sticky;
+  top: 0;
+  background: #f5f7fa;
+  z-index: 1;
+}
+.column-values-table th:last-child,
+.column-values-table td:last-child {
+  width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.column-values-table p {
+  padding: 8px 20px;
+}
+.value-state {
+  display: inline-block;
+  color: #5a6677;
+  background: #edf0f5;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  white-space: normal;
+}
+.value-invalid {
+  color: #a03e1b;
+}
+.column-values-panel nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 12px;
+}
+.column-values-panel footer {
+  border-top: 1px solid #dfe4ec;
+  padding: 10px 20px 16px;
+  font-size: 12px;
+}
+.column-values-panel footer p {
+  margin: 0 0 9px;
+  color: #5c6879;
+}
+.column-values-panel footer > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.column-values-panel footer > span {
+  display: block;
+  margin-top: 8px;
+}
+.column-values-error {
+  margin: 0;
+  padding: 8px 20px;
+  color: #b33327;
+}
+@media (max-width: 850px) {
+  .column-values-backdrop {
+    padding: 12px;
+  }
+  .column-values-panel header p {
+    max-width: 500px;
+  }
+}
+@media (max-height: 650px) {
+  .column-values-panel header {
+    padding-block: 10px;
+  }
+  .column-values-controls,
+  .column-values-search {
+    padding-bottom: 8px;
+  }
+  .column-values-panel footer {
+    padding-bottom: 10px;
+  }
+}

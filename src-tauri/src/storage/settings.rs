@@ -11,7 +11,8 @@ use serde::Deserialize;
 
 use crate::domain::{
     AppSettingsV1, CopyLimits, CopyOptions, CopyPreset, CsvDefaultParsingMode, DataError,
-    DataErrorCode, DisplayFormats, APP_SETTINGS_SCHEMA_VERSION, MAX_QUERY_TEMP_LIMIT_BYTES,
+    DataErrorCode, DisplayFormats, APP_SETTINGS_SCHEMA_VERSION, DEFAULT_CSV_CACHE_LIMIT_BYTES,
+    MAX_QUERY_TEMP_LIMIT_BYTES,
 };
 
 const LEGACY_SETTINGS_SCHEMA_VERSION: u8 = 1;
@@ -39,6 +40,8 @@ impl LegacyAppSettingsV1 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
+            csv_cache_directory: None,
             copy_limits: CopyLimits::default(),
             display_formats: DisplayFormats::default(),
         };
@@ -69,6 +72,8 @@ impl LegacyAppSettingsV2 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
+            csv_cache_directory: None,
             copy_limits: self.copy_limits,
             display_formats: DisplayFormats::default(),
         };
@@ -139,6 +144,8 @@ impl LegacyAppSettingsV3 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
+            csv_cache_directory: None,
             copy_limits: self.copy_limits,
             display_formats,
         };
@@ -179,6 +186,44 @@ impl SettingsStore {
             });
         if let Ok(settings) = current_result {
             return Ok(settings);
+        }
+
+        // V4 has the full display contract but predates dedicated cache settings.
+        // Preserve all existing values while adding only the two new defaults.
+        let v4_result = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|error| format!("Invalid V4 settings.json: {error}"))
+            .and_then(|mut value| {
+                let object = value
+                    .as_object_mut()
+                    .ok_or("V4 settings must be an object")?;
+                if object
+                    .get("schemaVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    != Some(4)
+                {
+                    return Err(String::from("V4 settings.schemaVersion is unsupported."));
+                }
+                if object.contains_key("csvCacheLimitBytes")
+                    || object.contains_key("csvCacheDirectory")
+                {
+                    return Err(String::from("V4 settings contains V5 cache fields."));
+                }
+                object.insert(
+                    "schemaVersion".into(),
+                    serde_json::json!(APP_SETTINGS_SCHEMA_VERSION),
+                );
+                object.insert(
+                    "csvCacheLimitBytes".into(),
+                    serde_json::json!(DEFAULT_CSV_CACHE_LIMIT_BYTES),
+                );
+                object.insert("csvCacheDirectory".into(), serde_json::Value::Null);
+                let settings: AppSettingsV1 =
+                    serde_json::from_value(value).map_err(|error| error.to_string())?;
+                settings.validate()?;
+                Ok(settings)
+            });
+        if let Ok(settings) = v4_result {
+            return self.save(&settings);
         }
 
         let display_result = serde_json::from_slice::<LegacyAppSettingsV3>(&bytes)
@@ -329,6 +374,13 @@ mod tests {
         DEFAULT_COPY_MAX_BYTES, DEFAULT_COPY_MAX_CELLS,
     };
 
+    fn legacy_json(settings: &AppSettingsV1) -> serde_json::Value {
+        let mut value = serde_json::to_value(settings).unwrap();
+        value.as_object_mut().unwrap().remove("csvCacheLimitBytes");
+        value.as_object_mut().unwrap().remove("csvCacheDirectory");
+        value
+    }
+
     #[test]
     fn settings_round_trip_is_whole_object_and_leaves_no_temp_file() {
         let directory = tempfile::tempdir().unwrap();
@@ -340,6 +392,47 @@ mod tests {
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn phase21_v4_settings_migrate_cache_defaults_without_losing_display_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut old = legacy_json(&AppSettingsV1::default());
+        old["schemaVersion"] = serde_json::json!(4);
+        old["queryTempLimitBytes"] = serde_json::json!(322122547_u64);
+        fs::write(
+            directory.path().join("settings.json"),
+            serde_json::to_vec(&old).unwrap(),
+        )
+        .unwrap();
+        let result = SettingsStore::new(directory.path()).load().unwrap();
+        assert_eq!(result.schema_version, APP_SETTINGS_SCHEMA_VERSION);
+        assert_eq!(result.query_temp_limit_bytes, 322122547);
+        assert_eq!(result.csv_cache_limit_bytes, DEFAULT_CSV_CACHE_LIMIT_BYTES);
+        assert_eq!(result.csv_cache_directory, None);
+        assert_eq!(
+            serde_json::to_value(result.display_formats).unwrap(),
+            old["displayFormats"]
+        );
+    }
+
+    #[test]
+    fn phase21_cache_settings_roundtrip_preserves_dedicated_cap_and_location() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = AppSettingsV1 {
+            csv_cache_limit_bytes: 322122547,
+            csv_cache_directory: Some(
+                directory
+                    .path()
+                    .join("cache")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ..AppSettingsV1::default()
+        };
+        let store = SettingsStore::new(directory.path());
+        store.save(&settings).unwrap();
+        assert_eq!(store.load().unwrap(), settings);
     }
 
     #[test]
@@ -404,7 +497,7 @@ mod tests {
     fn valid_v1_settings_are_migrated_atomically_and_preserve_existing_values() {
         let directory = tempfile::tempdir().unwrap();
         let defaults = AppSettingsV1::default();
-        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        let mut legacy = legacy_json(&defaults);
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
         legacy.as_object_mut().unwrap().remove("displayFormats");
@@ -454,7 +547,7 @@ mod tests {
     fn interrupted_v1_replacement_restores_backup_then_repeats_migration() {
         let directory = tempfile::tempdir().unwrap();
         let defaults = AppSettingsV1::default();
-        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        let mut legacy = legacy_json(&defaults);
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
         legacy.as_object_mut().unwrap().remove("displayFormats");
@@ -489,7 +582,7 @@ mod tests {
     #[test]
     fn invalid_v1_settings_follow_corrupt_preservation_path() {
         let directory = tempfile::tempdir().unwrap();
-        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        let mut legacy = legacy_json(&AppSettingsV1::default());
         legacy["schemaVersion"] = serde_json::json!(1);
         legacy.as_object_mut().unwrap().remove("copyLimits");
         legacy.as_object_mut().unwrap().remove("displayFormats");
@@ -517,7 +610,7 @@ mod tests {
     #[test]
     fn valid_v3_settings_preserve_timestamp_precision_and_add_v4_defaults() {
         let directory = tempfile::tempdir().unwrap();
-        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        let mut legacy = legacy_json(&AppSettingsV1::default());
         legacy["schemaVersion"] = serde_json::json!(3);
         legacy["displayFormats"]
             .as_object_mut()
@@ -556,7 +649,7 @@ mod tests {
     fn valid_v2_settings_migrate_atomically_and_preserve_all_existing_values() {
         let directory = tempfile::tempdir().unwrap();
         let defaults = AppSettingsV1::default();
-        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        let mut legacy = legacy_json(&defaults);
         legacy["schemaVersion"] = serde_json::json!(2);
         legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["copyPreset"] = serde_json::json!("custom");
@@ -591,7 +684,7 @@ mod tests {
     #[test]
     fn interrupted_v2_replacement_restores_backup_then_repeats_migration() {
         let directory = tempfile::tempdir().unwrap();
-        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        let mut legacy = legacy_json(&AppSettingsV1::default());
         legacy["schemaVersion"] = serde_json::json!(2);
         legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["copyPreset"] = serde_json::json!("custom");
@@ -628,7 +721,7 @@ mod tests {
     #[test]
     fn v2_migration_caps_only_the_obsolete_temp_limit_and_preserves_other_values() {
         let directory = tempfile::tempdir().unwrap();
-        let mut legacy = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        let mut legacy = legacy_json(&AppSettingsV1::default());
         legacy["schemaVersion"] = serde_json::json!(2);
         legacy.as_object_mut().unwrap().remove("displayFormats");
         legacy["copyPreset"] = serde_json::json!("custom");

@@ -328,6 +328,7 @@ function EmptyState({ formats, tab }: { formats: readonly FormatDescriptor[]; ta
 }
 
 interface DataViewProps {
+  columnValuesBackend?: BackendAdapter;
   active?: boolean;
   cancelDataBoundaryNavigation: BackendAdapter["cancelDataBoundaryNavigation"];
   copyLimits: CopyLimits;
@@ -385,6 +386,7 @@ function DataView({
   cancelDataBoundaryNavigation,
   copyLimits,
   copyOptions,
+  columnValuesBackend,
   displayFormats,
   copyPresetError,
   copyPresetSaving,
@@ -618,6 +620,7 @@ function DataView({
           ref={interactionSurfaceRef}
         >
           <VirtualDataGrid
+            columnValuesBackend={columnValuesBackend}
             active={active && !interactionBlocked}
             cancelDataBoundaryNavigation={cancelDataBoundaryNavigation}
             copyLimits={copyLimits}
@@ -3839,6 +3842,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                 )}
                 <div className="document-view" hidden={document.activeTab !== "data"}>
                   <DataView
+                    columnValuesBackend={backend}
                     active={activeDocumentId === document.id && document.activeTab === "data"}
                     cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
                     copyLimits={appSettings.copyLimits}
@@ -3969,6 +3973,16 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
 
       {settingsDialogOpen && (
         <AppSettingsDialog
+          cacheBackend={backend}
+          openDocumentCount={documents.length}
+          onCacheLocationChanged={async () => {
+            const [settings, usage] = await Promise.all([
+              backend.getSettings(),
+              backend.getQueryTempUsage(),
+            ]);
+            setAppSettings(settings);
+            setQueryTempUsage(usage);
+          }}
           initialSettings={appSettings}
           isObscured={copySettingsOpen}
           isSaving={settingsSaving}

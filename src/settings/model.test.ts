@@ -13,6 +13,65 @@ import {
 } from "./model";
 
 describe("app settings model", () => {
+  it("P21 migrates V4 with explicit cache defaults", () => {
+    const current = defaultAppSettings();
+    const legacy = Object.fromEntries(
+      Object.entries(current).filter(
+        ([key]) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
+      ),
+    );
+    const migrated = parseAppSettings({ ...legacy, schemaVersion: 4 });
+    expect(migrated.csvCacheLimitBytes).toBe(10 * 1024 ** 3);
+    expect(migrated.csvCacheDirectory).toBeNull();
+    expect(migrated.schemaVersion).toBe(5);
+  });
+  it.each([64 * 1024 ** 2, Math.round(0.3 * 1024 ** 3), 10 * 1024 ** 3])(
+    "P21 accepts cache cap %s independently of the overall cap",
+    (csvCacheLimitBytes) => {
+      expect(
+        parseAppSettings({
+          ...defaultAppSettings(),
+          queryTempLimitBytes: 64 * 1024 ** 2,
+          csvCacheLimitBytes,
+        }).csvCacheLimitBytes,
+      ).toBe(csvCacheLimitBytes);
+    },
+  );
+  it.each([
+    64 * 1024 ** 2 - 1,
+    10 * 1024 ** 3 + 1,
+    0,
+    1.5,
+    NaN,
+    Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("P21 rejects invalid cache cap %s", (csvCacheLimitBytes) => {
+    expect(() => parseAppSettings({ ...defaultAppSettings(), csvCacheLimitBytes })).toThrow(
+      "csvCacheLimitBytes",
+    );
+  });
+  it.each([null, "/cache", "C:/cache", "D:\\cache", "\\\\server\\share"])(
+    "P21 accepts absolute cache path %s",
+    (csvCacheDirectory) => {
+      expect(
+        parseAppSettings({ ...defaultAppSettings(), csvCacheDirectory }).csvCacheDirectory,
+      ).toBe(csvCacheDirectory);
+    },
+  );
+  it.each([
+    "",
+    "relative/cache",
+    "C:relative",
+    " C:/cache",
+    "C:/cache ",
+    "C:/bad\0path",
+    "\\\\",
+    "/" + "한".repeat(1366),
+  ])("P21 rejects invalid cache path %s", (csvCacheDirectory) => {
+    expect(() => parseAppSettings({ ...defaultAppSettings(), csvCacheDirectory })).toThrow(
+      "csvCacheDirectory",
+    );
+  });
   it("creates the frozen Phase 9 defaults", () => {
     const settings = defaultAppSettings();
 
@@ -22,6 +81,8 @@ describe("app settings model", () => {
       copyCustomOptions: COPY_PRESETS.custom,
       csvDefaultParsingMode: "auto",
       queryTempLimitBytes: 10 * 1024 * 1024 * 1024,
+      csvCacheLimitBytes: 10 * 1024 * 1024 * 1024,
+      csvCacheDirectory: null,
       copyLimits: {
         maxCells: 1_000_000,
         maxBytes: 64 * 1024 * 1024,
@@ -121,7 +182,11 @@ describe("app settings model", () => {
       ),
     );
     const v3 = {
-      ...current,
+      ...Object.fromEntries(
+        Object.entries(current).filter(
+          ([key]) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
+        ),
+      ),
       schemaVersion: 3,
       displayFormats: {
         ...legacyFormats,

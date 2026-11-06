@@ -2,6 +2,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     sync::{Arc, Mutex, MutexGuard, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -13,6 +14,13 @@ use serde::{Deserialize, Serialize};
 use crate::{data::CsvPreparedPhysicalColumn, domain::DataError};
 
 use super::{temp::QUERY_TEMP_SAFETY_RESERVE_BYTES, QueryTempManager};
+
+mod migration;
+pub(crate) use migration::{
+    lock_csv_cache_control, preview_unavailable_cache_location, recover_csv_cache_migration,
+    replace_unavailable_cache_location, CsvCacheMigrationPreview, CsvCacheMigrationProgress,
+    CsvCacheMigrationResult,
+};
 
 const CACHE_SCHEMA_VERSION: u32 = 3;
 const MAX_CACHE_ENTRIES: usize = 16;
@@ -98,6 +106,11 @@ pub(crate) struct CsvCacheUsage {
     pub bytes: u64,
     pub entries: usize,
     pub path: String,
+    pub limit_bytes: u64,
+    pub effective_limit_bytes: u64,
+    pub active_bytes: u64,
+    pub active_entries: usize,
+    pub available_bytes: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -115,12 +128,17 @@ pub(crate) struct CsvCacheCleanupResult {
 #[derive(Debug)]
 pub(crate) struct CsvPersistentCache {
     root: PathBuf,
+    control_directory: PathBuf,
+    settings_directory: OnceLock<PathBuf>,
     lock_directory: PathBuf,
     temp: Arc<QueryTempManager>,
     global_lock: Mutex<File>,
     audit: Mutex<CsvCacheAudit>,
+    limit_bytes: AtomicU64,
     #[cfg(test)]
     reclaim_delete_failures: Mutex<std::collections::HashSet<String>>,
+    #[cfg(test)]
+    force_copy_publish: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -141,8 +159,24 @@ pub(crate) struct CsvCacheHit {
 }
 
 impl CsvPersistentCache {
+    #[cfg(test)]
     pub(crate) fn open(local_data: &Path, temp: Arc<QueryTempManager>) -> Result<Self, DataError> {
-        let root = local_data.join("csv-cache-v1");
+        Self::open_configured(
+            local_data,
+            temp,
+            None,
+            super::temp::QUERY_TEMP_HARD_CAP_BYTES,
+        )
+    }
+
+    pub(crate) fn open_configured(
+        local_data: &Path,
+        temp: Arc<QueryTempManager>,
+        directory: Option<&Path>,
+        limit: u64,
+    ) -> Result<Self, DataError> {
+        let root = directory.map_or_else(|| local_data.join("csv-cache-v1"), Path::to_path_buf);
+        migration::validate_cache_location(&root, directory.is_some())?;
         fs::create_dir_all(&root).map_err(|error| DataError::io(&root, error))?;
         let lock_directory = root.join(LOCK_DIRECTORY_NAME);
         fs::create_dir_all(&lock_directory)
@@ -157,12 +191,17 @@ impl CsvPersistentCache {
             .map_err(|error| DataError::io(&global_lock_path, error))?;
         let cache = Self {
             root,
+            control_directory: local_data.to_owned(),
+            settings_directory: OnceLock::new(),
             lock_directory,
             temp,
             global_lock: Mutex::new(global_lock),
             audit: Mutex::new(CsvCacheAudit::default()),
+            limit_bytes: AtomicU64::new(limit),
             #[cfg(test)]
             reclaim_delete_failures: Mutex::new(std::collections::HashSet::new()),
+            #[cfg(test)]
+            force_copy_publish: AtomicBool::new(false),
         };
         let _global = cache.lock_global()?;
         // Publication and atomic manifest replacement use this same global
@@ -299,6 +338,30 @@ impl CsvPersistentCache {
         Ok(true)
     }
 
+    pub(crate) fn can_retain_artifacts(&self, source_directory: &Path) -> Result<bool, DataError> {
+        let _global = self.lock_global()?;
+        let mut incoming = 4096_u64;
+        for name in REQUIRED_FILES {
+            let path = source_directory.join(name);
+            let metadata = fs::metadata(&path).map_err(|error| DataError::io(&path, error))?;
+            if !metadata.is_file() {
+                return Err(DataError::query_failed(
+                    "Prepared CSV cache artifact is not a regular file.",
+                ));
+            }
+            incoming = incoming.checked_add(metadata.len()).ok_or_else(|| {
+                DataError::invalid_request(
+                    "Prepared CSV cache artifact size overflowed its bounded budget.",
+                )
+            })?;
+        }
+        let usage = self.usage_locked()?;
+        Ok(
+            usage.active_bytes.saturating_add(incoming) <= self.effective_limit()
+                && usage.active_entries < MAX_CACHE_ENTRIES,
+        )
+    }
+
     pub(crate) fn publish(
         &self,
         identity: &CsvCacheIdentity,
@@ -347,12 +410,51 @@ impl CsvPersistentCache {
         fs::write(&partial_marker, nonce().to_le_bytes())
             .map_err(|error| DataError::io(&partial_marker, error))?;
         let mut moved = Vec::new();
+        let mut copied = Vec::new();
+        // Logical relocation credit does not represent free space on another
+        // volume. Track all bytes still to reach the destination separately.
+        let mut remaining_destination_bytes = incoming;
         let result = (|| {
-            for name in REQUIRED_FILES {
+            for (index, name) in REQUIRED_FILES.into_iter().enumerate() {
                 let source = source_directory.join(name);
                 let target = staging.join(name);
-                fs::rename(&source, &target).map_err(|error| DataError::io(&target, error))?;
-                moved.push(name);
+                #[cfg(test)]
+                let force_copy = self.force_copy_publish.load(Ordering::Acquire);
+                #[cfg(not(test))]
+                let force_copy = false;
+                let relocated = if force_copy {
+                    Err(std::io::Error::from_raw_os_error(17))
+                } else {
+                    fs::rename(&source, &target)
+                };
+                match relocated {
+                    Ok(()) => {
+                        remaining_destination_bytes =
+                            remaining_destination_bytes.saturating_sub(sizes[index]);
+                        moved.push(name);
+                    }
+                    Err(error) if matches!(error.raw_os_error(), Some(17 | 18)) => {
+                        check_destination_copy_budget(
+                            fs2::available_space(&self.root)
+                                .map_err(|error| DataError::io(&self.root, error))?,
+                            remaining_destination_bytes,
+                        )?;
+                        migration::copy_verified(
+                            &source,
+                            &target,
+                            &AtomicBool::new(false),
+                            |written| {
+                                remaining_destination_bytes =
+                                    remaining_destination_bytes.saturating_sub(written);
+                                let free = fs2::available_space(&self.root)
+                                    .map_err(|error| DataError::io(&self.root, error))?;
+                                check_destination_copy_budget(free, remaining_destination_bytes)
+                            },
+                        )?;
+                        copied.push(name);
+                    }
+                    Err(error) => return Err(DataError::io(&target, error)),
+                }
             }
             let artifacts = REQUIRED_FILES
                 .iter()
@@ -405,11 +507,30 @@ impl CsvPersistentCache {
             return Err(error);
         }
         self.refresh_usage_locked()?;
+        let copied_bytes = copied
+            .iter()
+            .filter_map(|name| {
+                REQUIRED_FILES
+                    .iter()
+                    .position(|candidate| candidate == name)
+            })
+            .map(|index| sizes[index])
+            .sum::<u64>();
+        for name in copied {
+            // The original is kept until the verified destination commits.
+            // The owning temporary lease also retries cleanup if unlink fails.
+            let _ = fs::remove_file(source_directory.join(name));
+        }
         if let Ok(mut audit) = self.audit.lock() {
             audit.publishes = audit.publishes.saturating_add(1);
-            audit.relocated_bytes = audit
-                .relocated_bytes
-                .saturating_add(sizes.iter().copied().sum());
+            audit.relocated_bytes = audit.relocated_bytes.saturating_add(
+                sizes
+                    .iter()
+                    .copied()
+                    .sum::<u64>()
+                    .saturating_sub(copied_bytes),
+            );
+            audit.copied_bytes = audit.copied_bytes.saturating_add(copied_bytes);
         }
         self.lease(key)
     }
@@ -691,13 +812,59 @@ impl CsvPersistentCache {
         Ok(true)
     }
 
+    pub(crate) fn bind_settings_directory(&self, directory: &Path) -> Result<(), DataError> {
+        if let Some(previous) = self.settings_directory.get() {
+            if previous == directory {
+                return Ok(());
+            }
+            return Err(DataError::invalid_request(
+                "The CSV cache settings authority cannot be changed.",
+            ));
+        }
+        self.settings_directory
+            .set(directory.to_owned())
+            .map_err(|_| {
+                DataError::invalid_request(
+                    "The CSV cache settings authority is already initialized.",
+                )
+            })
+    }
+
+    pub(crate) fn ensure_configured_directory(
+        &self,
+        directory: Option<&str>,
+    ) -> Result<(), DataError> {
+        let expected = directory.map_or_else(
+            || self.control_directory.join("csv-cache-v1"),
+            PathBuf::from,
+        );
+        if expected != self.root {
+            return Err(DataError::invalid_request("The CSV cache location changed in another application window. Close this window and reopen the application before continuing."));
+        }
+        Ok(())
+    }
+
     fn lock_global(&self) -> Result<CacheGlobalGuard<'_>, DataError> {
         let file = self.global_lock.lock().map_err(|_| {
             DataError::query_failed("CSV persistent cache global lock is unavailable.")
         })?;
         file.lock_exclusive()
             .map_err(|error| DataError::io(&self.root, error))?;
-        Ok(CacheGlobalGuard { file })
+        let guard = CacheGlobalGuard { file };
+        // Offline replacement cannot write a redirect onto the missing drive.
+        // Check the authoritative settings before any cached worker can publish,
+        // reclaim or clear that old root after the drive returns.
+        if let Some(directory) = self.settings_directory.get() {
+            let settings = super::settings::SettingsStore::new(directory.to_owned()).load()?;
+            self.ensure_configured_directory(settings.csv_cache_directory.as_deref())?;
+        }
+        if self.root.join(migration::REDIRECT_NAME).exists() {
+            return Err(DataError::invalid_request("The CSV cache was moved by another application window. Close this window and reopen the application to use the new cache location."));
+        }
+        if self.root.join(migration::TRANSACTION_NAME).exists() {
+            return Err(DataError::invalid_request("A CSV cache move was interrupted or is still being completed. Restart this application window to recover it safely."));
+        }
+        Ok(guard)
     }
 
     fn touch(&self, path: &Path) -> Result<(), DataError> {
@@ -744,13 +911,18 @@ impl CsvPersistentCache {
             let count_ok = entries.len() + usize::from(!replaces_existing && incoming > 0)
                 <= MAX_CACHE_ENTRIES;
             if projected <= self.temp.configured_limit()
+                && current
+                    .saturating_sub(replacing_bytes)
+                    .saturating_add(incoming)
+                    <= self.effective_limit()
                 && free.saturating_sub(additional_disk_bytes) > QUERY_TEMP_SAFETY_RESERVE_BYTES
                 && count_ok
             {
                 self.temp.set_external_cache_bytes(current);
                 return Ok(());
             }
-            let candidates = entries
+            let candidates = self
+                .reclaimable_entries_locked()?
                 .iter()
                 .filter(|entry| replacing != Some(entry.0.as_str()))
                 .cloned()
@@ -780,32 +952,9 @@ impl CsvPersistentCache {
     }
 
     fn entries(&self) -> Result<Vec<(String, u128, u64, PathBuf)>, DataError> {
-        let mut output = Vec::new();
-        for entry in fs::read_dir(&self.root).map_err(|error| DataError::io(&self.root, error))? {
-            let path = entry
-                .map_err(|error| DataError::io(&self.root, error))?
-                .path();
-            if !path.is_dir() {
-                continue;
-            }
-            let Some(key) = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(str::to_owned)
-            else {
-                continue;
-            };
-            if key.starts_with('.') || key.contains(".partial") {
-                continue;
-            }
-            let access = fs::metadata(path.join("last-access"))
-                .and_then(|metadata| metadata.modified())
-                .ok()
-                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                .map_or(0, |duration| duration.as_nanos());
-            output.push((key, access, directory_bytes(&path)?, path));
-        }
-        Ok(output)
+        // Accounting and eviction must describe the same managed entry set.
+        // Foreign directories are neither cache slots nor reclaim candidates.
+        self.reclaimable_entries_locked()
     }
 
     fn owned_entries(&self) -> Result<Vec<(String, u64, PathBuf)>, DataError> {
@@ -839,16 +988,71 @@ impl CsvPersistentCache {
 
     fn usage_locked(&self) -> Result<CsvCacheUsage, DataError> {
         let entries = self.owned_entries()?;
+        let mut active_bytes = 0_u64;
+        let mut active_entries = 0_usize;
+        for (key, bytes, _) in &entries {
+            if let Some(lock) = self.try_exclusive_entry_lock(key)? {
+                let _ = FileExt::unlock(&lock);
+            } else {
+                active_bytes = active_bytes.saturating_add(*bytes);
+                active_entries += 1;
+            }
+        }
         Ok(CsvCacheUsage {
             bytes: entries.iter().map(|entry| entry.1).sum(),
             entries: entries.len(),
             path: self.root.to_string_lossy().into_owned(),
+            limit_bytes: self.limit_bytes.load(Ordering::Acquire),
+            effective_limit_bytes: self.effective_limit(),
+            active_bytes,
+            active_entries,
+            available_bytes: fs2::available_space(&self.root)
+                .map_err(|error| DataError::io(&self.root, error))?,
         })
+    }
+
+    fn effective_limit(&self) -> u64 {
+        self.limit_bytes
+            .load(Ordering::Acquire)
+            .min(self.temp.configured_limit())
+    }
+
+    pub(crate) fn set_cache_limit(&self, limit: u64) -> Result<CsvCacheUsage, DataError> {
+        let _global = self.lock_global()?;
+        self.limit_bytes.store(limit, Ordering::Release);
+        loop {
+            if self.usage_locked()?.bytes <= self.effective_limit() {
+                break;
+            }
+            let mut removed = false;
+            for (key, _, _, path) in self.reclaimable_entries_locked()? {
+                if let Some(lock) = self.try_exclusive_entry_lock(&key)? {
+                    if migration::remove_owned_tree(&path).is_err() {
+                        let _ = FileExt::unlock(&lock);
+                        continue;
+                    }
+                    let _ = FileExt::unlock(&lock);
+                    let _ = fs::remove_file(self.lock_directory.join(format!("{key}.lock")));
+                    removed = true;
+                    break;
+                }
+            }
+            if !removed {
+                break;
+            }
+        }
+        self.refresh_usage_locked()?;
+        self.usage_locked()
     }
 
     pub(crate) fn refresh_usage(&self) -> Result<(), DataError> {
         let _global = self.lock_global()?;
         self.refresh_usage_locked()
+    }
+
+    pub(crate) fn reclaim_to_configured_limit(&self) -> Result<(), DataError> {
+        self.set_cache_limit(self.limit_bytes.load(Ordering::Acquire))
+            .map(|_| ())
     }
 
     fn refresh_usage_locked(&self) -> Result<(), DataError> {
@@ -976,6 +1180,15 @@ impl Drop for CacheGlobalGuard<'_> {
 enum EntryValidation {
     Fast(CsvCacheManifest),
     NeedsScrub(CsvCacheManifest),
+}
+
+fn check_destination_copy_budget(available: u64, remaining: u64) -> Result<(), DataError> {
+    if available.saturating_sub(remaining) <= QUERY_TEMP_SAFETY_RESERVE_BYTES {
+        return Err(DataError::query_temp_limit(
+            "CSV cache destination needs enough free disk space for all remaining artifacts and the 5 GiB safety reserve.",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_entry(path: &Path, identity: &CsvCacheIdentity) -> Result<CsvCacheManifest, DataError> {
@@ -1633,6 +1846,13 @@ fn replace_file_atomic(source: &Path, destination: &Path) -> Result<(), DataErro
 }
 
 fn content_checksum(path: &Path) -> Result<String, DataError> {
+    content_checksum_cancelable(path, None)
+}
+
+fn content_checksum_cancelable(
+    path: &Path,
+    cancel: Option<&AtomicBool>,
+) -> Result<String, DataError> {
     const POLYNOMIAL: u64 = 0x42f0_e1eb_a9ea_3693;
     static TABLE: OnceLock<[u64; 256]> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
@@ -1654,6 +1874,9 @@ fn content_checksum(path: &Path) -> Result<String, DataError> {
     let mut buffer = vec![0_u8; 1024 * 1024];
     let mut checksum = 0_u64;
     loop {
+        if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+            return Err(DataError::task_cancelled());
+        }
         let read = file
             .read(&mut buffer)
             .map_err(|error| DataError::io(path, error))?;
@@ -1687,6 +1910,84 @@ mod tests {
     const CHILD_ROOT: &str = "DV_CSV_CACHE_LOCK_CHILD_ROOT";
     const CHILD_READY: &str = "DV_CSV_CACHE_LOCK_CHILD_READY";
     const CHILD_RELEASE: &str = "DV_CSV_CACHE_LOCK_CHILD_RELEASE";
+
+    #[test]
+    fn phase21_saved_location_change_blocks_stale_cache_without_old_root_redirect() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("local");
+        let config = directory.path().join("config");
+        let store = super::super::settings::SettingsStore::new(config.clone());
+        let mut settings = crate::domain::AppSettingsV1::default();
+        store.save(&settings).unwrap();
+        let temp =
+            Arc::new(QueryTempManager::open(&local, settings.query_temp_limit_bytes).unwrap());
+        let old = CsvPersistentCache::open(&local, Arc::clone(&temp)).unwrap();
+        old.bind_settings_directory(&config).unwrap();
+        assert!(old.usage().is_ok());
+        let sentinel = old.root.join("foreign-sentinel.txt");
+        fs::write(&sentinel, b"preserve the returned old drive").unwrap();
+
+        // Model an offline replacement followed by the old drive returning:
+        // settings point elsewhere, but the old readable root has no redirect.
+        let replacement = directory.path().join("replacement-cache");
+        migration::validate_cache_location(&replacement, false).unwrap();
+        settings.csv_cache_directory = Some(replacement.to_string_lossy().into_owned());
+        store.save(&settings).unwrap();
+        assert!(!old.root.join(migration::REDIRECT_NAME).exists());
+        assert!(old
+            .ensure_configured_directory(settings.csv_cache_directory.as_deref())
+            .is_err());
+        for error in [
+            old.usage().unwrap_err(),
+            old.set_cache_limit(64 * 1024 * 1024).unwrap_err(),
+            old.clear_inactive().unwrap_err(),
+        ] {
+            assert_eq!(error.code, crate::domain::DataErrorCode::InvalidRequest);
+            assert!(error.message.contains("reopen"));
+        }
+        assert_eq!(
+            old.limit_bytes.load(Ordering::Acquire),
+            settings.csv_cache_limit_bytes
+        );
+        assert_eq!(
+            fs::read(sentinel).unwrap(),
+            b"preserve the returned old drive"
+        );
+        let current = CsvPersistentCache::open_configured(
+            &local,
+            temp,
+            Some(&replacement),
+            settings.csv_cache_limit_bytes,
+        )
+        .unwrap();
+        current.bind_settings_directory(&config).unwrap();
+        assert!(current.usage().is_ok());
+    }
+
+    #[test]
+    fn cross_volume_copy_requires_full_physical_budget_despite_logical_relocation_credit() {
+        let artifacts = 8 * 1024 * 1024_u64;
+        let metadata = 4096;
+        let incoming = artifacts + metadata;
+        // The logical budget can credit all source artifacts, but a different
+        // destination volume still has to allocate every one of those bytes.
+        assert_eq!(incoming.saturating_sub(artifacts), metadata);
+        let reserve = QUERY_TEMP_SAFETY_RESERVE_BYTES;
+        let available = reserve + metadata + 1;
+        assert!(check_destination_copy_budget(available, incoming).is_err());
+        assert!(check_destination_copy_budget(reserve + incoming, incoming).is_err());
+        let initial_free = reserve + incoming + 1;
+        assert!(check_destination_copy_budget(initial_free, incoming).is_ok());
+
+        let chunk = 1024 * 1024;
+        // Normal copying consumes disk and remaining allocation equally.
+        assert!(check_destination_copy_budget(initial_free - chunk, incoming - chunk).is_ok());
+        // A competing disk writer must stop the next progress boundary even
+        // while current free space itself still exceeds the reserve.
+        assert!(check_destination_copy_budget(initial_free - chunk - 1, incoming - chunk).is_err());
+        assert!(check_destination_copy_budget(reserve + metadata + 1, metadata).is_ok());
+        assert!(check_destination_copy_budget(u64::MAX, u64::MAX).is_err());
+    }
 
     fn wait_for_path(path: &Path) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -1731,7 +2032,9 @@ mod tests {
                 assert!(lease.path().join(MANIFEST_NAME).is_file());
             }
             "lease" => {
-                let _lease = cache.lease(String::from("entry-00")).unwrap();
+                let _lease = cache
+                    .lease(cache_key(&lru_fixture_identity("entry", 0)))
+                    .unwrap();
                 fs::write(&ready, b"ready").unwrap();
                 wait_for_path(&release);
             }
@@ -1739,6 +2042,48 @@ mod tests {
                 let _lease = cache.lease(cache_key(&publish_identity())).unwrap();
                 fs::write(&ready, b"ready").unwrap();
                 wait_for_path(&release);
+            }
+            mode if mode.starts_with("migration-") => {
+                let source = root.join("migration-source-artifacts");
+                write_publish_artifacts(&source);
+                drop(
+                    cache
+                        .publish(&publish_identity(), &source, || Ok(()))
+                        .unwrap(),
+                );
+                let parent = root.join("migration-target-parent");
+                fs::create_dir(&parent).unwrap();
+                cache
+                    .migrate_to(
+                        &parent,
+                        &AtomicBool::new(false),
+                        |progress| {
+                            if mode == "migration-copy-crash" && progress.copied_bytes > 0 {
+                                fs::write(&ready, b"copy crash").unwrap();
+                                std::process::exit(91);
+                            }
+                            Ok(())
+                        },
+                        |target| {
+                            assert!(cache.root.join(".cache-moved.json").exists());
+                            if mode == "migration-redirect-crash" {
+                                fs::write(&ready, b"redirect crash").unwrap();
+                                std::process::exit(92);
+                            }
+                            let settings_path = root.join("migration-authoritative.json");
+                            let mut file = File::create(&settings_path).unwrap();
+                            file.write_all(&serde_json::to_vec(&Some(target)).unwrap())
+                                .unwrap();
+                            file.sync_all().unwrap();
+                            if mode == "migration-settings-crash" {
+                                fs::write(&ready, b"settings crash").unwrap();
+                                std::process::exit(93);
+                            }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                panic!("configured crash boundary was not reached");
             }
             _ => panic!("unknown child cache lock mode"),
         }
@@ -1824,6 +2169,334 @@ mod tests {
             .iter()
             .map(|name| fs::metadata(path.join(name)).unwrap().len())
             .sum()
+    }
+
+    fn lru_fixture_identity(prefix: &str, index: usize) -> CsvCacheIdentity {
+        let mut identity = publish_identity();
+        identity.profile_identity = format!("{prefix}-{index:02}");
+        identity
+    }
+
+    fn write_lru_fixture_entry(cache: &CsvPersistentCache, prefix: &str, index: usize) -> PathBuf {
+        // Deliberately bypass publish's automatic LRU to seed an overfull root,
+        // but retain the real ownership/layout contract required for reclamation.
+        let identity = lru_fixture_identity(prefix, index);
+        let path = cache.root.join(cache_key(&identity));
+        write_publish_artifacts(&path);
+        let artifacts = REQUIRED_FILES
+            .iter()
+            .map(|name| CachedArtifact::capture(&path.join(name), true).unwrap())
+            .collect::<Vec<_>>();
+        let (layout, contract) = parquet_schema_layout(&path.join("prepared.parquet")).unwrap();
+        let manifest = CsvCacheManifest::from_identity(&identity, &artifacts, layout, contract);
+        fs::write(
+            path.join(MANIFEST_NAME),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        cache.touch(&path).unwrap();
+        assert!(validate_entry(&path, &identity).is_ok());
+        path
+    }
+
+    #[test]
+    fn phase21_foreign_directories_do_not_consume_managed_cache_slots_or_get_evicted() {
+        let local_data = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(local_data.path(), temp).unwrap();
+        for index in 0..MAX_CACHE_ENTRIES + 1 {
+            let path = cache.root.join(format!("foreign-{index:02}"));
+            fs::create_dir(&path).unwrap();
+            fs::write(path.join("sentinel"), b"preserve").unwrap();
+        }
+        let source = local_data.path().join("owned-artifacts");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        assert!(lease.path().join("prepared.parquet").is_file());
+        assert_eq!(cache.entries().unwrap().len(), 1);
+        assert_eq!(cache.audit().evictions, 0);
+        for index in 0..MAX_CACHE_ENTRIES + 1 {
+            assert_eq!(
+                fs::read(cache.root.join(format!("foreign-{index:02}/sentinel"))).unwrap(),
+                b"preserve"
+            );
+        }
+    }
+
+    #[test]
+    fn phase21_cache_cap_lowering_preserves_active_and_reclaims_only_inactive() {
+        let directory = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+        let source = directory.path().join("source");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        let active = cache.set_cache_limit(1).unwrap();
+        assert_eq!(active.active_entries, 1);
+        assert!(active.bytes > active.effective_limit_bytes);
+        assert!(lease.path().join("prepared.parquet").is_file());
+        drop(lease);
+        cache.reclaim_to_configured_limit().unwrap();
+        let cleared = cache.usage().unwrap();
+        assert_eq!(cleared.entries, 0);
+        assert_eq!(cleared.active_entries, 0);
+    }
+
+    #[test]
+    fn phase21_cache_limit_is_independent_but_effective_under_overall_cap() {
+        let directory = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 128 * 1024 * 1024).unwrap());
+        let cache =
+            CsvPersistentCache::open_configured(directory.path(), temp, None, 512 * 1024 * 1024)
+                .unwrap();
+        let usage = cache.usage().unwrap();
+        assert_eq!(usage.limit_bytes, 512 * 1024 * 1024);
+        assert_eq!(usage.effective_limit_bytes, 128 * 1024 * 1024);
+        assert_eq!(
+            cache
+                .set_cache_limit(64 * 1024 * 1024)
+                .unwrap()
+                .effective_limit_bytes,
+            64 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn phase21_migration_copies_recaptures_identity_and_restores_warm_hit() {
+        let directory = tempfile::tempdir().unwrap();
+        let target_parent = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), Arc::clone(&temp)).unwrap();
+        let source = directory.path().join("source");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        let old_entry = lease.path().to_owned();
+        drop(lease);
+        fs::write(cache.root.join("foreign.txt"), b"preserve").unwrap();
+        let mut committed_path = None;
+        let mut progress = Vec::new();
+        let result = cache
+            .migrate_to(
+                target_parent.path(),
+                &AtomicBool::new(false),
+                |value| {
+                    progress.push(value);
+                    Ok(())
+                },
+                |path| {
+                    committed_path = Some(path.to_owned());
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(result.moved_entries, 1);
+        assert!(!old_entry.exists());
+        assert!(cache.root.join("foreign.txt").is_file());
+        assert!(cache.lookup(&publish_identity()).is_err());
+        assert!(progress.iter().any(|value| value.phase == "committing"));
+        let restored = CsvPersistentCache::open_configured(
+            directory.path(),
+            temp,
+            committed_path.as_deref(),
+            64 * 1024 * 1024,
+        )
+        .unwrap();
+        assert!(restored.lookup(&publish_identity()).unwrap().is_some());
+        assert_eq!(restored.usage().unwrap().entries, 1);
+    }
+
+    #[test]
+    fn phase21_migration_active_lease_blocks_without_touching_source_or_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let target_parent = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+        let source = directory.path().join("source");
+        write_publish_artifacts(&source);
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        assert_eq!(
+            cache
+                .preview_migration(target_parent.path())
+                .unwrap()
+                .active_entries,
+            1
+        );
+        assert!(cache
+            .migrate_to(
+                target_parent.path(),
+                &AtomicBool::new(false),
+                |_| Ok(()),
+                |_| panic!("must not commit active cache")
+            )
+            .is_err());
+        assert!(lease.path().join("prepared.parquet").is_file());
+        assert!(!target_parent.path().join("data-viewer-csv-cache").exists());
+    }
+
+    #[test]
+    fn phase21_migration_cancel_and_settings_failure_preserve_source_and_remove_copies() {
+        for fail_settings in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let target_parent = tempfile::tempdir().unwrap();
+            let temp =
+                Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+            let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+            let source = directory.path().join("source");
+            write_publish_artifacts(&source);
+            drop(
+                cache
+                    .publish(&publish_identity(), &source, || Ok(()))
+                    .unwrap(),
+            );
+            let cancel = AtomicBool::new(false);
+            let result = cache.migrate_to(
+                target_parent.path(),
+                &cancel,
+                |value| {
+                    if !fail_settings && value.copied_bytes > 0 {
+                        cancel.store(true, Ordering::Release);
+                    }
+                    Ok(())
+                },
+                |_| Err(DataError::query_failed("injected settings save failure")),
+            );
+            assert!(result.is_err());
+            assert!(cache.lookup(&publish_identity()).unwrap().is_some());
+            assert!(!cache.root.join(".cache-moved.json").exists());
+            assert!(!target_parent.path().join("data-viewer-csv-cache").exists());
+        }
+    }
+
+    #[test]
+    fn phase21_migration_rejects_foreign_destination_and_nested_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let target_parent = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+        let foreign = target_parent.path().join("data-viewer-csv-cache");
+        fs::create_dir(&foreign).unwrap();
+        fs::write(foreign.join("sentinel.txt"), b"keep").unwrap();
+        assert!(cache.preview_migration(target_parent.path()).is_err());
+        assert!(cache.preview_migration(&cache.root).is_err());
+        assert_eq!(fs::read(foreign.join("sentinel.txt")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn phase21_cross_volume_publish_copy_branch_verifies_and_rolls_back() {
+        let directory = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+        cache.force_copy_publish.store(true, Ordering::Release);
+        let source = directory.path().join("source");
+        let bytes = write_publish_artifacts(&source);
+        assert!(cache
+            .publish(&publish_identity(), &source, || Err(
+                DataError::task_cancelled()
+            ))
+            .is_err());
+        for name in REQUIRED_FILES {
+            assert!(source.join(name).is_file());
+        }
+        let lease = cache
+            .publish(&publish_identity(), &source, || Ok(()))
+            .unwrap();
+        for name in REQUIRED_FILES {
+            assert!(!source.join(name).exists());
+            assert!(lease.path().join(name).is_file());
+        }
+        assert_eq!(cache.audit().copied_bytes, bytes);
+        assert_eq!(cache.audit().relocated_bytes, 0);
+    }
+
+    #[test]
+    fn phase21_migration_process_death_recovers_from_authoritative_settings_at_every_boundary() {
+        for mode in [
+            "migration-copy-crash",
+            "migration-redirect-crash",
+            "migration-settings-crash",
+            "migration-delete-crash",
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = directory.path();
+            fs::write(root.join("migration-authoritative.json"), b"null").unwrap();
+            let ready = root.join("crash-ready");
+            let release = root.join("unused-release");
+            let mut child = spawn_lock_child(mode, root, &ready, &release);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let status = loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("migration crash child timed out at {mode}");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            assert!(!status.success(), "{mode}");
+            assert!(ready.exists(), "crash failpoint was not reached: {mode}");
+            let read_settings = || -> Result<Option<PathBuf>, DataError> {
+                serde_json::from_slice(
+                    &fs::read(root.join("migration-authoritative.json")).unwrap(),
+                )
+                .map_err(|error| DataError::query_failed(error.to_string()))
+            };
+            recover_csv_cache_migration(root, None, read_settings).unwrap();
+            let configured = read_settings().unwrap();
+            assert_eq!(
+                configured.is_some(),
+                matches!(mode, "migration-settings-crash" | "migration-delete-crash")
+            );
+            let temp = Arc::new(QueryTempManager::open(root, 256 * 1024 * 1024).unwrap());
+            let restored = CsvPersistentCache::open_configured(
+                root,
+                temp,
+                configured.as_deref(),
+                256 * 1024 * 1024,
+            )
+            .unwrap();
+            assert!(
+                restored.lookup(&publish_identity()).unwrap().is_some(),
+                "{mode}"
+            );
+            assert!(!root.join(".csv-cache-migration.json").exists(), "{mode}");
+            if configured.is_some() {
+                assert!(!root
+                    .join("csv-cache-v1")
+                    .join(cache_key(&publish_identity()))
+                    .exists());
+            } else {
+                assert!(!root
+                    .join("migration-target-parent/data-viewer-csv-cache")
+                    .exists());
+            }
+        }
+    }
+
+    #[test]
+    fn phase21_cache_retention_cap_skip_preserves_session_artifacts_and_io_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        let temp = Arc::new(QueryTempManager::open(directory.path(), 64 * 1024 * 1024).unwrap());
+        let cache = CsvPersistentCache::open(directory.path(), temp).unwrap();
+        let source = directory.path().join("session-artifacts");
+        write_publish_artifacts(&source);
+        cache.set_cache_limit(1).unwrap();
+        assert!(!cache.can_retain_artifacts(&source).unwrap());
+        for name in REQUIRED_FILES {
+            assert!(source.join(name).is_file());
+        }
+        assert!(cache
+            .can_retain_artifacts(&directory.path().join("missing"))
+            .is_err());
     }
 
     #[test]
@@ -2343,22 +3016,21 @@ mod tests {
         {
             let _global = cache.lock_global().unwrap();
             for index in 0..17 {
-                let path = cache.root.join(format!("entry-{index:02}"));
-                fs::create_dir(&path).unwrap();
-                fs::write(path.join("payload"), [index as u8]).unwrap();
-                cache.touch(&path).unwrap();
+                write_lru_fixture_entry(&cache, "entry", index);
                 std::thread::sleep(std::time::Duration::from_millis(2));
             }
             cache.refresh_usage_locked().unwrap();
         }
-        let active = cache.lease(String::from("entry-00")).unwrap();
+        let active = cache
+            .lease(cache_key(&lru_fixture_identity("entry", 0)))
+            .unwrap();
         let second_temp =
             Arc::new(QueryTempManager::open(local_data.path(), 256 * 1024 * 1024).unwrap());
         let second = CsvPersistentCache::open(local_data.path(), Arc::clone(&second_temp)).unwrap();
         second
             .evict_to_budget(1, Some("new-entry"))
             .expect("inactive LRU entries can satisfy the entry bound");
-        assert!(cache.root.join("entry-00").exists());
+        assert!(active.path().exists());
         assert!(second.entries().unwrap().len() < MAX_CACHE_ENTRIES);
         assert!(second.audit().evictions >= 1);
         second.refresh_usage().unwrap();
@@ -2427,10 +3099,7 @@ mod tests {
 
         {
             let _global = cache.lock_global().unwrap();
-            let path = cache.root.join("entry-00");
-            fs::create_dir_all(&path).unwrap();
-            fs::write(path.join("payload"), b"active").unwrap();
-            cache.touch(&path).unwrap();
+            write_lru_fixture_entry(&cache, "entry", 0);
         }
         let lease_ready = local_data.path().join("lease.ready");
         let lease_release = local_data.path().join("lease.release");
@@ -2440,16 +3109,16 @@ mod tests {
         {
             let _global = cache.lock_global().unwrap();
             for index in 1..17 {
-                let path = cache.root.join(format!("entry-{index:02}"));
-                fs::create_dir_all(&path).unwrap();
-                fs::write(path.join("payload"), [index as u8]).unwrap();
-                cache.touch(&path).unwrap();
+                write_lru_fixture_entry(&cache, "entry", index);
             }
         }
         cache
             .evict_to_budget(1, Some("new-entry"))
             .expect("child-held lease must skip only the active entry");
-        assert!(cache.root.join("entry-00").exists());
+        assert!(cache
+            .root
+            .join(cache_key(&lru_fixture_identity("entry", 0)))
+            .exists());
         fs::write(&lease_release, b"release").unwrap();
         assert!(lease_child.wait().unwrap().success());
     }
@@ -2516,10 +3185,7 @@ mod tests {
         {
             let _global = cache.lock_global().unwrap();
             for index in 0..MAX_CACHE_ENTRIES {
-                let path = cache.root.join(format!("newer-entry-{index:02}"));
-                fs::create_dir(&path).unwrap();
-                fs::write(path.join("payload"), [index as u8]).unwrap();
-                cache.touch(&path).unwrap();
+                write_lru_fixture_entry(&cache, "newer-entry", index);
                 std::thread::sleep(std::time::Duration::from_millis(2));
             }
         }

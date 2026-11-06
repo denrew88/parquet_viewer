@@ -30,6 +30,7 @@ const tasks = {
     nodeStep("types-node", "node_modules/typescript/bin/tsc", ["-p", "tsconfig.node.json", "--noEmit"]),
     nodeStep("types-e2e", "node_modules/typescript/bin/tsc", ["-p", "tsconfig.e2e.json", "--noEmit"]),
   ],
+  "phase21-frontend-format": () => [nodeStep("phase21-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/column-values/backend.ts", "src/column-values/backend.test.ts", "src/column-values/mock.ts", "src/column-values/mock.test.ts", "src/column-values/ColumnValuesPanel.tsx", "src/column-values/ColumnValuesPanel.test.tsx", "e2e/phase21.spec.ts"])],
   "frontend-test": (filter) => [nodeStep("frontend-test", "node_modules/vitest/vitest.mjs", ["run", ...(filter ? [filter] : [])])],
   "backend-test": () => [psStep("backend-test", scripts.backend, ["-Stage", "full"])],
   "backend-check": () => [psStep("backend-check", scripts.backend, ["-Stage", "clippy"])],
@@ -40,6 +41,27 @@ const tasks = {
   })],
   "frontend-build": () => [nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"])],
   "native-build": () => [psStep("native-build", scripts.build)],
+  "phase21-format": () => [psStep("phase21-format", "scripts/phase21_checks.ps1", ["-Stage", "format"])],
+  "phase21-check": () => [psStep("phase21-check", "scripts/phase21_checks.ps1", ["-Stage", "check"])],
+  "phase21-test": () => [psStep("phase21-test", "scripts/phase21_checks.ps1", ["-Stage", "test"])],
+  "phase21-category": () => [psStep("phase21-category", "scripts/phase21_checks.ps1", ["-Stage", "category"])],
+  "phase21-cursor": () => [psStep("phase21-cursor", "scripts/phase21_checks.ps1", ["-Stage", "cursor"])],
+  "phase21-cursor-unit": () => [psStep("phase21-cursor-unit", "scripts/phase21_checks.ps1", ["-Stage", "cursor-unit"])],
+  "phase21-cache-identity": () => [psStep("phase21-cache-identity", "scripts/phase21_checks.ps1", ["-Stage", "cache-identity"])],
+  "phase21-clippy": () => [psStep("phase21-clippy", "scripts/phase21_checks.ps1", ["-Stage", "clippy"])],
+  "phase21-build": () => [psStep("phase21-build", "scripts/phase21_checks.ps1", ["-Stage", "build"])],
+  "phase21-native-build": () => [psStep("phase21-native-build", "scripts/phase21_checks.ps1", ["-Stage", "native-build"])],
+  "phase21-e2e": (filter) => [nodeStep("phase21-e2e", "scripts/phase21_e2e.mjs", filter ? [filter] : [])],
+  "phase21-native": () => [nodeStep("phase21-native", "scripts/native_phase21_smoke.mjs")],
+  "phase21-native-category": () => [nodeStep("phase21-native-category", "scripts/native_phase21_smoke.mjs", ["--category-only"])],
+  "phase21-native-category-1g": () => [nodeStep("phase21-native-category-1g", "scripts/native_phase21_smoke.mjs", ["--category-only", "--category-1g"])],
+  "phase21-native-cursor": () => [nodeStep("phase21-native-cursor", "scripts/native_phase21_smoke.mjs", ["--category-only", "--category-1g", "--cursor-regression"])],
+  "phase21-native-cursor-copy": () => [nodeStep("phase21-native-cursor-copy", "scripts/native_phase21_smoke.mjs", ["--category-only", "--category-1g", "--cursor-regression", "--cursor-copy-only"])],
+  "phase21-native-clipboard-probe": () => [nodeStep("phase21-native-clipboard-probe", "scripts/native_phase21_smoke.mjs", ["--clipboard-probe"])],
+  "phase21-native-clipboard-os": () => [nodeStep("phase21-native-clipboard-os", "scripts/native_phase21_smoke.mjs", ["--clipboard-os-only"])],
+  "phase21-native-probe": () => [nodeStep("phase21-native-probe", "scripts/native_phase21_smoke.mjs", ["--probe"])],
+  "phase21-native-observer": () => [nodeStep("phase21-native-observer", "scripts/native_phase21_smoke.mjs", ["--bridge"])],
+  "phase21-bundle": () => [psStep("phase21-bundle", "scripts/phase21_checks.ps1", ["-Stage", "bundle"])],
   "native-version": () => [nodeStep("native-version", "scripts/native_phase20_version_smoke.mjs", [], { DATA_VIEWER_TEST_BINARY: validationBinary })],
   "native-view": () => [nodeStep("native-view", "scripts/native_phase20_version_smoke.mjs", ["--utf8-view"], { DATA_VIEWER_TEST_BINARY: fs.existsSync(viewCandidate) ? viewCandidate : validationBinary })],
   "native-storage": () => [nodeStep("native-storage", scripts.native, ["fixed", "both", validationBinary])],
@@ -55,7 +77,7 @@ if (args.length === 1 && args[0] === "--list") {
 }
 const [task, filter] = args;
 if (!Object.hasOwn(tasks, task) || args.length > 2 ||
-    (filter !== undefined && (!["frontend-test", "e2e"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
+    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
   console.error("Usage: node scripts/dev-check.mjs [--dry-run] TASK [FILTER]\nUse --list for the fixed task list. Filters are supported only for frontend-test and e2e.");
   process.exit(2);
 }

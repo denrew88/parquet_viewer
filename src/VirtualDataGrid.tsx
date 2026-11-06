@@ -1,3 +1,5 @@
+import { ColumnValuesPanel } from "./column-values/ColumnValuesPanel";
+import type { ColumnValuesBackend } from "./column-values/backend";
 import {
   useCallback,
   useEffect,
@@ -25,6 +27,7 @@ import {
   EyeOff,
   Filter,
   LoaderCircle,
+  ListFilter,
   Search,
   Settings2,
   RotateCcw,
@@ -157,6 +160,7 @@ function copyValuePreview(value: DataValue, options: CopyOptions): string {
 }
 
 export interface VirtualDataGridProps {
+  columnValuesBackend?: ColumnValuesBackend;
   active?: boolean;
   copyOptions?: CopyOptions;
   displayFormats?: DisplayFormats;
@@ -314,6 +318,7 @@ function pageStatus(page: DataPage): string {
 
 export function VirtualDataGrid({
   active = true,
+  columnValuesBackend,
   copyLimits = DEFAULT_COPY_LIMITS,
   copyOptions = COPY_PRESETS.excel,
   displayFormats = DEFAULT_DISPLAY_FORMATS,
@@ -357,6 +362,10 @@ export function VirtualDataGrid({
   summary,
   writeClipboardText = defaultWriteClipboardText,
 }: VirtualDataGridProps) {
+  const [columnValuesColumn, setColumnValuesColumn] = useState<string | null>(null);
+  useEffect(() => {
+    if (!active) setColumnValuesColumn(null);
+  }, [active]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(active);
@@ -2177,7 +2186,7 @@ export function VirtualDataGrid({
       context.font = header ? headerFont : cellFont;
       return context.measureText(value).width;
     };
-    const allowance = queryEnabled ? 76 : 28;
+    const allowance = (queryEnabled ? 76 : 28) + (columnValuesBackend ? 24 : 0);
     const width = autoFitColumnWidth(columnId, displays, measure, allowance);
     setColumnSizing((sizes) => ({ ...sizes, [columnId]: width }));
   }
@@ -2726,7 +2735,23 @@ export function VirtualDataGrid({
                   >
                     <span>{column.id}</span>
                     {queryEnabled && queryPlan && onQueryPlanChange && (
-                      <div className="query-column-actions">
+                      <div
+                        className={`query-column-actions${columnValuesBackend ? " query-column-actions--values" : ""}`}
+                      >
+                        {columnValuesBackend && (
+                          <button
+                            aria-label={`Column values ${column.id}`}
+                            title={`Column values ${column.id}`}
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setColumnValuesColumn(column.id);
+                            }}
+                          >
+                            <ListFilter aria-hidden="true" />
+                          </button>
+                        )}
                         <button
                           aria-label={`Filter ${column.id}`}
                           aria-pressed={Boolean(columnFilter)}
@@ -3314,6 +3339,21 @@ export function VirtualDataGrid({
               );
             })()}
           </div>,
+          document.body,
+        )}
+      {active &&
+        columnValuesColumn &&
+        columnValuesBackend &&
+        createPortal(
+          <ColumnValuesPanel
+            key={`${documentId}:${summary.sessionId}:${columnValuesColumn}`}
+            backend={columnValuesBackend}
+            documentId={documentId}
+            sessionId={summary.sessionId}
+            queryId={queryId ?? null}
+            columnId={columnValuesColumn}
+            onClose={() => setColumnValuesColumn(null)}
+          />,
           document.body,
         )}
     </div>

@@ -47,6 +47,15 @@ pub fn pick_data_files<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Vec<Path
     selected_paths(add_format_filters(app.dialog().file()).blocking_pick_files())
 }
 
+pub fn pick_cache_directory<R: Runtime>(app: &AppHandle<R>) -> Result<Option<PathBuf>, String> {
+    selected_path(
+        app.dialog()
+            .file()
+            .set_title("Choose CSV cache location")
+            .blocking_pick_folder(),
+    )
+}
+
 fn selected_path(selected: Option<FilePath>) -> Result<Option<PathBuf>, String> {
     selected
         .map(|selected| {

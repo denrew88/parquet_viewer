@@ -23,6 +23,54 @@ function renderDialog(overrides: Partial<React.ComponentProps<typeof AppSettings
 }
 
 describe("AppSettingsDialog", () => {
+  it("keeps location recovery and settings usable when storage usage cannot be read", () => {
+    const cacheBackend = {
+      chooseCsvCacheLocation: vi.fn(),
+      startCsvCacheMigration: vi.fn(),
+      getCsvCacheMigrationStatus: vi.fn(),
+      cancelCsvCacheMigration: vi.fn(),
+      getQueryTempUsage: vi.fn(),
+    };
+    renderDialog({
+      tempUsage: null,
+      tempUsageError: "Previous cache drive is unavailable",
+      cacheBackend,
+      onCacheLocationChanged: vi.fn(),
+      openDocumentCount: 0,
+    });
+    expect(screen.getByText("Previous cache drive is unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose cache location…" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    expect(screen.getByRole("spinbutton", { name: "CSV cache maximum size" })).toBeEnabled();
+  });
+  it.each(["0.1", "0.3", "1.1", "0.0625", "10"])(
+    "P21 applies CSV cache cap %s GiB as integer bytes without changing the location",
+    async (value) => {
+      const user = userEvent.setup();
+      const { onApply } = renderDialog({
+        initialSettings: { ...defaultAppSettings(), csvCacheDirectory: "D:/existing-cache" },
+      });
+      const input = screen.getByRole("spinbutton", { name: "CSV cache maximum size" });
+      fireEvent.change(input, { target: { value } });
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+      expect(onApply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          csvCacheLimitBytes: Math.round(Number(value) * 1024 ** 3),
+          csvCacheDirectory: "D:/existing-cache",
+        }),
+      );
+    },
+  );
+  it.each(["0.0624999999", "10.0000000001", ""])(
+    "P21 rejects cache input %s before rounding",
+    (value) => {
+      renderDialog();
+      fireEvent.change(screen.getByRole("spinbutton", { name: "CSV cache maximum size" }), {
+        target: { value },
+      });
+      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    },
+  );
   it("CSV-001 defaults to Auto and applies a new-file parsing mode", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
@@ -40,7 +88,7 @@ describe("AppSettingsDialog", () => {
   it("accepts the 64 MiB to 10 GiB query temporary-storage range", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
-    const input = screen.getByRole("spinbutton", { name: "Query temporary storage limit" });
+    const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
 
     await user.clear(input);
     await user.type(input, "0.0625");
@@ -55,7 +103,7 @@ describe("AppSettingsDialog", () => {
     async (value) => {
       const user = userEvent.setup();
       const { onApply, view } = renderDialog();
-      const input = screen.getByRole("spinbutton", { name: "Query temporary storage limit" });
+      const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
       await user.clear(input);
       await user.type(input, value);
       expect(input).toBeValid();
@@ -64,7 +112,7 @@ describe("AppSettingsDialog", () => {
       expect(saved.queryTempLimitBytes).toBe(Math.round(Number(value) * 1024 ** 3));
       view.unmount();
       const reopened = renderDialog({ initialSettings: saved });
-      expect(screen.getByRole("spinbutton", { name: "Query temporary storage limit" })).toHaveValue(
+      expect(screen.getByRole("spinbutton", { name: "Overall managed storage limit" })).toHaveValue(
         Number(value),
       );
       await user.click(screen.getByRole("button", { name: "Apply" }));
@@ -76,7 +124,7 @@ describe("AppSettingsDialog", () => {
     "rejects out-of-range %s GiB before rounding",
     (value) => {
       renderDialog();
-      fireEvent.change(screen.getByRole("spinbutton", { name: "Query temporary storage limit" }), {
+      fireEvent.change(screen.getByRole("spinbutton", { name: "Overall managed storage limit" }), {
         target: { value },
       });
       expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
@@ -86,7 +134,7 @@ describe("AppSettingsDialog", () => {
   it("blocks invalid storage limits and exposes the copy settings entry", async () => {
     const user = userEvent.setup();
     const { onApply, onOpenCopySettings } = renderDialog();
-    const input = screen.getByRole("spinbutton", { name: "Query temporary storage limit" });
+    const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
 
     await user.clear(input);
     await user.type(input, "2048");
@@ -255,6 +303,11 @@ describe("AppSettingsDialog", () => {
         queryTempBytes: 128 * 1024 * 1024,
         csvCacheBytes: 512 * 1024 * 1024,
         csvCacheEntries: 3,
+        csvCacheLimitBytes: 10 * 1024 ** 3,
+        csvCacheEffectiveLimitBytes: 10 * 1024 ** 3,
+        csvCacheActiveBytes: 0,
+        csvCacheActiveEntries: 0,
+        csvCacheAvailableBytes: 10 * 1024 ** 3,
         csvCachePath:
           "C:\\Users\\viewer\\AppData\\Local\\Data Viewer\\csv-cache-v1\\a-very-long-cache-segment",
         limitBytes: 10 * 1024 ** 3,

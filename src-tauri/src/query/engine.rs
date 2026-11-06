@@ -41,6 +41,9 @@ use crate::{
 
 use super::sql::{find_matches_sql, materialize_sql, scalar_lower_sql, SCALAR_LOWER_FUNCTION};
 
+#[path = "column_values.rs"]
+pub(crate) mod column_values;
+
 const MAX_QUERY_TASKS: usize = 128;
 const MAX_QUERY_RESULTS: usize = 64;
 const MAX_CONCURRENT_QUERIES: usize = 2;
@@ -618,6 +621,7 @@ impl Drop for QueryResult {
 }
 
 pub struct QueryService {
+    column_values: column_values::ColumnValuesRegistry,
     tasks: Mutex<HashMap<(String, String, String), Arc<QueryTask>>>,
     statuses: Mutex<HashMap<(String, String, String), QueryStatus>>,
     results: Mutex<HashMap<(String, String, String), Arc<QueryResult>>>,
@@ -636,11 +640,27 @@ pub struct QueryService {
 }
 
 impl QueryService {
+    #[cfg(test)]
     pub fn open(local_data: impl Into<std::path::PathBuf>, limit: u64) -> Result<Self, DataError> {
+        Self::open_with_cache(local_data, limit, None, limit)
+    }
+
+    pub fn open_with_cache(
+        local_data: impl Into<std::path::PathBuf>,
+        limit: u64,
+        cache_directory: Option<&Path>,
+        cache_limit: u64,
+    ) -> Result<Self, DataError> {
         let local_data = local_data.into();
         let temp = Arc::new(QueryTempManager::open(local_data.clone(), limit)?);
-        let csv_cache = Arc::new(CsvPersistentCache::open(&local_data, Arc::clone(&temp))?);
+        let csv_cache = Arc::new(CsvPersistentCache::open_configured(
+            &local_data,
+            Arc::clone(&temp),
+            cache_directory,
+            cache_limit,
+        )?);
         Ok(Self {
+            column_values: column_values::ColumnValuesRegistry::default(),
             tasks: Mutex::new(HashMap::new()),
             statuses: Mutex::new(HashMap::new()),
             results: Mutex::new(HashMap::new()),
@@ -1023,7 +1043,22 @@ impl QueryService {
                                 return;
                             }
                         };
-                    let persistent_lease = if has_publish_artifacts {
+                    let retain_in_cache = if has_publish_artifacts {
+                        match csv_cache.can_retain_artifacts(artifact_directory) {
+                            Ok(retain) => retain,
+                            Err(error) => {
+                                set_csv_preparation_state(
+                                    &worker_task,
+                                    CsvPreparationState::Failed,
+                                    Some(error),
+                                );
+                                return;
+                            }
+                        }
+                    } else {
+                        false
+                    };
+                    let persistent_lease = if retain_in_cache {
                         match csv_cache.publish(&publish_identity, artifact_directory, || {
                             if !source_fingerprint_matches(
                                 &source.path,
@@ -1609,6 +1644,7 @@ impl QueryService {
     }
 
     pub fn drop_session(&self, document_id: &str, session_id: &str) -> Result<(), DataError> {
+        self.cancel_session_column_values(document_id, session_id);
         if let Some(epoch) = self
             .query_epochs
             .lock()
@@ -1632,6 +1668,7 @@ impl QueryService {
         // terminal status while it exits. Clear that stale session state only
         // after every matching worker has left the active task registry.
         self.drop_session_results(document_id, session_id, false)?;
+        self.csv_cache.reclaim_to_configured_limit()?;
         Ok(())
     }
 
@@ -1642,6 +1679,11 @@ impl QueryService {
         usage.csv_cache_bytes = cache.bytes;
         usage.csv_cache_entries = cache.entries;
         usage.csv_cache_path = cache.path;
+        usage.csv_cache_limit_bytes = cache.limit_bytes;
+        usage.csv_cache_effective_limit_bytes = cache.effective_limit_bytes;
+        usage.csv_cache_active_bytes = cache.active_bytes;
+        usage.csv_cache_active_entries = cache.active_entries;
+        usage.csv_cache_available_bytes = cache.available_bytes;
         usage.process_bytes = usage.query_temp_bytes.saturating_add(usage.csv_cache_bytes);
         Ok(usage)
     }
@@ -1654,6 +1696,36 @@ impl QueryService {
 
     pub fn clear_csv_cache(&self) -> Result<CsvCacheCleanupResult, DataError> {
         self.csv_cache.clear_inactive()
+    }
+
+    pub fn set_csv_cache_limit(&self, limit: u64) -> Result<QueryTempUsage, DataError> {
+        self.csv_cache.set_cache_limit(limit)?;
+        self.usage()
+    }
+
+    pub fn bind_cache_settings_directory(&self, directory: &Path) -> Result<(), DataError> {
+        self.csv_cache.bind_settings_directory(directory)
+    }
+
+    pub fn ensure_csv_cache_directory(&self, directory: Option<&str>) -> Result<(), DataError> {
+        self.csv_cache.ensure_configured_directory(directory)
+    }
+
+    pub fn preview_csv_cache_migration(
+        &self,
+        parent: &Path,
+    ) -> Result<crate::storage::CsvCacheMigrationPreview, DataError> {
+        self.csv_cache.preview_migration(parent)
+    }
+
+    pub fn migrate_csv_cache(
+        &self,
+        parent: &Path,
+        cancel: &AtomicBool,
+        progress: impl FnMut(crate::storage::CsvCacheMigrationProgress) -> Result<(), DataError>,
+        commit: impl FnOnce(&Path) -> Result<(), DataError>,
+    ) -> Result<crate::storage::CsvCacheMigrationResult, DataError> {
+        self.csv_cache.migrate_to(parent, cancel, progress, commit)
     }
 
     pub fn shutdown(&self) {
@@ -1676,6 +1748,7 @@ impl QueryService {
             cancel_csv_preparation_task(task);
         }
         let deadline = std::time::Instant::now() + timeout;
+        let column_values_stopped = self.shutdown_column_values(deadline);
         let mut tasks_stopped = false;
         loop {
             let tasks = match self.tasks.lock() {
@@ -1717,7 +1790,7 @@ impl QueryService {
                 preparations.clear();
             }
         }
-        if tasks_stopped && preparations_stopped {
+        if tasks_stopped && preparations_stopped && column_values_stopped {
             self.temp
                 .shutdown_cleanup(deadline.saturating_duration_since(std::time::Instant::now()));
         }

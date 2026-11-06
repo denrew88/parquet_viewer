@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import App, { isCsvDataInteractionBlocked } from "./App";
 import {
   DataViewerError,
+  browserMockBackend,
   type BackendAdapter,
   type DataPage,
   type FileSummary,
@@ -414,6 +415,7 @@ function queryResultPage(display = "filtered"): DataPage {
 
 function backend(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
   const adapter: BackendAdapter = {
+    ...browserMockBackend,
     healthCheck: vi.fn().mockResolvedValue({ status: "ok", appVersion: "0.1.0" }),
     listSupportedFormats: vi.fn().mockResolvedValue(supportedFormats),
     getSettings: vi.fn().mockResolvedValue(defaultAppSettings()),

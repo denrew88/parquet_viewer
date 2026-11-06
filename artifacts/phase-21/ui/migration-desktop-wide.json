@@ -1,0 +1,26 @@
+{
+  "panel": {
+    "x": 360,
+    "y": 70,
+    "width": 720,
+    "height": 760,
+    "bottom": 830,
+    "right": 1080
+  },
+  "footer": {
+    "top": 775,
+    "bottom": 829,
+    "right": 1079
+  },
+  "progress": {
+    "top": 575.890625,
+    "bottom": 583.890625,
+    "width": 607
+  },
+  "scrollWidth": 718,
+  "clientWidth": 718,
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  }
+}

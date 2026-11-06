@@ -1,0 +1,17 @@
+[
+  {
+    "path": "distinct-pages.csv",
+    "bytes": 11945,
+    "sha256": "877dbfee0746141a1f78f5332caca300664f3544241a59c433473b423bfd4f5f"
+  },
+  {
+    "path": "distinct-types.csv",
+    "bytes": 543,
+    "sha256": "a4cf6b5f6d272e420e346caf448a03c7518d5e5061f8c913b98a154ca37a360f"
+  },
+  {
+    "path": "golden.json",
+    "bytes": 29272,
+    "sha256": "345eb4759a13e32364000a5ffd9d25de37a72706d728daba18f6c194e57a0f1c"
+  }
+]

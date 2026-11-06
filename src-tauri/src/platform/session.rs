@@ -631,6 +631,14 @@ impl<T> DocumentRegistry<T> {
         })
     }
 
+    pub(crate) fn is_idle(&self) -> Result<bool, DocumentAccessError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| DocumentAccessError::Unavailable)?;
+        Ok(state.documents.is_empty() && state.reservations.is_empty())
+    }
+
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.state

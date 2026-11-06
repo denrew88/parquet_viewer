@@ -612,7 +612,8 @@ root dataset:   oes[n_wavelength, n_time]
   다른 문서에 영향 없이 해제한다.
 - 백그라운드 작업은 진행 상태와 취소를 지원하고 닫힌 세션에 결과를 기록하지 않는다.
 - query literal과 column name을 engine SQL 문자열로 연결하지 않고 typed expression 또는 bind를 사용한다.
-- query temp와 settings는 Tauri app directory에만 쓰고 source/exe directory에는 쓰지 않는다.
+- query temp와 settings는 Tauri app directory에 쓴다. CSV persistent cache는 기본 app directory 또는
+  네이티브 picker로 승인한 폴더의 앱 소유 하위 디렉터리에만 쓴다. source/exe directory에는 쓰지 않는다.
 
 ## 14. 향후 범위
 
@@ -629,3 +630,58 @@ Phase 11 OEF H5 v3 계약 밖의 일반 HDF5는 별도 데이터 소스로 다�
 Parquet에서 Arrow Utf8View로 복원되는 문자열도 Utf8와 같은 표시·전체 값·복사 의미를 제공한다.
 Dictionary의 value와 nested preview/full canonical 값에도 적용하며 empty/null의 boundary occupancy를 보존한다.
 캐시 prepared.parquet를 직접 열면 내부 물리 컬럼명이 표시되며 원래 CSV 헤더 복원 기능을 뜻하지 않는다.
+
+## Phase 21 컬럼 고유값·캐시 관리 계약
+
+컬럼 헤더의 Column values에서 전체 source 또는 현재 필터 결과의 정확한 고유값 수와 빈도를
+조회한다. 기존 필터의 값 선택 목록과 별도이며, 검색 결과 수와 전체 수를 구분한다.
+동일 타입 값은 한 항목으로 묶고 null·empty·invalid 원문은 분리한다. 값순/빈도순 양 방향 정렬은
+안정적인 동률 순서를 사용한다. 패널은 100행씩 조회하고 wire page 상한은 200행이다.
+계산은 취소 가능한 immutable snapshot이며 document/session/query/operation identity가 바뀐
+오래된 결과를 게시하지 않는다. 동시에 살아 있는 worker는 취소 요청 후 실제 종료까지 포함해 16개로 제한한다.
+미리보기 값은 Unicode 1024자로 제한하되 전체 복사에서는 원문을 보존한다.
+전체 값 또는 값+빈도 복사는 현재 scope·검색·정렬의 모든 일치 항목을 대상으로 하며 로드한 페이지에
+한정하지 않는다. 기존 copy cell/byte 상한, TSV escaping, 진행·취소와 atomic clipboard commit을 적용한다.
+숫자·decimal·timestamp는 문자열로 정밀도를 보존하며 count/total이 JS safe integer를 넘으면 typed 오류를 반환한다.
+문자열 집계는 그룹 키에서 표시값을 복원해 그룹마다 별도 `MIN(VARCHAR)` 상태를 보관하지 않는다.
+다른 논리 타입은 같은 값의 서로 다른 표기를 합치면서 기존 대표값을 유지한다. 이 최적화로 메모리·임시 저장 한도를 늘리지 않는다.
+
+패널의 이전·다음은 응답의 previousCursor/nextCursor로 이동한다. 두 응답 필드는 필수 nullable이며,
+요청 cursor는 생략 또는 null을 허용한다. offset은 표시 위치와 커서 유효성 확인에 사용한다.
+커서는 snapshot·검색·정렬·offset·page 크기·이동 방향에 귀속하며 타입별 원본 값을 프런트엔드에 담지 않는다.
+토큰은 1..128 UTF-8 bytes, NUL·전체 Unicode 공백 금지이며 snapshot별 최대 256개, 유효기간 30분이다.
+정렬·검색·scope·재계산이 바뀌면 화면의 커서와 페이지를 초기화하고 이전 요청의 응답을 버린다.
+모든 논리 정렬 키와 null·empty·invalid 구분 및 최종 rowid 순서를 포함해 DB 안에서 seek한다.
+이전 이동은 전체 정렬 방향과 NULL 위치를 반전해 읽은 후 표시 순서를 되돌린다.
+기존 cursor 없는 임의 offset 호출은 꼬리 역방향 조회 또는 작은 키 표본과 정확한 개수로
+기준 행을 찾는 bounded 경로로 처리한다. 큰 SQL OFFSET이나 전체 중간 순위 정렬을 사용하지 않으며,
+이 경로도 기존 메모리·임시 저장 한도와 취소 처리를 따른다.
+복사는 UI wire 상한 200행과 별도로 내부 배치를 최대 4,096행 및 기존 8MiB 추정 바이트로 제한한다.
+바이트 사전 검사·축소 재시도는 같은 기준점을 사용하고, 검증된 실제 반환 행 뒤에서만 다음 기준점을 저장한다.
+복사 내부 기준점 캐시는 최대 4개이며 기존 cell/byte 상한과 취소·원자적 clipboard commit을 유지한다.
+
+설정 schema 5는 csvCacheLimitBytes(64MiB~10GiB, 기본10GiB)와 csvCacheDirectory(null=기본 위치)를
+추가한다. Overall managed storage limit는 CSV cache와 query/preparation의 공통 예산이다.
+CSV cache 전용 실효 한도는 min(overall, configured cache cap)이며 cap이 overall보다 커도 유효하다.
+두 용량 입력 모두 소수 GiB를 허용하고 범위 검사 후 가장 가까운 정수 byte로 저장한다.
+cap 축소는 비활성 앱 소유 cache만 LRU 회수한다. 활성 cache는 계속 읽을 수 있고 마지막 lease를 닫으면
+이미 설정된 한도로 다시 회수한다. 준비 결과가 cache cap보다 크면 persistent 저장을 건너뛰고
+overall 예산 안의 session 임시 결과로 Ready를 제공한다. 오류·손상·overall 초과를 무시하지 않는다.
+일반 폴더나 manifest를 검증하지 못한 foreign 항목은 cache 개수 제한이나 자동 회수 대상으로 삼지 않는다.
+
+위치 변경은 native picker가 발급한 일회 selection token으로만 실행한다. 선택 폴더 아래
+data-viewer-csv-cache를 사용하며, 일반 settings Apply로 경로를 바꾸지 않는다.
+문서·pending open·다른 프로세스의 entry lease가 있으면 이전을 거절하고 진행 중에는 신규 작업을 막는다.
+source/target 중첩, foreign 충돌, symlink/junction/reparse 경로를 거절한다.
+다른 volume에서는 bounded copy→checksum 및 새 OS file identity 검증→destination 확정→settings 원자 저장→
+source 정리 순서를 따른다. 대상 volume은 전체 복사 용량과 5GiB 안전 여유를 확보해야 한다.
+공통 logical 예산에서는 같은 cache를 한 번 계산하고 이전 중 transient 복제만 별도 처리한다.
+취소·실패는 원래 설정과 유효 cache를 유지하며 앱이 만든 partial만 정리한다.
+durable journal과 authoritative settings로 crash 경계를 복구하고 옛 process의 이전 root 재사용을 막는다.
+실행 중인 cache worker도 저장된 설정 위치를 확인한다. 오프라인 위치 교체 후 옛 드라이브가
+돌아오더라도 기존 창이 옛 cache에 publish·회수·clear하지 못하게 하고 해당 창의 재시작을 안내한다.
+이전 후 신규 CSV publish도 cross-volume copy/verify를 지원해야 한다.
+
+설정된 cache 드라이브가 연결되지 않아도 앱과 Settings는 열려야 한다. 사용자가 새 위치를 명시적으로
+선택하면 unavailable 안내 후 빈 cache 위치로 전환할 수 있다. 이 경로에서는 기존 cache를 이전하거나
+삭제하지 않는다. 원래 위치가 commit 전에 다시 사용 가능해지면 일반 이전 절차를 사용하도록 중단한다.

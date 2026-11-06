@@ -1,0 +1,254 @@
+[
+  {
+    "id": "omitted",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100
+    },
+    "valid": true
+  },
+  {
+    "id": "null",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": null
+    },
+    "valid": true
+  },
+  {
+    "id": "ascii-128",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "valid": true
+  },
+  {
+    "id": "ascii-129",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "valid": false
+  },
+  {
+    "id": "utf8-126",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한"
+    },
+    "valid": true
+  },
+  {
+    "id": "utf8-129",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한한"
+    },
+    "valid": false
+  },
+  {
+    "id": "nul",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "x\u0000"
+    },
+    "valid": false
+  },
+  {
+    "id": "empty",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": ""
+    },
+    "valid": false
+  },
+  {
+    "id": "spaces",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": " \t\n"
+    },
+    "valid": false
+  },
+  {
+    "id": "next-line",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": ""
+    },
+    "valid": false
+  },
+  {
+    "id": "bom",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": "﻿"
+    },
+    "valid": true
+  },
+  {
+    "id": "number",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": 1
+    },
+    "valid": false
+  },
+  {
+    "id": "array",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": []
+    },
+    "valid": false
+  },
+  {
+    "id": "max-offset",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 9007199254740991,
+      "limit": 200,
+      "cursor": null
+    },
+    "valid": true
+  },
+  {
+    "id": "unsafe-offset",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 9007199254740992,
+      "limit": 100,
+      "cursor": null
+    },
+    "valid": false
+  },
+  {
+    "id": "limit-zero",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 0,
+      "cursor": null
+    },
+    "valid": false
+  },
+  {
+    "id": "limit-201",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 201,
+      "cursor": null
+    },
+    "valid": false
+  },
+  {
+    "id": "unknown-field",
+    "request": {
+      "operationId": "op",
+      "documentId": "doc",
+      "sessionId": "session",
+      "search": null,
+      "order": "valueAscending",
+      "offset": 0,
+      "limit": 100,
+      "cursor": null,
+      "extra": true
+    },
+    "valid": false
+  }
+]

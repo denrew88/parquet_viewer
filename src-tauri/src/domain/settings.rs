@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 4;
+pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 5;
+pub const DEFAULT_CSV_CACHE_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const DEFAULT_QUERY_TEMP_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const MIN_QUERY_TEMP_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = DEFAULT_QUERY_TEMP_LIMIT_BYTES;
@@ -380,6 +381,8 @@ pub struct AppSettingsV1 {
     pub copy_custom_options: CopyOptions,
     pub csv_default_parsing_mode: CsvDefaultParsingMode,
     pub query_temp_limit_bytes: u64,
+    pub csv_cache_limit_bytes: u64,
+    pub csv_cache_directory: Option<String>,
     pub copy_limits: CopyLimits,
     pub display_formats: DisplayFormats,
 }
@@ -404,6 +407,8 @@ impl Default for AppSettingsV1 {
             },
             csv_default_parsing_mode: CsvDefaultParsingMode::Auto,
             query_temp_limit_bytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+            csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
+            csv_cache_directory: None,
             copy_limits: CopyLimits::default(),
             display_formats: DisplayFormats::default(),
         }
@@ -447,6 +452,34 @@ impl AppSettingsV1 {
             return Err(format!(
                 "settings.queryTempLimitBytes must be between {MIN_QUERY_TEMP_LIMIT_BYTES} and {MAX_QUERY_TEMP_LIMIT_BYTES}."
             ));
+        }
+        if !(MIN_QUERY_TEMP_LIMIT_BYTES..=MAX_QUERY_TEMP_LIMIT_BYTES)
+            .contains(&self.csv_cache_limit_bytes)
+        {
+            return Err(format!(
+                "settings.csvCacheLimitBytes must be between {MIN_QUERY_TEMP_LIMIT_BYTES} and {MAX_QUERY_TEMP_LIMIT_BYTES}."
+            ));
+        }
+        if let Some(directory) = &self.csv_cache_directory {
+            if directory.trim().is_empty()
+                || directory.len() > 4096
+                || directory.contains('\0')
+                || !(directory.starts_with('/')
+                    || (directory.starts_with("\\\\") && directory.len() > 2)
+                    || (directory
+                        .as_bytes()
+                        .first()
+                        .is_some_and(u8::is_ascii_alphabetic)
+                        && directory.as_bytes().get(1) == Some(&b':')
+                        && directory
+                            .as_bytes()
+                            .get(2)
+                            .is_some_and(|byte| matches!(byte, b'/' | b'\\'))))
+            {
+                return Err(String::from(
+                    "settings.csvCacheDirectory must be a non-empty absolute local path.",
+                ));
+            }
         }
         if !(MIN_COPY_MAX_CELLS..=MAX_COPY_MAX_CELLS).contains(&self.copy_limits.max_cells) {
             return Err(format!(

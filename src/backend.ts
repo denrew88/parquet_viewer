@@ -1,3 +1,10 @@
+import {
+  createColumnValuesTransport,
+  type ColumnValuesBackend,
+  type CacheManagementBackend,
+  type ColumnValue,
+} from "./column-values/backend";
+import { createColumnValuesMock } from "./column-values/mock";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { defaultAppSettings, parseAppSettings, type AppSettings } from "./settings/model";
@@ -358,6 +365,11 @@ export interface QueryTempUsage {
   csvCacheBytes: number;
   csvCacheEntries: number;
   csvCachePath: string;
+  csvCacheLimitBytes: number;
+  csvCacheEffectiveLimitBytes: number;
+  csvCacheActiveBytes: number;
+  csvCacheActiveEntries: number;
+  csvCacheAvailableBytes: number;
   limitBytes: number;
   availableBytes: number;
   activeQueries: number;
@@ -607,7 +619,7 @@ export interface LegacyOpenedDataFile {
 export type OpenRequestHandler = (request: OpenDataRequest) => void;
 export type OpenRequestErrorHandler = (error: DataViewerError) => void;
 
-export interface BackendAdapter {
+export interface BackendAdapter extends ColumnValuesBackend, CacheManagementBackend {
   healthCheck(): Promise<HealthCheckResponse>;
   listSupportedFormats(): Promise<FormatDescriptor[]>;
   getSettings(): Promise<AppSettings>;
@@ -1728,6 +1740,11 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
       "csvCacheBytes",
       "csvCacheEntries",
       "csvCachePath",
+      "csvCacheLimitBytes",
+      "csvCacheEffectiveLimitBytes",
+      "csvCacheActiveBytes",
+      "csvCacheActiveEntries",
+      "csvCacheAvailableBytes",
       "limitBytes",
       "availableBytes",
       "activeQueries",
@@ -1741,6 +1758,11 @@ export function parseQueryTempUsage(value: unknown): QueryTempUsage {
     !isNonNegativeInteger(item.csvCacheBytes) ||
     !isNonNegativeInteger(item.csvCacheEntries) ||
     typeof item.csvCachePath !== "string" ||
+    !isNonNegativeInteger(item.csvCacheLimitBytes) ||
+    !isNonNegativeInteger(item.csvCacheEffectiveLimitBytes) ||
+    !isNonNegativeInteger(item.csvCacheActiveBytes) ||
+    !isNonNegativeInteger(item.csvCacheActiveEntries) ||
+    !isNonNegativeInteger(item.csvCacheAvailableBytes) ||
     item.processBytes !== item.queryTempBytes + item.csvCacheBytes ||
     !isNonNegativeInteger(item.limitBytes) ||
     item.limitBytes === 0 ||
@@ -2803,6 +2825,7 @@ async function validatedInvoke<T>(
 }
 
 export const tauriBackend: BackendAdapter = {
+  ...createColumnValuesTransport(parseCopyOperationStatus),
   async healthCheck() {
     return validatedInvoke("health_check", undefined, (response) => {
       if (!isHealthCheckResponse(response)) {
@@ -3859,6 +3882,119 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
 }
 
 export const browserMockBackend: BackendAdapter = {
+  ...createColumnValuesMock(
+    async (request) => {
+      if (new URLSearchParams(window.location.search).has("phase21")) {
+        const all: ColumnValue[] = Array.from({ length: 237 }, (_, i) => ({
+          value: `value-${String(i).padStart(3, "0")}`,
+          isNull: false,
+          isEmpty: false,
+          isInvalid: false,
+          count: 238 - i,
+          truncated: false,
+        }));
+        all[0] = { ...all[0], value: null, isNull: true };
+        all[1] = { ...all[1], value: "", isEmpty: true };
+        all[2] = { ...all[2], value: "bad number", isInvalid: true };
+        return request.queryId ? all.slice(0, 17) : all;
+      }
+      const page = await browserMockBackend.readPage({
+        documentId: request.documentId,
+        sessionId: request.sessionId,
+        offset: 0,
+        limit: 200,
+        columns: [request.columnId],
+      });
+      const grouped = new Map<
+        string,
+        {
+          value: string | null;
+          isNull: boolean;
+          isEmpty: boolean;
+          isInvalid: boolean;
+          count: number;
+          truncated: boolean;
+        }
+      >();
+      for (const row of page.rows) {
+        const value = row[0];
+        const item = {
+          value: value.display ?? null,
+          isNull: value.state === "null",
+          isEmpty: value.state === "empty",
+          isInvalid: value.state === "invalid",
+          count: 1,
+          truncated: false,
+        };
+        const key = JSON.stringify([item.value, item.isNull, item.isEmpty, item.isInvalid]);
+        const previous = grouped.get(key);
+        if (previous) previous.count++;
+        else grouped.set(key, item);
+      }
+      return [...grouped.values()];
+    },
+    async (request, values) => {
+      const options = {
+        delimiter: "\t",
+        includeHeaders: true,
+        quoteMode: "minimal" as const,
+        quoteCharacter: '"',
+        escapeMode: "double" as const,
+        lineEnding: "crlf" as const,
+        nullRepresentation: "NULL",
+        emptyStringRepresentation: "quoted-empty" as const,
+        booleanRepresentation: "lowercase" as const,
+        dateTimeRepresentation: { mode: "display" as const },
+        representation: "rawCanonical" as const,
+      };
+      const columns = request.includeCounts ? ["Value", "Count"] : ["Value"];
+      const rows = values.map((item) => [
+        item.isEmpty ? '""' : browserCopyField(item.isNull ? "NULL" : (item.value ?? ""), options),
+        ...(request.includeCounts ? [String(item.count)] : []),
+      ]);
+      const text = [columns.join("\t"), ...rows.map((row) => row.join("\t"))].join("\r\n");
+      const bytes = new TextEncoder().encode(text).byteLength;
+      const over =
+        values.length * columns.length > browserSettings.copyLimits.maxCells ||
+        bytes > browserSettings.copyLimits.maxBytes;
+      let failure: CopyOperationStatus["failure"] = over
+        ? {
+            reason: bytes > browserSettings.copyLimits.maxBytes ? "byteLimit" : "selectionLimit",
+            message: "The distinct values exceed the configured copy limit.",
+          }
+        : null;
+      if (!failure) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          failure = { reason: "clipboardWrite", message: "The clipboard could not be written." };
+        }
+      }
+      const status: CopyOperationStatus = {
+        operationId: crypto.randomUUID(),
+        startedAt: new Date().toISOString(),
+        documentId: request.documentId,
+        sessionId: request.sessionId,
+        queryId: null,
+        selection: { rowStart: 0, rowEndExclusive: values.length, columnIds: columns },
+        options,
+        state: failure ? "failed" : "complete",
+        stage: failure ? "serialize" : "complete",
+        progress: {
+          rowsProcessed: failure ? 0 : values.length,
+          totalRows: values.length,
+          cellsProcessed: failure ? 0 : values.length * columns.length,
+          bytesSerialized: bytes,
+        },
+        failure,
+      };
+      browserCopyOperations.set(status.operationId, status);
+      return status;
+    },
+    (path) => {
+      browserSettings = parseAppSettings({ ...browserSettings, csvCacheDirectory: path });
+    },
+  ),
   async healthCheck() {
     return { status: "ok", appVersion: "browser-mock" };
   },
@@ -3875,6 +4011,11 @@ export const browserMockBackend: BackendAdapter = {
   },
   async updateSettings(settings) {
     const validated = parseAppSettings(settings);
+    if (validated.csvCacheDirectory !== browserSettings.csvCacheDirectory)
+      throw new DataViewerError(
+        "InvalidRequest",
+        "Use the cache location picker and migration to change the directory.",
+      );
     browserSettings = validated;
     return parseAppSettings(browserSettings);
   },
@@ -4504,7 +4645,18 @@ export const browserMockBackend: BackendAdapter = {
       queryTempBytes: 0,
       csvCacheBytes: 0,
       csvCacheEntries: 0,
-      csvCachePath: "Browser mock (no persistent cache)",
+      csvCachePath: browserSettings.csvCacheDirectory ?? "Browser mock (no persistent cache)",
+      csvCacheLimitBytes: browserSettings.csvCacheLimitBytes,
+      csvCacheEffectiveLimitBytes: Math.min(
+        browserSettings.csvCacheLimitBytes,
+        browserSettings.queryTempLimitBytes,
+      ),
+      csvCacheActiveBytes: 0,
+      csvCacheActiveEntries: 0,
+      csvCacheAvailableBytes: Math.min(
+        browserSettings.csvCacheLimitBytes,
+        browserSettings.queryTempLimitBytes,
+      ),
       limitBytes: browserSettings.queryTempLimitBytes,
       availableBytes: 20 * 1024 ** 3,
       activeQueries: 0,
