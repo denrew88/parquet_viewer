@@ -1,6 +1,10 @@
 # Phase 21 integration — draft
 
-Latest execution checkpoint (2026-11-05 KST): final Rust 352 PASS/16 historical ignored; Clippy/fmt, portable 0.21.0 and NSIS build PASS. Native exact237/filtered118 clipboard, settings boundary sessions, typed values, copy cancellation, active-cap reclaim/oversize Ready and 5.85M distinct have individual passing evidence on the final acceptance EXE. The final partial run also verifies actual chooser cancellation. The user stopped Computer Use with the physical Escape key before actual C:→D: migration/restart/offline acceptance. The test process exited and restored clipboard text/settings; existing formal0.20.0 EXE remains unchanged. Phase21 is still in progress and unpromoted. Actual cross-volume migration, native recovery and final independent acceptance remain pending.
+Latest checkpoint (2026-11-06 KST): focused actual C:→D: migration, copy-in-progress cancellation,
+destination collision failure preservation, restart/warm reuse and new cross-drive publication PASS.
+See the migration closure below and `quality/48-cache-migration-runtime-review.md`. Product code and EXEs
+were unchanged. Phase21 remains in progress and unpromoted; broader native crash/offline/fault gates
+are separate. The following dated entries retain the earlier execution history.
 
 State: in progress; native acceptance and final candidate validation remain. No formal EXE replacement or external release.
 
@@ -200,3 +204,38 @@ The historical locked-state failures remain in their timestamped logs and full n
 The requested cursor/copy follow-up acceptance is now PASS across the full run plus targeted retry,
 independently closed in `quality/47-cursor-runtime-review.md`. No rebuild, SQL feature implementation,
 new Phase artifacts, formal root EXE replacement or Phase21-wide completion was performed.
+
+## Actual C:→D: migration closure — 2026-11-06 12:09 KST
+
+The unchanged isolated0.21.0 candidate (`ebb5ed654fe8afb2a1ae2827bfbab5a7d4a40a63c62cc4a87130e4c38878bad9`)
+passed `node scripts/dev-check.mjs phase21-native-migration` (exit0,
+`../dev-check/2026-11-06T03-05-38-259Z-phase21-native-migration.log`). The dedicated mode skips unrelated
+column/clipboard checks and preserves their reports. Raw evidence is `native/migration-only.json`.
+Native picker selection was genuine; no opaque grant was forged.
+
+- C: and D: OS volume UniqueIds differ. Source was the acceptance namespace's default C: cache;
+  target was an exclusively created, owner-marked `D:\DataViewerPhase21Validation-1793934361415-c7fe2ebf-0132-4990-9981-92f30678bfab` child.
+  Settings used10GiB overall/cache caps. Two valid entries total407,010,332bytes, including the5.85M-row CSV.
+- Picker cancellation changed no settings. After destination preview, adding a test-owned foreign child
+  caused actual native `InvalidRequest` (existing files will not be overwritten). Settings, complete
+  source inventory and foreign sentinels were identical. Old CSV warm reuse and filter/sort still passed.
+- Copy cancellation observed12,582,912bytes already copied; terminal Cancelled at19,922,944bytes
+  of407,010,332, phase copying. Complete source file hashes/identities and settings stayed identical;
+  the D: cancel parent retained only its foreign sentinel. Large CSV warm reopen and last row passed.
+- Actual Settings Move action completed both entries with identical prepared/states/offsets hashes,
+  settings now pointing to D:, no cleanup failures. Real progress destination and terminal UI were captured
+  as `native/native-ui-cache-progress-10.png` and `native/native-ui-cache-terminal-11.png`.
+- Process28208 was stopped and a new process4104 launched. Large CSV Ready60ms and small CSV Ready34ms,
+  both sourceReadBytes0. Last large row5849999 was correct; small source page, bucketA352 rows and
+  descending value sort (first value-235) matched golden expectations.
+- A previously uncached100,000-row CSV on C: read1,877,790bytes and prepared in286ms, published under
+  the configured D: root, then reopened warm. A second restart (PID28508) reopened it with sourceReadBytes0
+  in34ms and correct last value fresh-99999. These are observed preparation timings, not total UI latency.
+- Finally, non-location settings were restored, the acceptance namespace intentionally retained its migrated
+  D: root, and the owned process stopped without error. Production settings/cache and all EXEs were untouched.
+
+Independent identity/manifest/source-cleanup review is recorded in `quality/48-cache-migration-runtime-review.md`.
+This closes the requested actual migration/restart/cancel/destination-collision scope. The failure exercised here
+is a real preflight destination collision, not physical disk exhaustion or an after-copy settings-save failure.
+Native disk-full/save-failure/crash/offline and other-process recovery scenarios were not rerun or promoted
+from their separate automated evidence. Phase21-wide completion and formal promotion remain separate.

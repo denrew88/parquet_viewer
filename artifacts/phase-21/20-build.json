@@ -27,7 +27,7 @@
     "productVersion": "0.21.0"
   },
   "appVersion": "0.21.0",
-  "state": "draft; cursor navigation/resource/native clipboard gates PASS; actual cross-volume migration and formal promotion pending",
+  "state": "draft; cursor/native clipboard and focused actual cross-volume migration/cancel/collision/restart-warm gates PASS; broader native recovery and formal promotion pending",
   "candidateSizeChangeBytes": 78336,
   "beforeCategoryFix": {
     "candidate": {

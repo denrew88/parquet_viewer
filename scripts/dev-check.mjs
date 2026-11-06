@@ -53,6 +53,7 @@ const tasks = {
   "phase21-native-build": () => [psStep("phase21-native-build", "scripts/phase21_checks.ps1", ["-Stage", "native-build"])],
   "phase21-e2e": (filter) => [nodeStep("phase21-e2e", "scripts/phase21_e2e.mjs", filter ? [filter] : [])],
   "phase21-native": () => [nodeStep("phase21-native", "scripts/native_phase21_smoke.mjs")],
+  "phase21-native-migration": () => [nodeStep("phase21-native-migration", "scripts/native_phase21_smoke.mjs", ["--migration-only"])],
   "phase21-native-category": () => [nodeStep("phase21-native-category", "scripts/native_phase21_smoke.mjs", ["--category-only"])],
   "phase21-native-category-1g": () => [nodeStep("phase21-native-category-1g", "scripts/native_phase21_smoke.mjs", ["--category-only", "--category-1g"])],
   "phase21-native-cursor": () => [nodeStep("phase21-native-cursor", "scripts/native_phase21_smoke.mjs", ["--category-only", "--category-1g", "--cursor-regression"])],

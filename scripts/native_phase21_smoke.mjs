@@ -16,6 +16,8 @@ const binary = path.join(root, 'src-tauri/target/release/candidates/phase-21-nat
 const identifier = 'com.denrew88.data-viewer-phase21-acceptance';
 const fixture = path.join(root, 'fixtures/phase-21/distinct-pages.csv');
 const largeFixture = path.join(root, 'fixtures/phase-20/performance/main-high/high-5850000x15.csv');
+const migrationOnly = process.argv.includes('--migration-only');
+const reportName = migrationOnly ? 'migration-only.json' : 'results.json';
 const result = { status: 'RUNNING', binary, identifier, startedAt: new Date().toISOString(), checks: [], commands: [] };
 const documents = new Map();
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -46,8 +48,8 @@ const invoke = async (command, args = {}) => {
 };
 async function checkpoint(stage, details = {}) {
   await writeJson(path.join(scratch, 'status.json'), { stage, pid: app?.pid, at: new Date().toISOString(), ...details });
-  await writeJson(path.join(output, 'results.json'), result);
-  console.log(JSON.stringify({ stage, ...details }));
+  await writeJson(path.join(output, reportName), result);
+  console.log(JSON.stringify({ stage, commandId: details.commandId, action: details.action, status: typeof details.status === 'object' ? { operationId: details.status.operationId, state: details.status.state, progress: details.status.progress, error: details.status.error } : details.status, selection: details.selection, destinations: details.destinations ? { parent: details.destinations.parent, cancelledParent: details.destinations.cancelledParent, failureParent: details.destinations.failureParent, committedParent: details.destinations.committedParent } : undefined, sourceInventoryFiles: details.sourceInventory?.length, error: details.error }));
 }
 async function poll(read, terminal, timeout = 120000) {
   const deadline = Date.now() + timeout;
@@ -282,6 +284,7 @@ async function verifyMigration(chosen, before, sourceInventory, status, progress
   const inventory = await cacheInventory(cancelled ? chosen.preview.sourcePath : chosen.preview.targetPath);
   const artifacts = rows => rows.filter(row => ['prepared.parquet', 'states.bin', 'offsets.idx'].includes(path.basename(row.path))).map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }));
   assert.deepEqual(artifacts(inventory), artifacts(sourceInventory), 'Migration must preserve every prepared artifact');
+  if (cancelled) assert.deepEqual(inventory, sourceInventory, 'Cancelled migration must preserve the complete source cache and identities');
   if (result.destinations) for (const sentinel of result.destinations.sentinels) assert.equal(await digest(sentinel.path), sentinel.sha256);
   if (chosen.preview.sourceUnavailable && result.offlineBackup) assert.deepEqual(await cacheInventory(result.offlineBackup.backup), result.offlineBackup.inventory, 'Replacement must not modify the unavailable cache backup');
   selected = null;
@@ -368,17 +371,19 @@ async function command(message) {
       await writeJson(path.join(parent, '.phase21-native-owner.json'), owner);
       const cancelledParent = path.join(parent, 'cancel');
       const committedParent = path.join(parent, 'committed');
+      const failureParent = path.join(parent, 'failure');
       const recoveryParent = path.join(scratch, `recovery-${nonce}`);
       await fs.mkdir(cancelledParent);
       await fs.mkdir(committedParent);
+      await fs.mkdir(failureParent);
       await fs.mkdir(recoveryParent);
       const sentinels = [];
-      for (const directory of [parent, cancelledParent, committedParent, recoveryParent]) {
+      for (const directory of [parent, cancelledParent, committedParent, failureParent, recoveryParent]) {
         const file = path.join(directory, 'foreign-sentinel.txt');
         await fs.writeFile(file, `Unrelated sibling; preserve exactly. ${nonce}\r\n`, { flag: 'wx' });
         sentinels.push({ path: file, sha256: await digest(file) });
       }
-      const destinations = { nonce, parent, cancelledParent, committedParent, recoveryParent, owner, volumes, sentinels };
+      const destinations = { nonce, parent, cancelledParent, committedParent, failureParent, recoveryParent, owner, volumes, sentinels };
       result.destinations = destinations;
       await writeJson(path.join(scratch, 'destinations.json'), destinations);
       return { destinations };
@@ -458,10 +463,13 @@ async function command(message) {
     case 'prepare-large': {
       const before = await digest(largeFixture);
       const identity = await open(largeFixture);
+      if (message.warm) assert.equal(identity.preparation.sourceReadBytes, 0, JSON.stringify(identity.preparation));
       const preparedUsage = await invoke('get_query_temp_usage');
       assert.equal(await digest(largeFixture), before);
+      const pageResult = await invoke('read_page', { request: { documentId: identity.documentId, sessionId: identity.sessionId, offset: 5849999, limit: 1, columns: ['row_id'] } });
+      assert.equal(pageResult.page.rows[0][0].display.replaceAll(',', ''), '5849999');
       if (message.close !== false) await closeDocuments();
-      return { preparation: identity.preparation, usage: preparedUsage, afterClose: await invoke('get_query_temp_usage'), sourceSha256: before };
+      return { preparation: identity.preparation, usage: preparedUsage, afterClose: await invoke('get_query_temp_usage'), sourceSha256: before, pageResult };
     }
     case 'cap-active-reclaim': {
       await closeDocuments();
@@ -632,7 +640,58 @@ async function command(message) {
       const read = await invoke('read_page', { request: { documentId: warm.documentId, sessionId: warm.sessionId, offset: 99999, limit: 1, columns: ['id', 'value'] } });
       assert.equal(read.page.rows[0][1].display, 'fresh-99999');
       await closeDocuments();
-      return { path: file, sha256: await digest(file), cold: cold.preparation, warm: warm.preparation, activeUsage };
+      result.freshPublication = { path: file, sha256: await digest(file), cold: cold.preparation, warm: warm.preparation, activeUsage };
+      return result.freshPublication;
+    }
+    case 'warm-new': {
+      assert.ok(result.freshPublication);
+      const current = await open(result.freshPublication.path);
+      assert.equal(current.preparation.sourceReadBytes, 0);
+      const read = await invoke('read_page', { request: { documentId: current.documentId, sessionId: current.sessionId, offset: 99999, limit: 1, columns: ['value'] } });
+      assert.equal(read.page.rows[0][0].display, 'fresh-99999');
+      await closeDocuments();
+      return { preparation: current.preparation, page: read };
+    }
+    case 'warm-small-query': {
+      const small = await open(fixture), target = { documentId: small.documentId, sessionId: small.sessionId };
+      assert.equal(small.preparation.sourceReadBytes, 0);
+      const page = await invoke('read_page', { request: { ...target, offset: 0, limit: 3, columns: ['id', 'value', 'bucket'] } });
+      assert.equal(page.page.rows.length, 3);
+      const query = { ...target, queryId: `migration-query-${++sequence}`, taskId: `migration-task-${sequence}`, plan: { filters: [{ id: 'bucket-a', columnId: 'bucket', scalarType: 'text', operator: 'equals', values: ['A'] }], search: null, sort: [{ columnId: 'value', direction: 'descending', nullsLast: true }], projection: ['value', 'bucket'] } };
+      await invoke('execute_query', { request: query });
+      const status = await poll(() => invoke('get_query_status', query), value => ['complete', 'failed', 'cancelled'].includes(value.state));
+      assert.equal(status.state, 'complete', JSON.stringify(status));
+      const expected = JSON.parse(await fs.readFile(path.join(root, 'fixtures/phase-21/golden.json'), 'utf8')).bucketA;
+      assert.equal(status.progress.resultRows, expected.rows);
+      const sorted = await invoke('read_query_page', { request: { ...target, queryId: query.queryId, offset: 0, limit: 3, columns: ['value', 'bucket'] } });
+      assert.ok(sorted.page.rows.every(row => row[1].display === 'A'));
+      assert.equal(sorted.page.rows[0][0].display, 'value-235');
+      await closeDocuments();
+      return { preparation: small.preparation, sourcePage: page, queryStatus: status, sortedPage: sorted, filteredRowsExpected: expected.rows, filteredDistinctExpected: expected.totalCount };
+    }
+    case 'obstruct-selected-destination': {
+      assert.ok(selected && result.destinations);
+      const expected = path.join(result.destinations.failureParent, 'data-viewer-csv-cache');
+      assert.equal(path.toNamespacedPath(path.resolve(selected.preview.targetPath)).toLowerCase(), path.toNamespacedPath(expected).toLowerCase());
+      await assert.rejects(fs.lstat(expected), { code: 'ENOENT' });
+      const settings = await invoke('get_settings'), inventory = await cacheInventory(selected.preview.sourcePath);
+      await fs.mkdir(expected);
+      const sentinel = path.join(expected, '.phase21-obstruction.txt');
+      await fs.writeFile(sentinel, `Preserve this test-owned foreign obstruction ${result.destinations.nonce}`, { flag: 'wx' });
+      result.obstruction = { path: expected, sentinel, sha256: await digest(sentinel), settings, inventory };
+      return { obstruction: { path: expected, sentinel, sha256: result.obstruction.sha256 } };
+    }
+    case 'migrate-failure': {
+      assert.ok(selected && result.obstruction);
+      const attempt = await invoke('start_csv_cache_migration', { selectionId: selected.selectionId }).then(status => ({ status }), error => ({ error }));
+      if (attempt.status) attempt.status = await poll(() => invoke('get_csv_cache_migration_status', { operationId: attempt.status.operationId }), value => ['complete', 'failed', 'cancelled'].includes(value.state));
+      assert.ok(attempt.error || attempt.status?.state === 'failed', JSON.stringify(attempt));
+      assert.deepEqual(await invoke('get_settings'), result.obstruction.settings);
+      assert.deepEqual(await cacheInventory(selected.preview.sourcePath), result.obstruction.inventory);
+      assert.equal(await digest(result.obstruction.sentinel), result.obstruction.sha256);
+      for (const sentinel of result.destinations.sentinels) assert.equal(await digest(sentinel.path), sentinel.sha256);
+      selected = null;
+      return { actualNativeFailure: attempt, settingsUnchanged: true, sourceCacheUnchanged: true, obstructionPreserved: true };
     }
     case 'migrate': {
       assert.ok(selected, 'Choose the destination through actual native picker first');
@@ -646,10 +705,22 @@ async function command(message) {
       const sourceInventory = selected.preview.sourceUnavailable ? [] : await cacheInventory(selected.preview.sourcePath);
       let status = await invoke('start_csv_cache_migration', { selectionId: selected.selectionId });
       const operationId = status.operationId;
+      let copyObserved;
+      if (message.cancelAfterProgress) {
+        const deadline = Date.now() + 30000;
+        do {
+          copyObserved = await invoke('get_csv_cache_migration_status', { operationId });
+          if (copyObserved.progress.copiedBytes > 0 && copyObserved.progress.copiedBytes < copyObserved.progress.totalBytes) break;
+          assert.ok(['queued', 'running'].includes(copyObserved.state), `Copy finished before cancellation could be observed: ${JSON.stringify(copyObserved)}`);
+          await pause(5);
+        } while (Date.now() < deadline);
+        assert.ok(copyObserved.progress.copiedBytes > 0 && copyObserved.progress.copiedBytes < copyObserved.progress.totalBytes, JSON.stringify(copyObserved));
+        message.cancel = true;
+      }
       if (message.cancel) await invoke('cancel_csv_cache_migration', { operationId });
       const progress = [];
       status = await poll(async () => { const value = await invoke('get_csv_cache_migration_status', { operationId }); if (progress.at(-1)?.copiedBytes !== value.progress.copiedBytes || progress.at(-1)?.phase !== value.progress.phase) progress.push(value.progress); return value; }, value => ['complete', 'cancelled', 'failed'].includes(value.state), 300000);
-      return verifyMigration(selected, before, sourceInventory, status, progress, message.cancel === true);
+      return { ...await verifyMigration(selected, before, sourceInventory, status, progress, message.cancel === true), copyObservedBeforeCancel: copyObserved };
     }
     case 'restart': await closeDocuments(); await stop(); await launch(); return { restarted: true, settings: await invoke('get_settings') };
     case 'offline-prepare': {
@@ -1287,8 +1358,20 @@ try {
   const usage = await invoke('get_query_temp_usage');
   assert.ok(usage.csvCachePath.includes(identifier), 'Refuse nonisolated cache root');
   result.originalUsage = usage;
-  try { originalClipboard = await page.evaluate(() => navigator.clipboard.readText()); clipboardCaptured = true; } catch (error) { result.clipboardReadError = String(error); }
-  try { await validate(); } catch (error) { result.initialValidationError = String(error.stack || error); }
+  if (migrationOnly) {
+    result.mode = 'migration-only';
+    assert.ok(path.toNamespacedPath(path.resolve(usage.csvCachePath)).slice(4).toUpperCase().startsWith('C:\\'), 'Dedicated run must begin on C:');
+    await page.getByRole('button', { name: 'Close distinct-pages.csv', exact: true }).waitFor({ timeout: 30000 });
+    await open(fixture);
+    const large = await open(largeFixture);
+    await closeDocuments();
+    const seededUsage = await invoke('get_query_temp_usage');
+    assert.ok(seededUsage.csvCacheEntries >= 2 && seededUsage.csvCacheBytes > 64 * 1024 ** 2, JSON.stringify(seededUsage));
+    result.seed = { largePreparation: large.preparation, usage: seededUsage, sourceInventory: await cacheInventory(seededUsage.csvCachePath) };
+  } else {
+    try { originalClipboard = await page.evaluate(() => navigator.clipboard.readText()); clipboardCaptured = true; } catch (error) { result.clipboardReadError = String(error); }
+    try { await validate(); } catch (error) { result.initialValidationError = String(error.stack || error); }
+  }
   await checkpoint(result.initialValidationError ? 'validation-failed' : 'ready-for-picker');
   let lastId;
   try { lastId = JSON.parse(await fs.readFile(path.join(scratch, 'control.json'), 'utf8')).id; } catch {}
