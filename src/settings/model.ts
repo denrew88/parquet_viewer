@@ -12,10 +12,25 @@ import {
 } from "../copy/model";
 import { COPY_PRESETS, DEFAULT_COPY_PRESET } from "../copy/presets";
 
-export const APP_SETTINGS_SCHEMA_VERSION = 5 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 7 as const;
+export type SqlCompletionMode = "automatic" | "contextual" | "manual";
+export const DEFAULT_SQL_COMPLETION_MODE: SqlCompletionMode = "contextual";
+export const DEFAULT_SQL_TEMP_LIMIT_BYTES = 512 * 1024 * 1024;
 export const DEFAULT_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
 export const MIN_QUERY_TEMP_LIMIT_BYTES = 64 * 1024 * 1024;
 export const MAX_QUERY_TEMP_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
+
+export function parseStorageGiB(text: string): number | null {
+  const bytes = Number(text) * 1024 ** 3;
+  if (
+    !text.trim() ||
+    !Number.isFinite(bytes) ||
+    bytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
+    bytes > MAX_QUERY_TEMP_LIMIT_BYTES
+  )
+    return null;
+  return Math.round(bytes);
+}
 export const DEFAULT_COPY_MAX_CELLS = 1_000_000;
 export const MIN_COPY_MAX_CELLS = 1_000;
 export const MAX_COPY_MAX_CELLS = 10_000_000;
@@ -107,12 +122,21 @@ export interface AppSettingsV4 extends Omit<AppSettingsV2, "schemaVersion"> {
 }
 
 export interface AppSettingsV5 extends Omit<AppSettingsV4, "schemaVersion"> {
-  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly schemaVersion: 5;
   readonly csvCacheLimitBytes: number;
   readonly csvCacheDirectory: string | null;
 }
 
-export type AppSettings = AppSettingsV5;
+export interface AppSettingsV6 extends Omit<AppSettingsV5, "schemaVersion"> {
+  readonly schemaVersion: 6;
+  readonly sqlTempLimitBytes: number;
+}
+
+export interface AppSettingsV7 extends Omit<AppSettingsV6, "schemaVersion"> {
+  readonly schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
+  readonly sqlCompletionMode: SqlCompletionMode;
+}
+export type AppSettings = AppSettingsV7;
 
 export interface SettingsValidationIssue {
   readonly path: string;
@@ -157,8 +181,12 @@ const settingsKeys = [
   "displayFormats",
   "csvCacheLimitBytes",
   "csvCacheDirectory",
+  "sqlTempLimitBytes",
+  "sqlCompletionMode",
 ] as const;
-const v4SettingsKeys = settingsKeys.filter(
+const v6SettingsKeys = settingsKeys.filter((key) => key !== "sqlCompletionMode");
+const v5SettingsKeys = v6SettingsKeys.filter((key) => key !== "sqlTempLimitBytes");
+const v4SettingsKeys = v5SettingsKeys.filter(
   (key) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
 );
 const v2SettingsKeys = v4SettingsKeys.filter((key) => key !== "displayFormats");
@@ -685,6 +713,8 @@ export function defaultAppSettings(): AppSettings {
     copyCustomOptions: COPY_PRESETS.custom,
     csvDefaultParsingMode: "auto",
     queryTempLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+    sqlTempLimitBytes: DEFAULT_SQL_TEMP_LIMIT_BYTES,
+    sqlCompletionMode: DEFAULT_SQL_COMPLETION_MODE,
     csvCacheLimitBytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
     csvCacheDirectory: null,
     copyLimits: DEFAULT_COPY_LIMITS,
@@ -700,10 +730,24 @@ export function parseAppSettings(value: unknown): AppSettings {
   const isV2 = item.schemaVersion === 2;
   const isV3 = item.schemaVersion === 3;
   const isV4 = item.schemaVersion === 4;
-  const isLegacy = isV1 || isV2 || isV3 || isV4;
+  const isV5 = item.schemaVersion === 5;
+  const isV6 = item.schemaVersion === 6;
+  const isCacheLegacy = isV1 || isV2 || isV3 || isV4;
+  const isSqlLimitLegacy = isCacheLegacy || isV5;
+  const isLegacy = isSqlLimitLegacy || isV6;
   const issues = exactKeys(
     item,
-    isV1 ? v1SettingsKeys : isV2 ? v2SettingsKeys : isV3 || isV4 ? v4SettingsKeys : settingsKeys,
+    isV1
+      ? v1SettingsKeys
+      : isV2
+        ? v2SettingsKeys
+        : isV3 || isV4
+          ? v4SettingsKeys
+          : isV5
+            ? v5SettingsKeys
+            : isV6
+              ? v6SettingsKeys
+              : settingsKeys,
     "settings",
   );
   const customOptions = parseCustomOptions(item.copyCustomOptions, issues);
@@ -734,8 +778,31 @@ export function parseAppSettings(value: unknown): AppSettings {
       message: `Expected an integer from ${MIN_QUERY_TEMP_LIMIT_BYTES} to ${MAX_QUERY_TEMP_LIMIT_BYTES}.`,
     });
   }
-  const csvCacheLimitBytes = isLegacy ? DEFAULT_QUERY_TEMP_LIMIT_BYTES : item.csvCacheLimitBytes;
-  const csvCacheDirectory = isLegacy ? null : item.csvCacheDirectory;
+  const sqlCompletionMode = isLegacy ? DEFAULT_SQL_COMPLETION_MODE : item.sqlCompletionMode;
+  if (!["automatic", "contextual", "manual"].includes(sqlCompletionMode as string)) {
+    issues.push({
+      path: "settings.sqlCompletionMode",
+      message: "Expected automatic, contextual, or manual.",
+    });
+  }
+  const sqlTempLimitBytes = isSqlLimitLegacy
+    ? DEFAULT_SQL_TEMP_LIMIT_BYTES
+    : item.sqlTempLimitBytes;
+  if (
+    typeof sqlTempLimitBytes !== "number" ||
+    !Number.isSafeInteger(sqlTempLimitBytes) ||
+    sqlTempLimitBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
+    sqlTempLimitBytes > MAX_QUERY_TEMP_LIMIT_BYTES
+  ) {
+    issues.push({
+      path: "settings.sqlTempLimitBytes",
+      message: "Expected an integer from 67108864 to 10737418240.",
+    });
+  }
+  const csvCacheLimitBytes = isCacheLegacy
+    ? DEFAULT_QUERY_TEMP_LIMIT_BYTES
+    : item.csvCacheLimitBytes;
+  const csvCacheDirectory = isCacheLegacy ? null : item.csvCacheDirectory;
   if (
     typeof csvCacheLimitBytes !== "number" ||
     !Number.isSafeInteger(csvCacheLimitBytes) ||
@@ -773,6 +840,8 @@ export function parseAppSettings(value: unknown): AppSettings {
     copyCustomOptions: customOptions,
     csvDefaultParsingMode: item.csvDefaultParsingMode as CsvDefaultParsingMode,
     queryTempLimitBytes: item.queryTempLimitBytes as number,
+    sqlTempLimitBytes: sqlTempLimitBytes as number,
+    sqlCompletionMode: sqlCompletionMode as SqlCompletionMode,
     csvCacheLimitBytes: csvCacheLimitBytes as number,
     csvCacheDirectory: csvCacheDirectory as string | null,
     copyLimits,

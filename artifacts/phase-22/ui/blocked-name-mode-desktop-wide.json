@@ -1,0 +1,284 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "workspace": {
+    "left": 0,
+    "top": 94,
+    "right": 1440,
+    "bottom": 870,
+    "width": 1440,
+    "height": 776
+  },
+  "body": {
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+  },
+  "mode": {
+    "left": 10,
+    "top": 381,
+    "right": 235,
+    "bottom": 542,
+    "width": 225,
+    "height": 161
+  },
+  "editor": null,
+  "controls": [
+    {
+      "label": "orders",
+      "left": 11,
+      "top": 128,
+      "right": 234,
+      "bottom": 198,
+      "width": 223,
+      "height": 70
+    },
+    {
+      "label": "Rename table orders",
+      "left": 210,
+      "top": 134,
+      "right": 228,
+      "bottom": 156,
+      "width": 18,
+      "height": 22
+    },
+    {
+      "label": "orders_2",
+      "left": 11,
+      "top": 203,
+      "right": 234,
+      "bottom": 273,
+      "width": 223,
+      "height": 70
+    },
+    {
+      "label": "Rename table orders_2",
+      "left": 210,
+      "top": 209,
+      "right": 228,
+      "bottom": 231,
+      "width": 18,
+      "height": 22
+    },
+    {
+      "label": "customers",
+      "left": 11,
+      "top": 278,
+      "right": 234,
+      "bottom": 348,
+      "width": 223,
+      "height": 70
+    },
+    {
+      "label": "Rename table customers",
+      "left": 210,
+      "top": 284,
+      "right": 228,
+      "bottom": 306,
+      "width": 18,
+      "height": 22
+    },
+    {
+      "label": "",
+      "left": 18,
+      "top": 433.5,
+      "right": 31,
+      "bottom": 446.5,
+      "width": 13,
+      "height": 13
+    },
+    {
+      "label": "",
+      "left": 18,
+      "top": 477.5,
+      "right": 31,
+      "bottom": 490.5,
+      "width": 13,
+      "height": 13
+    },
+    {
+      "label": "Search SQL columns",
+      "left": 10,
+      "top": 549,
+      "right": 235,
+      "bottom": 575,
+      "width": 225,
+      "height": 26
+    },
+    {
+      "label": "Insert column",
+      "left": 10,
+      "top": 835,
+      "right": 84.515625,
+      "bottom": 860,
+      "width": 74.515625,
+      "height": 25
+    },
+    {
+      "label": "Insert table",
+      "left": 88.515625,
+      "top": 835,
+      "right": 151.96875,
+      "bottom": 860,
+      "width": 63.453125,
+      "height": 25
+    },
+    {
+      "label": "View source",
+      "left": 155.96875,
+      "top": 835,
+      "right": 222.578125,
+      "bottom": 860,
+      "width": 66.609375,
+      "height": 25
+    },
+    {
+      "label": "Examples & help",
+      "left": 1308.53125,
+      "top": 99,
+      "right": 1430,
+      "bottom": 127,
+      "width": 121.46875,
+      "height": 28
+    },
+    {
+      "label": "Run",
+      "left": 256,
+      "top": 356,
+      "right": 312.4375,
+      "bottom": 384,
+      "width": 56.4375,
+      "height": 28
+    },
+    {
+      "label": "Cancel",
+      "left": 317.4375,
+      "top": 356,
+      "right": 387.296875,
+      "bottom": 384,
+      "width": 69.859375,
+      "height": 28
+    },
+    {
+      "label": "Explain",
+      "left": 392.296875,
+      "top": 356,
+      "right": 445.203125,
+      "bottom": 384,
+      "width": 52.90625,
+      "height": 28
+    },
+    {
+      "label": "Analyze",
+      "left": 450.203125,
+      "top": 356,
+      "right": 506.625,
+      "bottom": 384,
+      "width": 56.421875,
+      "height": 28
+    },
+    {
+      "label": "Examples",
+      "left": 1211,
+      "top": 132,
+      "right": 1275.171875,
+      "bottom": 160,
+      "width": 64.171875,
+      "height": 28
+    },
+    {
+      "label": "Writing guide",
+      "left": 1280.171875,
+      "top": 132,
+      "right": 1366.8125,
+      "bottom": 160,
+      "width": 86.640625,
+      "height": 28
+    },
+    {
+      "label": "First rows",
+      "left": 1211,
+      "top": 168,
+      "right": 1266.4375,
+      "bottom": 192,
+      "width": 55.4375,
+      "height": 24
+    },
+    {
+      "label": "Filter / sort",
+      "left": 1270.4375,
+      "top": 168,
+      "right": 1333.21875,
+      "bottom": 192,
+      "width": 62.78125,
+      "height": 24
+    },
+    {
+      "label": "Aggregate",
+      "left": 1337.21875,
+      "top": 168,
+      "right": 1396.53125,
+      "bottom": 192,
+      "width": 59.3125,
+      "height": 24
+    },
+    {
+      "label": "JOIN",
+      "left": 1211,
+      "top": 196,
+      "right": 1244.6875,
+      "bottom": 220,
+      "width": 33.6875,
+      "height": 24
+    },
+    {
+      "label": "Insert example",
+      "left": 1211,
+      "top": 306.78125,
+      "right": 1302.484375,
+      "bottom": 334.78125,
+      "width": 91.484375,
+      "height": 28
+    },
+    {
+      "label": "Dismiss SQL notice",
+      "left": 1403,
+      "top": 445,
+      "right": 1421,
+      "bottom": 465,
+      "width": 18,
+      "height": 20
+    },
+    {
+      "label": "Results",
+      "left": 256,
+      "top": 484,
+      "right": 306.65625,
+      "bottom": 510,
+      "width": 50.65625,
+      "height": 26
+    },
+    {
+      "label": "Execution plan",
+      "left": 311.65625,
+      "top": 484,
+      "right": 400.53125,
+      "bottom": 510,
+      "width": 88.875,
+      "height": 26
+    },
+    {
+      "label": "Messages",
+      "left": 405.53125,
+      "top": 484,
+      "right": 470.03125,
+      "bottom": 510,
+      "width": 64.5,
+      "height": 26
+    }
+  ],
+  "renderedColumns": 11,
+  "selectedRadios": 1,
+  "alignment": []
+}

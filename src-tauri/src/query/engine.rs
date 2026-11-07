@@ -43,6 +43,8 @@ use super::sql::{find_matches_sql, materialize_sql, scalar_lower_sql, SCALAR_LOW
 
 #[path = "column_values.rs"]
 pub(crate) mod column_values;
+#[path = "sql_workspace/mod.rs"]
+pub(crate) mod sql_workspace;
 
 const MAX_QUERY_TASKS: usize = 128;
 const MAX_QUERY_RESULTS: usize = 64;
@@ -289,6 +291,15 @@ struct PreparedQueryProvider {
 }
 
 impl crate::data::QueryInputProvider for PreparedQueryProvider {
+    fn sql_input_columns(
+        &self,
+        source: &QuerySourceSpec,
+    ) -> Result<Vec<crate::data::SqlInputColumn>, DataError> {
+        self.inner.sql_input_columns(source)
+    }
+    fn sql_name_mode_issue(&self, source: &QuerySourceSpec) -> Option<String> {
+        self.inner.sql_name_mode_issue(source)
+    }
     fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError> {
         if context.cancel.load(Ordering::Acquire) {
             return Err(DataError::task_cancelled());
@@ -621,6 +632,7 @@ impl Drop for QueryResult {
 }
 
 pub struct QueryService {
+    sql_workspace: sql_workspace::SqlRegistry,
     column_values: column_values::ColumnValuesRegistry,
     tasks: Mutex<HashMap<(String, String, String), Arc<QueryTask>>>,
     statuses: Mutex<HashMap<(String, String, String), QueryStatus>>,
@@ -660,6 +672,7 @@ impl QueryService {
             cache_limit,
         )?);
         Ok(Self {
+            sql_workspace: sql_workspace::SqlRegistry::default(),
             column_values: column_values::ColumnValuesRegistry::default(),
             tasks: Mutex::new(HashMap::new()),
             statuses: Mutex::new(HashMap::new()),
@@ -1644,6 +1657,7 @@ impl QueryService {
     }
 
     pub fn drop_session(&self, document_id: &str, session_id: &str) -> Result<(), DataError> {
+        self.cancel_source_sql(document_id, session_id);
         self.cancel_session_column_values(document_id, session_id);
         if let Some(epoch) = self
             .query_epochs
@@ -1729,6 +1743,7 @@ impl QueryService {
     }
 
     pub fn shutdown(&self) {
+        self.shutdown_sql();
         self.shutdown_with_timeout(std::time::Duration::from_secs(3));
     }
 
@@ -3757,7 +3772,10 @@ fn registry_error() -> DataError {
 }
 
 fn duckdb_error(error: duckdb::Error) -> DataError {
-    let message = error.to_string();
+    duckdb_message_error(error.to_string())
+}
+
+fn duckdb_message_error(message: String) -> DataError {
     if is_query_temp_storage_error(&message) {
         query_temp_storage_error()
     } else if message.to_ascii_lowercase().contains("interrupt") {
@@ -6416,6 +6434,20 @@ mod tests {
     #[test]
     fn csv_preparation_progress_cancel_and_failure_states_have_stable_error_semantics() {
         let (_directory, service) = service();
+        // An assertion while this test is queued must not leave its preparation
+        // running and occupying the global CSV permit during other tests.
+        struct CancelPreparationsOnDrop<'a>(&'a QueryService);
+        impl Drop for CancelPreparationsOnDrop<'_> {
+            fn drop(&mut self) {
+                let _ = self
+                    .0
+                    .cancel_csv_preparation("document-cancel", "session-cancel");
+                let _ = self
+                    .0
+                    .cancel_csv_preparation("document-fail", "session-fail");
+            }
+        }
+        let _cleanup = CancelPreparationsOnDrop(&service);
         service
             .prepare_csv_session(
                 "document-cancel",

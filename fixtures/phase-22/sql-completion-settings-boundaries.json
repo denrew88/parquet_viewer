@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 7,
+  "defaultMode": "contextual",
+  "cases": [
+    { "name": "automatic", "mode": "automatic", "valid": true },
+    { "name": "contextual", "mode": "contextual", "valid": true },
+    { "name": "manual", "mode": "manual", "valid": true },
+    { "name": "missing", "valid": false },
+    { "name": "null", "mode": null, "valid": false },
+    { "name": "empty", "mode": "", "valid": false },
+    { "name": "unknown", "mode": "dot", "valid": false },
+    { "name": "case-sensitive", "mode": "Contextual", "valid": false },
+    { "name": "boolean", "mode": true, "valid": false },
+    { "name": "number", "mode": 1, "valid": false },
+    { "name": "array", "mode": ["manual"], "valid": false },
+    { "name": "object", "mode": { "value": "manual" }, "valid": false }
+  ]
+}

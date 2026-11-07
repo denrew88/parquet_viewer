@@ -1,8 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataErrorCode {
     FileNotFound,
     UnsupportedFormat,
@@ -30,7 +30,7 @@ pub enum DataErrorCode {
     Io,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Error)]
 #[error("{message}")]
 #[serde(rename_all = "camelCase")]
 pub struct DataError {

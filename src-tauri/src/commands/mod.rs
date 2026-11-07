@@ -1,5 +1,6 @@
 pub(crate) mod cache_migration;
 pub(crate) mod column_values;
+pub(crate) mod sql_workspace;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -893,9 +894,16 @@ impl AppState {
         self.copy_manager
             .cancel_session(document_id, session_id, false);
         self.drop_queries_if_initialized(document_id, session_id);
-        self.documents
+        let closed = self
+            .documents
             .close(document_id, session_id)
-            .map_err(document_error)
+            .map_err(document_error);
+        // A start may register after the first scan but before detachment.
+        // Starts admitted later must fail their post-admission identity check.
+        if let Some(service) = self.initialized_query_service() {
+            service.cancel_source_sql(document_id, session_id);
+        }
+        closed
     }
 
     fn summary(&self, document_id: &str, session_id: &str) -> Result<OpenFileResponse, DataError> {

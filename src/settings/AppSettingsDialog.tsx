@@ -5,14 +5,14 @@ import { Copy, Database, FileType2, LoaderCircle, X } from "lucide-react";
 import { COPY_PRESETS } from "../copy/presets";
 import type { QueryTempUsage } from "../backend";
 import {
-  MAX_QUERY_TEMP_LIMIT_BYTES,
   MAX_COPY_MAX_BYTES,
   MAX_COPY_MAX_CELLS,
-  MIN_QUERY_TEMP_LIMIT_BYTES,
   MIN_COPY_MAX_BYTES,
   MIN_COPY_MAX_CELLS,
   defaultAppSettings,
   parseAppSettings,
+  parseStorageGiB,
+  DEFAULT_SQL_TEMP_LIMIT_BYTES,
   type AppSettings,
   type CsvDefaultParsingMode,
   type DisplayFormats,
@@ -123,18 +123,17 @@ export function AppSettingsDialog({
   onClearCsvCache,
 }: AppSettingsDialogProps) {
   const [migrationBusy, setMigrationBusy] = useState(false);
+  const [sqlLimitGiB, setSqlLimitGiB] = useState(editableGiB(initialSettings.sqlTempLimitBytes));
+  const sqlLimitBytes = parseStorageGiB(sqlLimitGiB);
+  const sqlLimitError =
+    sqlLimitBytes === null ? "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB." : null;
   const [cacheLimitGiB, setCacheLimitGiB] = useState(
     editableGiB(initialSettings.csvCacheLimitBytes),
   );
-  const cacheLimitInputBytes = Number(cacheLimitGiB) * GIB;
-  const cacheLimitBytes = Math.round(cacheLimitInputBytes);
-  const cacheLimitError =
-    cacheLimitGiB.trim() === "" ||
-    !Number.isSafeInteger(cacheLimitBytes) ||
-    cacheLimitInputBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
-    cacheLimitInputBytes > MAX_QUERY_TEMP_LIMIT_BYTES
-      ? "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB."
-      : null;
+  const cacheLimitBytes = parseStorageGiB(cacheLimitGiB) ?? NaN;
+  const cacheLimitError = !Number.isSafeInteger(cacheLimitBytes)
+    ? "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB."
+    : null;
   const dialogRef = useRef<HTMLDivElement>(null);
   const csvCacheClearButtonRef = useRef<HTMLButtonElement>(null);
   const csvCacheConfirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -144,6 +143,7 @@ export function AppSettingsDialog({
   const wasConfirmingCsvCacheClear = useRef(false);
   const [confirmingCsvCacheClear, setConfirmingCsvCacheClear] = useState(false);
   const [csvMode, setCsvMode] = useState(initialSettings.csvDefaultParsingMode);
+  const [sqlCompletionMode, setSqlCompletionMode] = useState(initialSettings.sqlCompletionMode);
   const [queryLimitGiB, setQueryLimitGiB] = useState(
     editableGiB(initialSettings.queryTempLimitBytes),
   );
@@ -152,21 +152,15 @@ export function AppSettingsDialog({
   const [displayFormats, setDisplayFormats] = useState<DisplayFormats>(() =>
     structuredClone(initialSettings.displayFormats),
   );
-  const queryLimitInputBytes = Number(queryLimitGiB) * GIB;
-  const queryLimitBytes = Math.round(queryLimitInputBytes);
+  const queryLimitBytes = parseStorageGiB(queryLimitGiB) ?? NaN;
   const copyMaxCellsValue = Number(copyMaxCells);
   const copyMaxBytesValue = Number(copyMaxMiB) * MIB;
   const queryLimitError = useMemo(() => {
-    if (
-      queryLimitGiB.trim() === "" ||
-      !Number.isSafeInteger(queryLimitBytes) ||
-      queryLimitInputBytes < MIN_QUERY_TEMP_LIMIT_BYTES ||
-      queryLimitInputBytes > MAX_QUERY_TEMP_LIMIT_BYTES
-    ) {
+    if (!Number.isSafeInteger(queryLimitBytes)) {
       return "Enter a limit from 0.0625 GiB (64 MiB) to 10 GiB.";
     }
     return null;
-  }, [queryLimitBytes, queryLimitInputBytes, queryLimitGiB]);
+  }, [queryLimitBytes]);
   const copyMaxCellsError = useMemo(() => {
     if (
       copyMaxCells.trim() === "" ||
@@ -317,6 +311,37 @@ export function AppSettingsDialog({
               ))}
             </div>
             <p className="settings-field-description">{selectedMode.description}</p>
+          </section>
+
+          <section aria-labelledby="sql-completion-heading" className="settings-section">
+            <div className="settings-section__heading">
+              <div>
+                <h3 id="sql-completion-heading">SQL suggestions</h3>
+                <p>
+                  Changes apply to the SQL editor after saving. Ctrl+Space always requests
+                  suggestions.
+                </p>
+              </div>
+            </div>
+            <label className="settings-field">
+              <span>SQL suggestion mode</span>
+              <select
+                aria-label="SQL suggestion mode"
+                value={sqlCompletionMode}
+                onChange={(event) =>
+                  setSqlCompletionMode(event.target.value as typeof sqlCompletionMode)
+                }
+              >
+                <option value="contextual">Contextual (default)</option>
+                <option value="automatic">Automatic (2+ characters)</option>
+                <option value="manual">Manual (Ctrl+Space)</option>
+              </select>
+            </label>
+            <p className="settings-field-description">
+              Contextual suggests tables, columns after a dot or in HAVING, and JOIN conditions
+              based on column names and types. Enter or Tab accepts a suggestion. Shift+Enter starts
+              a new line.
+            </p>
           </section>
 
           <section aria-labelledby="copy-default-heading" className="settings-section">
@@ -753,6 +778,39 @@ export function AppSettingsDialog({
                 Total app-managed storage: <strong>{formatStorage(tempUsage.processBytes)}</strong>
               </p>
             ) : null}
+            <label className="settings-number-field">
+              SQL temporary storage per query (GiB)
+              <span>
+                <input
+                  aria-label="SQL temporary storage per query (GiB)"
+                  aria-describedby="sql-temp-limit-help"
+                  aria-invalid={sqlLimitError !== null}
+                  type="number"
+                  min="0.0625"
+                  max="10"
+                  step="any"
+                  value={sqlLimitGiB}
+                  onChange={(event) => setSqlLimitGiB(event.target.value)}
+                  disabled={migrationBusy}
+                />
+                GiB
+              </span>
+            </label>
+            <p
+              id="sql-temp-limit-help"
+              className={sqlLimitError ? "settings-field-error" : "settings-field-description"}
+              role={sqlLimitError ? "alert" : undefined}
+            >
+              {sqlLimitError ??
+                `Limits spill files and saved results together. The actual allowance is the smaller of this limit, remaining overall managed storage, and safe free disk space. Applies to new queries only; active queries and existing results keep their allowance.`}
+            </p>
+            <button
+              type="button"
+              disabled={migrationBusy}
+              onClick={() => setSqlLimitGiB(editableGiB(DEFAULT_SQL_TEMP_LIMIT_BYTES))}
+            >
+              Reset SQL temporary storage
+            </button>
             <div className="storage-groups">
               <section aria-labelledby="query-temp-storage-heading" className="storage-group">
                 <div className="storage-group__summary">
@@ -863,6 +921,8 @@ export function AppSettingsDialog({
                       csvCacheClearing ||
                       queryLimitError !== null ||
                       cacheLimitError !== null ||
+                      sqlLimitError !== null ||
+                      sqlLimitBytes !== initialSettings.sqlTempLimitBytes ||
                       queryLimitBytes !== initialSettings.queryTempLimitBytes ||
                       cacheLimitBytes !== initialSettings.csvCacheLimitBytes
                     }
@@ -956,6 +1016,7 @@ export function AppSettingsDialog({
               csvCacheClearing ||
               migrationBusy ||
               cacheLimitError !== null ||
+              sqlLimitError !== null ||
               queryLimitError !== null ||
               copyMaxCellsError !== null ||
               copyMaxBytesError !== null
@@ -966,6 +1027,8 @@ export function AppSettingsDialog({
                   ...initialSettings,
                   csvDefaultParsingMode: csvMode,
                   queryTempLimitBytes: queryLimitBytes,
+                  sqlTempLimitBytes: sqlLimitBytes,
+                  sqlCompletionMode,
                   csvCacheLimitBytes: cacheLimitBytes,
                   copyLimits: {
                     maxCells: copyMaxCellsValue,

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "description": "Independent shared SQL per-job storage setting corpus. byteCases apply to a schemaV6 sqlTempLimitBytes wire field; the missing case deliberately omits value. uiCases use the existing decimal-GiB parser (Math.round(GiB*2^30) after range check). Legacy migration retains other settings and inserts defaultBytes.",
+  "minimumBytes": 67108864,
+  "maximumBytes": 10737418240,
+  "defaultBytes": 536870912,
+  "byteCases": [
+    { "id": "missing-current-field", "valid": false },
+    { "id": "minimum-minus-one", "value": 67108863, "valid": false },
+    { "id": "minimum", "value": 67108864, "valid": true },
+    { "id": "minimum-plus-one", "value": 67108865, "valid": true },
+    { "id": "decimal-point-three", "value": 322122547, "valid": true },
+    { "id": "default", "value": 536870912, "valid": true },
+    { "id": "one-gib", "value": 1073741824, "valid": true },
+    { "id": "maximum-minus-one", "value": 10737418239, "valid": true },
+    { "id": "maximum", "value": 10737418240, "valid": true },
+    { "id": "maximum-plus-one", "value": 10737418241, "valid": false },
+    { "id": "zero", "value": 0, "valid": false },
+    { "id": "negative", "value": -67108864, "valid": false },
+    { "id": "fractional-byte", "value": 67108864.5, "valid": false },
+    { "id": "null", "value": null, "valid": false },
+    { "id": "boolean", "value": true, "valid": false },
+    { "id": "numeric-string", "value": "536870912", "valid": false },
+    { "id": "array", "value": [], "valid": false },
+    { "id": "object", "value": {}, "valid": false },
+    { "id": "js-unsafe-integer", "value": 9007199254740992, "valid": false }
+  ],
+  "uiCases": [
+    { "text": "0.0624999999", "valid": false },
+    { "text": "0.0625", "valid": true, "bytes": 67108864 },
+    { "text": "0.3", "valid": true, "bytes": 322122547 },
+    { "text": "0.5", "valid": true, "bytes": 536870912 },
+    { "text": "1", "valid": true, "bytes": 1073741824 },
+    { "text": "10", "valid": true, "bytes": 10737418240 },
+    { "text": "10.0000000001", "valid": false },
+    { "text": "", "valid": false },
+    { "text": "-0.5", "valid": false },
+    { "text": "Infinity", "valid": false },
+    { "text": "NaN", "valid": false }
+  ],
+  "legacyVersions": [1, 2, 3, 4, 5],
+  "currentVersion": 7,
+  "effectiveCases": [
+    { "id": "configured-binds", "configured": 67108864, "managedAvailable": 1073741824, "physicalHeadroom": 1073741824, "expected": 67108864 },
+    { "id": "managed-binds", "configured": 1073741824, "managedAvailable": 322122547, "physicalHeadroom": 1073741824, "expected": 322122547 },
+    { "id": "physical-binds", "configured": 1073741824, "managedAvailable": 1073741824, "physicalHeadroom": 67108864, "expected": 67108864 },
+    { "id": "no-headroom", "configured": 1073741824, "managedAvailable": 0, "physicalHeadroom": 1073741824, "expected": 0 }
+  ]
+}

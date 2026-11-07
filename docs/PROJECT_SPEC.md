@@ -620,6 +620,10 @@ root dataset:   oes[n_wavelength, n_time]
 aggregation, group by, join, pivot와 SQL editor는 별도 요구사항이 승인된 경우에만 추가한다.
 runtime reader plugin과 query 결과의 persistent reusable cache는 현재 범위가 아니다.
 
+2026-11-06 사용자 승인으로 아래 Phase22 SQL 작업 공간을 개발한다. 기존 파일 화면의
+filter/sort 계약과 SQL 작업의 독립 결과 계약을 구분한다. pivot와 persistent SQL result cache는
+이 승인에 포함하지 않는다.
+
 Phase 11 OEF H5 v3 계약 밖의 일반 HDF5는 별도 데이터 소스로 다룬다. 한 파일의 여러 dataset을 위한
 `multipleDatasets` capability와 선택 UI, axis dataset paging, OES query provider는 각각 별도
 요구사항과 fixture가 승인된 경우에만 추가한다. Excel도 같은 방식으로 sheet 선택 계약을 먼저
@@ -685,3 +689,147 @@ durable journal과 authoritative settings로 crash 경계를 복구하고 옛 pr
 설정된 cache 드라이브가 연결되지 않아도 앱과 Settings는 열려야 한다. 사용자가 새 위치를 명시적으로
 선택하면 unavailable 안내 후 빈 cache 위치로 전환할 수 있다. 이 경로에서는 기존 cache를 이전하거나
 삭제하지 않는다. 원래 위치가 commit 전에 다시 사용 가능해지면 일반 이전 절차를 사용하도록 중단한다.
+
+## Phase 22 SQL 작업 공간 계약 — 구현 중
+
+열린 로컬 CSV·Parquet를 전체 파일 범위의 SQL 테이블로 등록한다. 파일별 별칭은 즉석 수정하며
+같은 basename의 다른 경로는 독립 등록한다. 별칭 충돌 검사는 ASCII case-insensitive이며
+인용·이스케이프 후 SQL에 삽입한다. 등록 테이블 목록과 선택한 테이블의 검색·가상화 컬럼 목록을
+분리한다. 기존 그리드 filter/sort는 SQL에 자동 적용하지 않는다.
+테이블 선택 버튼은 별칭·경로·모드·여백을 포함한 카드 전체다. 연필과 별칭 편집 폼은 별도
+control이며 선택을 바꾸지 않는다. Enter/Space와 aria-pressed를 유지하고, 최소 창 크기에서도
+선택 카드의 경로·모드를 목록 안에서 완전히 볼 수 있도록 최소 높이와 가까운 위치 스크롤을 적용한다.
+
+테이블마다 SQL 컬럼 참조 방식은 원본 이름 또는 c번호 중 **하나만** 선택한다. 원본의 완전한
+헤더에 blank 또는 ASCII-case-insensitive 중복이 없으면 이름 모드가 기본이고, 그렇지 않으면
+c번호가 기본이며 이름 모드를 사용할 수 없는 이유를 표시한다. 뷰어가 자동 suffix를 붙인 이름이나
+잘린 metadata preview로 적합성을 판단하지 않는다. 헤더가 없는 CSV도 c번호만 사용한다.
+이름 모드는 원본 이름을 보존하고 삽입할 때 큰따옴표·이스케이프를 처리한다. c번호는 원본 physical
+index+1로 고정하고 skip/reorder/hide로 재번호를 붙이지 않는다. 한 테이블에 양쪽 namespace를
+동시에 노출하지 않는다. 원본 이름 자체가 c1이면 이름 모드의 그 이름으로만 해석한다.
+파일마다 서로 다른 모드를 사용해 JOIN할 수 있다. 별칭·모드 변경은 기존 SQL을 자동 수정하지 않는다.
+
+SQL 작업 탭 하나에서 동시에 하나의 SELECT/SELECT CTE를 실행한다. JOIN·집계·window 계산,
+결과 페이지·선택·TSV 복사·전체 값 조회와 EXPLAIN/EXPLAIN ANALYZE를 제공한다. 예제·작성 가이드는
+현재 파일의 별칭·모드와 연결되며 예제 삽입은 실행하지 않는다. 숫자·decimal·시간 타입의 정밀도를
+보존하고 CSV typed-invalid는 SQL NULL로 제공하면서 경고·원문 profile 확인 경로를 제공한다.
+정확히 표현할 수 없는 값은 조용히 round/cast하지 않고 명시적 지원 제한 오류로 처리한다.
+duration을 BIGINT로 제공할 때는 원래 단위를 경고·설명에 명시한다.
+
+실행 전에 DuckDB의 non-executing metadata binder로 SQL의 참조 파일을 확정한다. 문자열·주석 검색으로
+의존성을 판단하지 않으며 CTE scope·JOIN·중첩 SELECT를 따른다. 등록 목록과 실행 의존성은 분리한다.
+참조한 입력에만 source/session/profile/mode와 cache lease를 고정한다. 무관한 파일을 닫아도 실행을
+유지하고, 참조 파일의 변경·닫기·profile 교체 시 해당 진행 작업을 취소하며 이유를 표시한다.
+닫기 전후 취소 검사와 시작 후 session 재검사·미공개 결과 회수로 등록 경쟁을 처리한다.
+worker 종료·대기 전에 입력 lease를 해제하지 않는다. 다른 입력으로 자동 재연결하지 않는다.
+상수 SQL은 내부 실행 입력0개를 허용하며, 최적화로 제거되는 참조는 보수적으로 의존성으로 유지한다.
+완료된 결과는 원본 탭 닫기와 독립적이다. 결과는 자체 schema와 rN 컬럼 ID,
+독립 행 순서를 가진 bounded snapshot이다. 표시 이름의 중복을 허용하되 조회·선택·복사는 ID로 구분한다.
+페이지 이동·복사·내보내기는 보관된 결과를 사용한다. 새 실행이 실패·취소되면 직전 성공 결과를
+유지한다. 이전 결과와 새 결과가 동시에 차지하는 공간을 모두 계산한다.
+
+Results의 Export results는 그리드에서 선택한 셀과 무관하게 표시 중인 결과 전체를 내보낸다.
+CSV·TSV는 Excel의 인코딩 감지를 위해 파일 처음에 UTF-8 BOM을 기록한다. 헤더와 UTF-8 원본 값,
+CRLF 줄 끝을 사용한다. SQL NULL은 `\N`, 빈 문자열은
+`""`로 기록한다. 실제 문자열 `\N`은 큰따옴표로 감싼다. Parquet는 결과의 Arrow 타입과 헤더를
+보존하며 0행도 스키마를 저장한다. 파일 저장은 네이티브 대화상자에서 새 로컬 파일을 지정한 뒤
+백그라운드에서 결과 청크를 읽어 수행한다. 기존 파일은 덮어쓰지 않으며 정상적으로 처리된
+쓰기 실패에서는 생성한 부분 파일을 회수한다. Clipboard는 헤더를 포함한 TSV로 복사하며
+기존 복사 한도와 진행·취소 동작을 따른다.
+
+SQL text≤65,536UTF8bytes, 입력1..32, alias≤128scalar/512UTF8bytes, 결과≤1,000,000행/4,096열,
+live snapshot≤2, status history≤16을 초기 상한으로 둔다. 실제 기존 전체 storage 잔여량과 physical
+reserve가 더 작으면 그 한도를 적용한다. 결과 상한 초과는 실패이며 hidden LIMIT이나 조용한 잘림을
+허용하지 않는다. 페이지는 최대200행/64열, 응답·복사도 기존 바이트 한도와 atomic clipboard 계약을 따른다.
+query temp·spill·결과·copy staging은 기존 관리 공간에 두며 cache 위치와 각 volume의 여유를 구분한다.
+
+Settings의 `SQL temporary storage per query (GiB)`에서 SQL 작업당 spill+결과 합산 한도를 설정한다.
+`sqlTempLimitBytes`는 정수64MiB~10GiB이며 기본512MiB다. 실제 허용량은 설정값·전체 관리 공간
+잔여량·디스크 안전 여유 중 최솟값이며, 설정을 높여도 전체 Storage 한도를 넘지 않는다.
+시작 시 한도를 snapshot하므로 변경은 새 쿼리부터 적용하고 진행 작업·기존 결과의 한도를 바꾸지 않는다.
+SQL 한도는V6에서 도입했고 현재 schemaV7에 필수 필드로 저장한다. V1~V5 유효 설정은 기존 값을
+보존하며512MiB를 추가하고, V6부터의 필드 누락·범위/타입 오류는 기존 손상 설정 백업·오류·복구 계약을 따른다.
+GiB 입력은 기존 파서의 범위 검사 후 Math.round(bytes) 규칙을 공유한다. 메모리·시간·행 수 제한은
+이 설정으로 변경되지 않는다. 초기화는 초안만0.5GiB로 되돌리고 Apply 전에는 저장하지 않는다.
+
+사용자 SQL은 prepare 전에 DuckDB 문장 추출로 검사한다. 단일 SELECT 분류만으로 신뢰하지 않고
+등록 relation과 보수적인 순수 함수 허용 목록을 검증한다. 미지원 함수는 명시적으로 거절한다.
+임의 파일·네트워크·설정 변경·쓰기·확장 설치/로드를 허용하지 않으며 engine 설정을 잠근다.
+같은 EXE의 SQL worker를 분리하고 취소·종료·partial 정리를 제공한다. 별도 프로세스와 DuckDB 설정이
+완전한 OS sandbox라고 주장하지 않는다. 새 런타임 의존성·Tauri capability 추가는 별도 승인 대상이다.
+
+예상 계획은 query를 실행하지 않는 EXPLAIN, 실제 분석은 한 번 실행하는 ANALYZE로 구분한다.
+계획의 트리와 상세 정보는 각각 스크롤할 수 있다. 엔진이 제공하는 조건·예상/실제 행 수·시간과
+원문을 표시한다. Analyze의 실측 연산자 시간은 ms와 보고된 연산자 시간 합계 대비 비중으로
+표시하고 가장 오래 걸린 연산자를 강조한다. 전체 실행 시간은 별도로 표시한다. 실측치가 없거나
+합계가 0이면 비중은 미제공이다.
+세부 DTO·완료 조건·실행 증거는 artifacts/phase-22/에 연결하며, 현재 문단은 완료 주장이 아니다.
+
+SQL worker의 초기 DuckDB 설정은256MiB buffer memory/2threads다. 이 값은 OS process RSS/commit
+강제 상한이 아니며 Arrow·allocator·실행 파일 등의 메모리를 포함한 전체 프로세스 사용량과 구분한다.
+Windows의 열린 spill 파일은 directory-entry 크기가 지연될 수 있으므로 임시 공간 집계는 새로운
+metadata-only 핸들(FILE_READ_ATTRIBUTES, read/write/delete 공유)로 수행한다. 잠긴 DB의 데이터
+읽기 권한을 요구하지 않으며 원본 alias의 정확한 file identity 제외 규칙을 유지한다.
+Raw C API 오류도 공통 분류를 거쳐 임시 공간 초과는 QueryTempLimitExceeded, 실제 메모리 할당
+실패는 QueryFailed, 취소는 TaskCancelled로 구분한다. 실제 부하 검증 범위와 관측 한계는
+artifacts/phase-22/60-sql-stress.md에 기록하며, 모든 SQL/OS 장애 상황의 완료 검증으로 확대하지 않는다.
+
+SQL 편집기는 CodeMirror6를 사용한다. 등록된 테이블·컬럼 metadata만으로 테이블·별칭·컬럼과
+backend 허용 목록의 함수·SELECT 키워드를 제안한다. 테이블·별칭·원본 컬럼명은 단순한 ASCII
+식별자([A-Za-z_][A-Za-z0-9_]*)이면서 내장 DuckDB parser 키워드가 아니면 원래 표기로 삽입한다.
+그 외에는 큰따옴표로 감싸고 내부 큰따옴표를 두 번 써서 escape한다. 키워드는 내장 엔진의
+kwlist를 compile-time 목록으로 동기화하며 입력 중 엔진 조회는 하지 않는다. 명시적으로 인용된
+작성 SQL 전체를 다시 쓰지 않으며 자동완성으로 선택한 토큰/삽입 내용에만 적용한다.
+c번호 모드는 원본 물리 순서의 cN을 삽입한다. 한 테이블에서 두 모드를 섞지 않는다.
+Ctrl+Space는 명시적 후보 표시다. 후보가 열려 있으면 Enter 또는 Tab으로 적용한다.
+Shift+Enter는 줄바꿈이다. Esc는 후보를 닫고 같은 토큰을
+계속 쓰는 동안 재개하지 않는다. 새 토큰·점·명시 호출·모드/metadata 변경은 억제를 해제한다.
+Ctrl+Enter는 커서가 속한 문장 하나를 실행한다. 이전 문장 경계 다음부터 다음 문장 끝 세미콜론
+또는 편집기 끝까지 사용한다. 문자열·인용 식별자·주석 안의 세미콜론은 문장 경계에서 제외한다.
+마지막 문장의 세미콜론 바로 뒤에서는 그 문장을 실행한다. 다른 빈 문장에서는 실행하지 않는다.
+Run·Explain·Analyze 버튼은 편집기 전체에 단일 문장 검사를 적용한다.
+Ctrl+F는 편집기 내부 검색이다. Undo/redo, 괄호 자동 닫기·짝 표시와
+일반 함수의 인수 도움말을 제공한다.
+Enter/Shift+Enter는 현재 줄의 수동 들여쓰기만 유지하고 SQL 키워드에 따른 추가 들여쓰기를 하지
+않는다. 커서 뒤의 기존 공백/내용은 보존하며 자동 후보의 명시 선택/일반 줄바꿈 계약은 유지한다.
+Query는 줄바꿈 없이 긴 행을 내부 가로 스크롤로 탐색하고, 커서·행 끝 내용과 스크롤바가 편집기
+경계 밖으로 잘리지 않게 한다. 도움말을 접으면 작은 창에서도 편집기가 가용 너비를 모두 쓴다.
+Tables와 선택된 테이블의 columns 사이에는 위아래 드래그 및 키보드로 높이를 바꾸는 경계를 둔다.
+가능한 높이에서 Tables160px/columns180px를 보호하고 작은 가용 높이에서는 비례 축소한다.
+키보드 위/아래10px, Home/End최소/최대, 더블클릭기본32%, 드래그 중 Esc/취소는 원복한다.
+현재 창에서의 높이 선호를 유지하며 창 크기 변경·SQL 화면 복귀 시 가용 높이 안으로 제한한다.
+입력·자동완성은 SQL/EXPLAIN을 실행하거나 백엔드를 조회하지 않는다. 후보는200개, 표시40개,
+문서는64KiB UTF8, token8192개, 괄호 깊이·relation binding은 각각64개까지 처리한다.
+단순 FROM/JOIN 별칭과 지역 SELECT를 지원하며 CTE·파생 테이블의 출력 컬럼 추론은 하지 않는다.
+모호한 scope나 미지원 식은 잘못된 컬럼을 제안하지 않도록 보수적으로 생략한다.
+함수 도움말은 작성 안내이며 overload/type 검증은 실제 실행 시 DuckDB가 담당한다.
+
+후보 행은 이름 모드에서 컬럼명과 타입, c번호 모드에서 cN·타입·원본명1회를 표시한다.
+JOIN 후보에는 짧은 추정 표시와 외래키 검증이 아니라는 안내를 두고, 매칭 근거·타입·검증되지
+않은 유일성/데이터 관계는 명시적으로 펼쳤을 때 표시한다. 입력·삽입 규칙은 바꾸지 않는다.
+미선언 c. 같은 별칭을 추측하지 않으며 FROM/JOIN 별칭 선언 또는 실제 등록 테이블명 뒤의 점으로
+컬럼을 탐색하도록 짧게 안내한다. Examples/help의 열림 선호만 local UI storage에 저장한다.
+저장 접근이 막혀도 SQL은 계속 사용할 수 있으며 SQL·파일 경로는 이 선호에 저장하지 않는다.
+
+결과와 실행계획은 각각 요청 당시의 정확한 SQL과 테이블 binding snapshot을 보유한다.
+현재 SQL/별칭/컬럼모드/소스 identity와 다르면 이전 결과·계획임을 출력 위에 표시하며,
+동일한 문서·구성으로 되돌리면 현재와 일치하는 표시를 회복한다. 최신 실행의 실패·취소·실행중
+상태는 이 일치 여부와 별도로 표시한다. 실행 중 편집, 첫 페이지 재시도, 실패 후 보존 결과도
+완료 시점의 현재 SQL로 출처를 덮어쓰지 않는다. 자동 재실행이나 기존 독립 결과 폐기는 하지 않는다.
+
+Settings의 SQL suggestion mode(sqlCompletionMode)는 automatic/contextual/manual 중 하나다.
+기본 contextual은 FROM·JOIN 뒤와 FROM 테이블 목록의 쉼표 뒤에 테이블 후보를 자동 표시한다.
+별칭 뒤 점 및 HAVING의 컬럼 후보와 JOIN ON 조건도 자동 표시한다. HAVING에는 같은 SELECT에서
+AS로 선언한 고유한 출력 별칭도 추천한다. automatic은 일반 식에서도
+2Unicode문자부터 후보를 표시하며 manual은 Ctrl+Space로 후보를 연다.
+schemaV7은 해당 필드를 필수로 저장하며 유효V1~6은 기존 저장공간·복사·표시 설정을 보존하고
+contextual을 추가한다. 현재 필드 누락·잘못된 enum은 Rust/TS 모두 거부하며 공통 fixture로 검사한다.
+
+JOIN 후보는 현재 ON의 오른쪽 테이블과 앞선 입력의 원본 컬럼명을 ASCII casefold로 정확히
+비교한다. 공백은 trim하지 않으며 동일 테이블의 중복 원본명·중복 별칭·미해석 CTE/파생 입력을
+추천에서 제외한다. 두 테이블의 실제 physical index로 cN을 삽입하고 원본 이름과 별칭은 escape한다.
+integer끼리, float끼리, text끼리와 동일 decimal precision/scale·동일 temporal SQLtype만 호환으로
+취급한다. integer/float/decimal 혼합·timezone 혼합·boolean/blob/complex/unknown은 제안하지 않는다.
+id/name/status/type/value/amount/total/created_at/updated_at은 수동 호출에서만 낮은 순위로 보인다.
+현재 범위는 ON 직후 빈 영역/단일 prefix이며 AND 복합 조건·기존 predicate 자동 교체는 하지 않는다.
+모든 조건은 이름·타입 기반 추정으로 표시하고 실제 외래 키·유일성을 보장하지 않으며 자동 삽입하지 않는다.

@@ -34,6 +34,10 @@ pub fn try_run_polars_csv_worker_from_args() -> bool {
     false
 }
 
+pub fn try_run_sql_worker_from_args() -> Option<i32> {
+    query::try_run_sql_worker_from_args()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -52,6 +56,15 @@ pub fn run() {
             health_check,
             commands::list_supported_formats,
             commands::get_settings,
+            commands::sql_workspace::describe_sql_tables,
+            commands::sql_workspace::start_sql_query,
+            commands::sql_workspace::get_sql_query_status,
+            commands::sql_workspace::cancel_sql_query,
+            commands::sql_workspace::read_sql_query_page,
+            commands::sql_workspace::read_sql_query_cell,
+            commands::sql_workspace::release_sql_result,
+            commands::sql_workspace::start_sql_copy,
+            commands::sql_workspace::export_sql_result,
             commands::update_settings,
             commands::execute_query,
             commands::get_query_status,

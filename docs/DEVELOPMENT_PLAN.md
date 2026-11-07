@@ -1,5 +1,104 @@
 # 개발 계획
 
+## 2026-11-06 Phase 22 시작 — 진행 중
+
+2026-11-08 HAVING에 같은 SELECT의 출력 별칭을 추천하고, CSV·TSV에 UTF-8 BOM을 추가했다.
+SQL 화면 단위283건, 브라우저3건, Windows7건을 검증한 뒤 제품 Release 0.22.0을 정식 경로에 반영했다.
+[변경·검증 기록](../artifacts/phase-22/92-sql-editor-results.md#2026-11-08-후속-반영)
+
+2026-11-07 SQL 화면 후속. HAVING 자동 추천, Enter 후보 적용, 커서 문장 실행을 추가했다.
+실행 계획은 두 영역을 독립 스크롤하고 Analyze의 최장 연산자와 실측 비중을 표시한다.
+Results는 보관된 결과 전체를 CSV·TSV·Parquet로 저장하거나 TSV로 복사한다.
+100만 행 주문 fixture에서 문자열 캐시의 `ordered_at`을 SQL에서 `TIMESTAMP_NS`로 비교함을 확인했다.
+같은 단일 컬럼의 월 범위 집계에서 문자열 CAST 경로 중앙값은61.29ms, 물리 timestamp는21.51ms였다.
+양쪽 모두29,898행을 반환했다. 현재 앱 캐시의 물리 형식은 그대로다.
+프런트엔드832건, Rust401건, 브라우저 전체223/225건과 최종 커서 회귀 재검증9/9건,
+Windows 검증용 EXE의 편집기·계획·내보내기7/7건을 확인했다. 실제 저장한 Parquet를
+다시 열어 타입과 값을 검사했다.
+제품 Release 0.22.0을 정식 경로에 반영했다. 크기는60,677,632바이트다.
+[변경·검증 기록](../artifacts/phase-22/92-sql-editor-results.md)
+
+2026-11-07 테이블 자동 추천 후속. 기본 모드에서 FROM·JOIN 뒤와 테이블 목록 쉼표 뒤에
+등록된 테이블을 제안한다. 세 화면 크기와 실제 Windows 검증용 EXE에서 확인했다.
+실제 앱 검증 기록은 [stress-tables.json](../artifacts/phase-22/native/stress-tables.json)에 있다.
+
+2026-11-07 SQL 화면 후속: Tables/Columns 사이 높이 조절 경계(드래그/키보드/취소·초기화),
+Query 긴 줄의 내부 가로 스크롤·도움말 접힘 너비, Enter의 수동 들여쓰기만 유지하는 동작을 추가했다.
+전체frontend823/browser213 및 실제EXE 분할·스크롤바/끝노출·Enter·4모드JOIN 검증이 통과했다.
+초기 native Home 좌표0 가정은 실제 문자 가시성으로 하네스만 보정했으며 별도 이력을 남긴다.
+기존 Release0.22.0 EXE를 교체했다.60,490,752bytes이며 이번 수정의 증가는512bytes다.
+[기록](../artifacts/phase-22/89-editor-layout.md). Phase 전체 승격은 별개다.
+
+2026-11-07 식별자 삽입 후속: 단순 ASCII 이름은 큰따옴표 없이 넣고, 내장 DuckDB parser의489키워드와
+공백·특수문자 등은 인용/escape를 유지한다. 자동완성·JOIN·컬럼/테이블 삽입·예제에 같은 규칙을
+적용하며 기존 SQL 전체를 다시 쓰지 않는다. 전체frontend805/browser204 및 실제EXE4모드JOIN이
+통과했다. 기존 Release0.22.0 EXE를 교체했다.60,490,240bytes로 이번 수정의 증가는2KiB다.
+[기록](../artifacts/phase-22/88-identifier-insertion.md).
+Phase 전체 완료·승격은 별개다.
+
+2026-11-07 직접 입력 사용성 후속: 후보 중복 정보를 줄이고 JOIN 근거를 명시적으로 펼치도록 했다.
+미선언 별칭 안내, 도움말 접힘 선호 저장, 실행 당시 SQL/테이블 구성과 비교하는 이전 결과·계획
+표시를 추가했다. Plan에서 시작한 첫 페이지 오류의 Retry 노출과 늦은 재시도 오류 보호도 보강했다.
+전체프런트775통과 후 최종관련17통과, 전체브라우저200통과/1이미지파일오류 후 무수정3뷰포트
+재검증통과, 실제EXE4모드·표시원복·도움말재시작 검증통과. 기존Release0.22.0 EXE를 교체했다.
+60,488,192bytes로 이번 수정의 증가는512bytes다.
+[변경·검증 기록](../artifacts/phase-22/85-editor-usability.md). Phase 전체 완료·승격은 별개다.
+
+2026-11-07 JOIN 제안/자동완성 후속: 새 ON에 원본 이름·호환 타입으로 추정한 JOIN 조건을 제안한다.
+기본 자동 팝업은 점/ON만이며 Settings에서2글자 자동/수동으로 전환한다. 자동 팝업의 Enter는 줄바꿈,
+Tab 또는 탐색 후 Enter는 삽입, Esc는 같은 단어 재개방을 억제한다. 설정V7은V1~6을 보존 이전한다.
+Rust398, 전체브라우저189 및 실제EXE4모드JOIN·입력중SQL0·설정재시작 검증이 통과했다.
+프런트전체762통과/기존App1시간초과 후 무수정 단독65통과 기록을 구분한다.
+[변경·검증 기록](../artifacts/phase-22/80-join-completion.md). Phase 전체 완료·승격은 별개다.
+기존 Release 경로의0.22.0 EXE를 교체했다.60,487,680bytes이며 이번 수정의 증가는17.5KiB다.
+
+2026-11-07 후속: SQL의 실제 참조 파일만 준비·lease·취소 대상으로 삼고, 파일 닫기/시작 등록 경쟁과
+미공개 결과 회수를 보강했다. 테이블 선택은 경로·모드·여백을 포함한 카드 전체이며 연필은 분리한다.
+Rust394/프런트703/전체브라우저180 및 최종관련9검사, 실제EXE lifecycle4개가 통과했다.
+[변경·검증 기록](../artifacts/phase-22/75-source-lifecycle.md). Phase 전체 완료·승격은 별개다.
+기존 Release 경로의0.22.0 EXE를 교체했다.60,469,760bytes이며 이번 수정의 증가는12.5KiB다.
+
+CodeMirror6 SQL 편집기와 로컬 metadata 기반 자동완성을 추가했다. 테이블별 이름/c번호 모드,
+별칭·컬럼·허용 함수, 함수 인수 도움말, 실행·완성 단축키와 조합 입력 보호를 포함한다.
+CTE·파생 테이블 출력 컬럼 추론은 범위 밖이다. 검증·실행 파일 크기와 제한은
+[IntelliSense 기록](../artifacts/phase-22/70-intellisense.md)에 모은다.
+관련 SQL163개·브라우저15개·실제 EXE의 두 모드 조회가 통과했고, Release0.22.0을 교체했다.
+EXE는60,456,960bytes로118.5KiB(0.2011%) 증가했다. 실제 검증 중 발견한 쉼표 문맥과
+native SQL 결과 페이지 ID 연결도 수정했다. Phase 전체 완료 판정은 별개다.
+
+SQL 작업당 임시 공간 설정 추가 검증 PASS: Settings에서0.0625~10GiB(기본0.5GiB)를 설정하며 새 쿼리부터
+적용한다. SchemaV6 자동 이전과 현재 설정 검증,390Rust/633frontend/159E2E, 실제 EXE9개 조합이 통과했다.
+같은 정렬 window 쿼리가64MiB에서 실패하고1GiB에서743MB spill을 사용하며 성공했다. 실행 중 한도
+유지·전체 Storage 우선·재시작 유지도 확인했다. [상세](../artifacts/phase-22/65-sql-storage-setting.md),
+[독립 검토](../artifacts/phase-22/quality/sql-storage-setting-review.md). Phase 전체 완료·정식 승격은 별개다.
+
+로컬 CSV·Parquet에 대한 읽기 전용 SQL 작업 공간을 구현한다. 파일별 별칭과 단일 컬럼명 모드
+(원본 이름 또는 c번호), 예제·작성 가이드, 결과 탐색·복사, 예상 계획·실제 분석을 포함한다.
+전체 원본 헤더의 중복·빈 이름이 없으면 이름 모드, 있으면 c번호 모드가 기본이다.
+테이블 하나에 두 모드를 동시에 노출하지 않는다. 작업 검사·별도 worker·결과 저장·취소와
+공통 storage 예산을 연결하며, 모든 필수 gate 전에는 완료로 판정하지 않는다.
+[범위](../artifacts/phase-22/00-scope.md), [DTO 계약](../artifacts/phase-22/05-contract.md),
+[검증 계획](../artifacts/phase-22/10-test-plan.md)을 따른다. 소스 버전은0.22.0이며 기존 EXE와
+Phase21 기록은 보존한다. candidate 검증과 정식 EXE 교체·승격·외부 배포는 구분한다.
+
+구현 통합 후 frontend593개와 브라우저153개 검증, Rust format 및 컴파일 전용 Clippy·테스트 코드
+타입 검사가 통과했다. 정상 Cargo 빌드는 Smart App Control 오류4551로 차단되었고 사용자가
+켜짐 상태를 확인했다. 실제 Rust 테스트·EXE 빌드·Tauri/worker/보안/성능 검증은 미실행이므로
+완료하지 않는다. [통합 근거](../artifacts/phase-22/50-integration.md)와
+[BLOCKED 판정](../artifacts/phase-22/90-review.md)에 재개할 gate를 기록했다.
+
+2026-11-06 17:25 재시도에서는 정상 Release 빌드가 통과했다. 최신 UI를 포함한0.22.0 EXE를 사용자
+지시에 따라 `src-tauri/target/release/data-viewer.exe`로 교체했다. 이전4551은 재현되지 않았으며
+에이전트가 보안 설정을 바꾸지는 않았다. 실제 Rust 테스트·native 인수 검증은 여전히 남아 있다.
+
+2026-11-06 19:55 실제 EXE 부하 검증10개가 통과했다.585만 행 Parquet의 비효율 CROSS JOIN,
+전체 정렬, 고유값 집계, 메모리·임시 공간 한도, 실행 중 취소와 실패 후 정상 쿼리 복구를 확인했다.
+Arrow C API 포인터 오류·Windows 열린 파일 크기 집계·임시 공간 오류 분류를 수정하고0.22.0
+Release EXE를 교체했다. [상세 검증](../artifacts/phase-22/60-sql-stress.md),
+[독립 검토](../artifacts/phase-22/quality/stress-review.md). 전체 Rust는383통과/1실패/18기존 제외였고,
+실패한 CSV 캐시 손상 복구 검사는 변경 없이 단독 통과했다. 이 불안정성과 남은 Phase 전체 인수
+항목이 있어 Phase 완료로 판정하지 않는다.256MiB는 DuckDB 버퍼 한도이며 프로세스 RSS 강제 상한은 아니다.
+
 ## 2026-11-04 Phase 21 시작 — 진행 중
 
 컬럼별 정확한 고유값 수·검색·정렬·전체 결과 복사, CSV 캐시 전용 용량 한도,

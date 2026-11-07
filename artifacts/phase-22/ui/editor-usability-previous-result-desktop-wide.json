@@ -1,0 +1,37 @@
+{
+  "workspace": {
+    "left": 0,
+    "top": 94,
+    "right": 1440,
+    "bottom": 870,
+    "width": 1440,
+    "height": 776
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "context": [
+    {
+      "text": "SQL changed · previous result",
+      "current": "false",
+      "left": 255,
+      "top": 537,
+      "right": 401.0625,
+      "bottom": 555,
+      "width": 146.0625,
+      "height": 18
+    },
+    {
+      "text": "Current plan",
+      "current": "true",
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "width": 0,
+      "height": 0
+    }
+  ],
+  "tooltips": []
+}

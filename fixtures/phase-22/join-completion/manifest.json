@@ -1,0 +1,33 @@
+{
+  "status": "PASS",
+  "files": [
+    {
+      "file": "orders.parquet",
+      "rows": 4,
+      "bytes": 1795,
+      "sha256": "3c8ee65a640fee4b97476a8ddab86125c0855e56b8a44c7ddad802eb784632e9"
+    },
+    {
+      "file": "customers.parquet",
+      "rows": 4,
+      "bytes": 1675,
+      "sha256": "036747205865d24aeced120168e78fc455bcd575b0f971813935ec506a0045ac"
+    }
+  ],
+  "innerJoinRows": 3,
+  "matches": [
+    [
+      101,
+      "Alice"
+    ],
+    [
+      102,
+      "Bob"
+    ],
+    [
+      102,
+      "Betty"
+    ]
+  ],
+  "purpose": "Matching original Korean key with different physical positions; generic id is deliberately unrelated."
+}

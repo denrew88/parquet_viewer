@@ -1,0 +1,132 @@
+.sql-plan-panel,
+.sql-plan {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.sql-plan-panel {
+  overflow: hidden;
+  padding: 6px 10px 10px;
+  font-size: 12px;
+}
+.sql-plan-panel > .sql-output-context {
+  flex: none;
+  margin: 0 0 6px;
+}
+.sql-plan {
+  gap: 6px;
+}
+.sql-plan__toolbar,
+.sql-plan__summary {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sql-plan__summary {
+  padding: 4px 7px;
+  border-left: 3px solid #ad741f;
+  border-radius: 3px;
+  background: #fff3d6;
+  color: #5d431b;
+  font-size: 11px;
+}
+.sql-plan__share-note {
+  color: #536c73;
+  font-size: 10px;
+}
+.sql-plan__panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  gap: 8px;
+  min-height: 0;
+}
+.sql-plan__panes[data-structured="true"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.sql-plan__nodes,
+.sql-plan__detail-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 5px;
+  border: 1px solid #d7e2e5;
+  border-radius: 4px;
+}
+.sql-plan__nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sql-workspace .sql-plan__nodes button {
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sql-plan__node-name {
+  min-width: 0;
+}
+.sql-plan__node-timing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.sql-workspace .sql-plan__nodes button[data-slowest="true"] {
+  box-shadow: inset 3px 0 #ad741f;
+}
+.sql-plan__slowest {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #fff3d6;
+  color: #5d431b;
+}
+.sql-plan__detail {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 5px 8px;
+  align-content: start;
+  margin: 0 0 6px;
+  padding: 8px;
+  background: #f1f6f6;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.sql-plan__detail dt {
+  color: #536c73;
+}
+.sql-plan__detail dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.sql-plan summary {
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.sql-plan pre {
+  margin: 0 0 8px;
+  padding: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f6f9fa;
+  border: 1px solid #d7e2e5;
+  border-radius: 4px;
+  font:
+    11px/1.6 Consolas,
+    monospace;
+}
+.sql-plan__detail-pane p {
+  margin: 6px 0 0;
+}

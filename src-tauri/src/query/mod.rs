@@ -9,5 +9,6 @@ pub use engine::column_values::{
     ColumnValuesCopyRequest, ColumnValuesPageRequest, ColumnValuesPageResponse, ColumnValuesStatus,
     StartColumnValuesRequest,
 };
+pub use engine::sql_workspace::try_run_sql_worker_from_args;
 #[allow(unused_imports)]
 pub use engine::{CsvPreparationState, CsvPreparationStatus, QueryService};

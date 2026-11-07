@@ -1,0 +1,14 @@
+{
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "version": "0.22.0",
+  "bytes": 60456960,
+  "sha256": "8fb1e4c0ff5367226e4d8b6a11785dafc309aa5bd38f43be99c45714e54af6ff",
+  "builtAt": "2026-11-06T13:38:56.4553034Z",
+  "baselineBytes": 60335616,
+  "baselineSha256": "9152eab6b9ef6f4cb8a8ec6a448cb8f63791fcc3a99309a3227da3f033aeab6e",
+  "deltaBytes": 121344,
+  "deltaKiB": 118.5,
+  "deltaPercent": 0.2011,
+  "nativeValidatedSha256": "4567c6f4034bd65f8600b5295343d1db6cdc950d26ae3c8c8fb61009173049d1",
+  "nativeStatus": "PASS"
+}

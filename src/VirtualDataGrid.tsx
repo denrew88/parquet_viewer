@@ -3,6 +3,7 @@ import type { ColumnValuesBackend } from "./column-values/backend";
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useReducer,
@@ -11,8 +12,10 @@ import {
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
+import { serializeCopyRows } from "./copy/serializer";
 import {
   ArrowDown,
   ArrowUp,
@@ -160,6 +163,7 @@ function copyValuePreview(value: DataValue, options: CopyOptions): string {
 }
 
 export interface VirtualDataGridProps {
+  columnLabels?: Readonly<Record<string, string>>;
   columnValuesBackend?: ColumnValuesBackend;
   active?: boolean;
   copyOptions?: CopyOptions;
@@ -167,6 +171,7 @@ export interface VirtualDataGridProps {
   copyLimits?: CopyLimits;
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
+  resultClipboardRef?: Ref<{ copyAll(): Promise<void> }>;
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
   documentId: string;
   findDataBoundary?(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
@@ -317,6 +322,7 @@ function pageStatus(page: DataPage): string {
 }
 
 export function VirtualDataGrid({
+  columnLabels,
   active = true,
   columnValuesBackend,
   copyLimits = DEFAULT_COPY_LIMITS,
@@ -359,6 +365,7 @@ export function VirtualDataGrid({
   readPage,
   readCellValue,
   resultKey,
+  resultClipboardRef,
   summary,
   writeClipboardText = defaultWriteClipboardText,
 }: VirtualDataGridProps) {
@@ -1813,6 +1820,41 @@ export function VirtualDataGrid({
     await startCopySnapshot(snapshot);
   }
 
+  useImperativeHandle(resultClipboardRef, () => ({
+    async copyAll() {
+      if (copyIsActive(copyStatus) || logicalColumnNames.length === 0) return;
+      const options = copyOptionsSnapshot(COPY_PRESETS.tsv, true, "rawCanonical");
+      if (rowCount === 0) {
+        try {
+          const headers = logicalColumnNames.map((name) => columnLabels?.[name] ?? name);
+          const text = serializeCopyRows([], { ...options, preset: "tsv" }, headers);
+          if (new TextEncoder().encode(text).length > copyLimits.maxBytes)
+            throw new Error("Result headers exceed the configured copy size limit.");
+          await writeClipboardText(text);
+          setCopyMessage("Result headers copied.");
+        } catch (error) {
+          setCopyMessage(
+            error instanceof Error ? error.message : "Result headers could not be copied.",
+          );
+        }
+        return;
+      }
+      await startCopySnapshot({
+        documentId,
+        sessionId: summary.sessionId,
+        queryId: queryId ?? null,
+        selection: {
+          rowStart: 0,
+          rowEndExclusive: rowCount,
+          columnIds: [...logicalColumnNames],
+        },
+        options,
+        maxCells: copyLimits.maxCells,
+        maxBytes: copyLimits.maxBytes,
+      });
+    },
+  }));
+
   async function cancelCopy() {
     if (!copyStatus || !copyIsActive(copyStatus)) return;
     const generationId = copyGeneration.current;
@@ -2187,7 +2229,12 @@ export function VirtualDataGrid({
       return context.measureText(value).width;
     };
     const allowance = (queryEnabled ? 76 : 28) + (columnValuesBackend ? 24 : 0);
-    const width = autoFitColumnWidth(columnId, displays, measure, allowance);
+    const width = autoFitColumnWidth(
+      columnLabels?.[columnId] ?? columnId,
+      displays,
+      measure,
+      allowance,
+    );
     setColumnSizing((sizes) => ({ ...sizes, [columnId]: width }));
   }
 
@@ -2221,7 +2268,9 @@ export function VirtualDataGrid({
   }
 
   const filteredColumns = allColumns.filter((column) =>
-    column.id.toLocaleLowerCase().includes(columnSearch.trim().toLocaleLowerCase()),
+    (columnLabels?.[column.id] ?? column.id)
+      .toLocaleLowerCase()
+      .includes(columnSearch.trim().toLocaleLowerCase()),
   );
   const mountedCellCount = virtualRows.length * columnVirtualItems.length;
   const visibleColumnIdSet = new Set(visibleColumns.map((column) => column.id));
@@ -2563,7 +2612,7 @@ export function VirtualDataGrid({
                   <button
                     aria-pressed={column.getIsVisible()}
                     onClick={column.getToggleVisibilityHandler()}
-                    title={column.id}
+                    title={columnLabels?.[column.id] ?? column.id}
                     type="button"
                   >
                     {column.getIsVisible() ? (
@@ -2571,10 +2620,10 @@ export function VirtualDataGrid({
                     ) : (
                       <EyeOff aria-hidden="true" />
                     )}
-                    <span>{column.id}</span>
+                    <span>{columnLabels?.[column.id] ?? column.id}</span>
                   </button>
                   <button
-                    aria-label={`Auto fit ${column.id}`}
+                    aria-label={`Auto fit ${columnLabels?.[column.id] ?? column.id}`}
                     disabled={!column.getIsVisible()}
                     onClick={() => autoFitColumn(column.id)}
                     title={`Auto fit ${column.id}`}
@@ -2687,7 +2736,12 @@ export function VirtualDataGrid({
                   <div
                     {...columnReorder.getItemProps(column.id)}
                     aria-colindex={virtualColumn.index + 1}
-                    aria-label={column.id}
+                    aria-label={
+                      columnLabels
+                        ? `${columnLabels[column.id] ?? column.id} (${column.id})`
+                        : column.id
+                    }
+                    data-column-id={column.id}
                     className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}${columnReorder.state.movingId === column.id ? " is-reordering" : ""}${columnReorder.state.movingId && columnReorder.state.movingId !== column.id ? " is-live-reflowing" : ""}`}
                     data-column-index={logicalColumn}
                     key={column.id}
@@ -2720,7 +2774,7 @@ export function VirtualDataGrid({
                             ".virtual-grid__column-header",
                           ) ?? [],
                         )
-                          .find((header) => header.getAttribute("aria-label") === column.id)
+                          .find((header) => header.dataset.columnId === column.id)
                           ?.focus();
                       });
                     }}
@@ -2730,10 +2784,10 @@ export function VirtualDataGrid({
                       transform: `translate3d(${columnPreviewOffsets[column.id] ?? 0}px, 0, 0)`,
                       width: column.getSize(),
                     }}
-                    title={column.id}
+                    title={columnLabels?.[column.id] ?? column.id}
                     tabIndex={0}
                   >
-                    <span>{column.id}</span>
+                    <span>{columnLabels?.[column.id] ?? column.id}</span>
                     {queryEnabled && queryPlan && onQueryPlanChange && (
                       <div
                         className={`query-column-actions${columnValuesBackend ? " query-column-actions--values" : ""}`}

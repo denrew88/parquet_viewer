@@ -1,0 +1,34 @@
+{
+  "status": "PASS",
+  "seed": 20261106,
+  "pyarrow": "26.0.0",
+  "checks": [
+    "all primary/foreign keys",
+    "every item calculation",
+    "every order total",
+    "all status counts",
+    "monthly totals"
+  ],
+  "null_birth_years": 2439,
+  "files": [
+    {
+      "file": "customers.parquet",
+      "bytes": 2131845,
+      "sha256": "1c03929e2abc9d22e3449773d34103c564ae7e807f176f634753d756f4fb1877",
+      "rows": 100000
+    },
+    {
+      "file": "orders.csv",
+      "bytes": 91307741,
+      "sha256": "20071b89901996572de8839667bfe8a102753622ac621bbc6f796a09fbb6448e",
+      "rows": 1000000
+    },
+    {
+      "file": "order_items.parquet",
+      "bytes": 52662026,
+      "sha256": "7ab19fbe83c477644387014304e567309024ecdcc584d9bc6060c25235e36af5",
+      "rows": 3999997
+    }
+  ],
+  "total_bytes": 146101612
+}

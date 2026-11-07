@@ -38,9 +38,13 @@ fixtures/*
 !fixtures/phase-20/**
 !fixtures/phase-21/
 !fixtures/phase-21/**
+!fixtures/phase-22/
+!fixtures/phase-22/**
 # Large synthetic benchmark inputs stay local; hashes and profiles are retained.
 fixtures/phase-20/performance/*/source.csv
 fixtures/phase-20/performance/main-high/high-5850000x15.csv
+fixtures/phase-22/commerce/*.csv
+fixtures/phase-22/commerce/*.parquet
 
 # Local UI validation captures and intermediate evidence
 artifacts/bugfix-*/
@@ -57,6 +61,9 @@ artifacts/phase-21/native/*.json
 artifacts/phase-21/native/native-after-data-validation.png
 artifacts/phase-21/native/native-column-values.png
 artifacts/phase-21/native/native-ui-cache-preview-*.png
+
+# Phase 22 native raw runs are local; commit concise reviews and final UI evidence.
+artifacts/phase-22/native/*.json
 
 # Legacy generated Storage captures; current Phase evidence is retained separately.
 artifacts/storage-decimal/

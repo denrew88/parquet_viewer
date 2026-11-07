@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-11-07T01:14:57.0182235Z",
+  "version": "0.22.0",
+  "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "bytes": 60488192,
+  "sha256": "01df54625e4f15a550782f4cf29ced3cc63d2a4dd2b5a25a0cef1d3306105dd1",
+  "baseline": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+    "version": "0.22.0",
+    "bytes": 60487680,
+    "sha256": "3345e981800b2ab62bea30a28683ff85778bb1034639a92e49a0949527e87fde"
+  },
+  "deltaBytes": 512,
+  "deltaKiB": 0.5,
+  "candidate": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-22\\data-viewer.exe",
+  "candidateSha256": "01df54625e4f15a550782f4cf29ced3cc63d2a4dd2b5a25a0cef1d3306105dd1",
+  "nativeAcceptanceSha256": "aa53529cc3722a4f3b15f19af1584d89f77cde87057314c2a4778c08b426e1ca",
+  "nativeEvidence": "artifacts/phase-22/native/stress-usability.json",
+  "buildLog": "artifacts/dev-check/2026-11-07T01-08-26-234Z-phase22-build.log",
+  "phaseWidePromotion": false
+}

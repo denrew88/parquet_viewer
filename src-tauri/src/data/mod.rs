@@ -32,7 +32,7 @@ pub use registry::builtin_format_registry;
 #[cfg(test)]
 pub use registry::FormatRegistry;
 pub(crate) use source::{
-    query_invalid_name, query_quote_identifier, query_quote_literal, query_raw_name,
+    query_invalid_name, query_quote_identifier, query_quote_literal, query_raw_name, SqlInputColumn,
 };
 pub use source::{
     CsvHeaderConfigurable, CsvPreparedPhysicalColumn, CsvProfileConfigurable, CsvQuerySpec,

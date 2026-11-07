@@ -1,0 +1,22 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "geometry": {
+    "left": 8404,
+    "client": 1172,
+    "scroll": 9576,
+    "tail": {
+      "left": 1367.453125,
+      "right": 1426.84375
+    },
+    "view": {
+      "left": 257,
+      "right": 1429,
+      "bottom": 348
+    },
+    "hostBottom": 349,
+    "visibleText": " END_TAIL"
+  }
+}

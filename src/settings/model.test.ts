@@ -17,13 +17,17 @@ describe("app settings model", () => {
     const current = defaultAppSettings();
     const legacy = Object.fromEntries(
       Object.entries(current).filter(
-        ([key]) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
+        ([key]) =>
+          key !== "csvCacheLimitBytes" &&
+          key !== "csvCacheDirectory" &&
+          key !== "sqlTempLimitBytes" &&
+          key !== "sqlCompletionMode",
       ),
     );
     const migrated = parseAppSettings({ ...legacy, schemaVersion: 4 });
     expect(migrated.csvCacheLimitBytes).toBe(10 * 1024 ** 3);
     expect(migrated.csvCacheDirectory).toBeNull();
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(APP_SETTINGS_SCHEMA_VERSION);
   });
   it.each([64 * 1024 ** 2, Math.round(0.3 * 1024 ** 3), 10 * 1024 ** 3])(
     "P21 accepts cache cap %s independently of the overall cap",
@@ -81,6 +85,8 @@ describe("app settings model", () => {
       copyCustomOptions: COPY_PRESETS.custom,
       csvDefaultParsingMode: "auto",
       queryTempLimitBytes: 10 * 1024 * 1024 * 1024,
+      sqlTempLimitBytes: 512 * 1024 * 1024,
+      sqlCompletionMode: "contextual",
       csvCacheLimitBytes: 10 * 1024 * 1024 * 1024,
       csvCacheDirectory: null,
       copyLimits: {
@@ -184,7 +190,11 @@ describe("app settings model", () => {
     const v3 = {
       ...Object.fromEntries(
         Object.entries(current).filter(
-          ([key]) => key !== "csvCacheLimitBytes" && key !== "csvCacheDirectory",
+          ([key]) =>
+            key !== "csvCacheLimitBytes" &&
+            key !== "csvCacheDirectory" &&
+            key !== "sqlTempLimitBytes" &&
+            key !== "sqlCompletionMode",
         ),
       ),
       schemaVersion: 3,

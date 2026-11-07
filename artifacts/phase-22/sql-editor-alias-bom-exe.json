@@ -1,0 +1,18 @@
+{
+  "recordedAt": "2026-11-08T00:35:12.2454225+09:00",
+  "version": "0.22.0",
+  "identifier": "com.denrew88.data-viewer",
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 60678144,
+  "sha256": "f4d16fb83cc9d69a70d0a504628c4d9da068ffb1efa8da917c6052ccc90aea9d",
+  "baseline": {
+    "version": "0.22.0",
+    "bytes": 60677632,
+    "sha256": "0d9b635056d82aef470c77d38061a4daef48632468add92a3f260782dab0aacd"
+  },
+  "deltaBytes": 512,
+  "productCandidateSha256": "f4d16fb83cc9d69a70d0a504628c4d9da068ffb1efa8da917c6052ccc90aea9d",
+  "nativeAcceptanceSha256": "827a0a41ee9b9780dcae50abe6ee5f7c99f963f9d8bcc2f1ddd41e15f3d3de0b",
+  "nativeEvidence": "artifacts/phase-22/native/sql-editor-alias-bom.json",
+  "buildLog": "artifacts/dev-check/2026-11-07T15-27-57-392Z-phase22-build.log"
+}

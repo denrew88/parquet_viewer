@@ -1,0 +1,216 @@
+{
+  "description": "Independent Python integer/Decimal goldens, no DuckDB execution.",
+  "ordersHeaders": [
+    "주문 번호",
+    "고객 번호",
+    "결제 금액",
+    "주문 일시",
+    "상품 \"표시명\"",
+    "메모"
+  ],
+  "profile": {
+    "headerMode": "present",
+    "nullTokens": [
+      "NULL"
+    ],
+    "orderIdType": "int64",
+    "customerIdType": "int64",
+    "amountType": "decimal(18,2)",
+    "timestampType": "timestamp-ns",
+    "textType": "text"
+  },
+  "innerJoin": {
+    "rows": [
+      [
+        101,
+        "Alice",
+        "100.10",
+        "Seoul"
+      ],
+      [
+        102,
+        "Betty",
+        "200.20",
+        "Incheon"
+      ],
+      [
+        102,
+        "Bob",
+        "200.20",
+        "Busan"
+      ],
+      [
+        103,
+        "Betty",
+        null,
+        "Incheon"
+      ],
+      [
+        103,
+        "Bob",
+        null,
+        "Busan"
+      ]
+    ],
+    "rowCount": 5,
+    "amountSum": "500.50"
+  },
+  "leftJoin": {
+    "rows": [
+      [
+        101,
+        "Alice",
+        "100.10",
+        "Seoul"
+      ],
+      [
+        102,
+        "Betty",
+        "200.20",
+        "Incheon"
+      ],
+      [
+        102,
+        "Bob",
+        "200.20",
+        "Busan"
+      ],
+      [
+        103,
+        "Betty",
+        null,
+        "Incheon"
+      ],
+      [
+        103,
+        "Bob",
+        null,
+        "Busan"
+      ],
+      [
+        104,
+        null,
+        "50.00",
+        null
+      ],
+      [
+        105,
+        null,
+        "25.05",
+        null
+      ],
+      [
+        106,
+        null,
+        "0.01",
+        null
+      ]
+    ],
+    "rowCount": 8,
+    "amountSum": "575.56"
+  },
+  "groupedLeftJoin": [
+    [
+      "Busan",
+      2,
+      "200.20"
+    ],
+    [
+      "Incheon",
+      2,
+      "200.20"
+    ],
+    [
+      "Seoul",
+      1,
+      "100.10"
+    ],
+    [
+      null,
+      3,
+      "75.06"
+    ]
+  ],
+  "rowNumberByCustomer": [
+    [
+      101,
+      1,
+      1
+    ],
+    [
+      102,
+      2,
+      1
+    ],
+    [
+      103,
+      2,
+      2
+    ],
+    [
+      104,
+      3,
+      1
+    ],
+    [
+      105,
+      null,
+      1
+    ],
+    [
+      106,
+      99,
+      1
+    ]
+  ],
+  "leftJoinTsv": "order_id\tcustomer_name\tamount\tregion\r\n101\tAlice\t100.10\tSeoul\r\n102\tBetty\t200.20\tIncheon\r\n102\tBob\t200.20\tBusan\r\n103\tBetty\t\tIncheon\r\n103\tBob\t\tBusan\r\n104\t\t50.00\t\r\n105\t\t25.05\t\r\n106\t\t0.01\t",
+  "duplicateResultLabels": {
+    "headers": [
+      "same",
+      "same"
+    ],
+    "ids": [
+      "r0",
+      "r1"
+    ],
+    "rows": [
+      [
+        "first",
+        "second"
+      ]
+    ],
+    "tsv": "same\tsame\r\nfirst\tsecond"
+  },
+  "typedInvalid": {
+    "amountSum": "3.50",
+    "amountCount": 2,
+    "amountInvalidCount": 1,
+    "timestampInvalidCount": 1
+  },
+  "exactScalars": {
+    "int64": [
+      "-9223372036854775808",
+      "9223372036854775807",
+      "9007199254740992",
+      "9007199254740993"
+    ],
+    "uint64": [
+      "18446744073709551615",
+      "0",
+      "9007199254740992",
+      "9007199254740993"
+    ],
+    "decimal38": [
+      "1234567890123456789012345678.1234567890",
+      "-0.0000000001",
+      "0.0000000000",
+      null
+    ],
+    "timestampNs": [
+      "1767225600000000001",
+      "1767225600000000002",
+      null,
+      "-1"
+    ]
+  }
+}

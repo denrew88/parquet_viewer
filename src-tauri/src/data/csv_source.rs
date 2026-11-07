@@ -1091,6 +1091,7 @@ impl CsvProfileConfigurable for CsvSource {
 #[derive(Debug)]
 struct CsvQueryProvider {
     path: PathBuf,
+    original_headers: Vec<String>,
     columns: Vec<ColumnSchema>,
     spec: CsvQuerySpec,
     checkpoints: Mutex<Vec<Checkpoint>>,
@@ -1691,6 +1692,104 @@ impl CsvQueryProvider {
 }
 
 impl QueryInputProvider for CsvQueryProvider {
+    fn sql_name_mode_issue(&self, _source: &QuerySourceSpec) -> Option<String> {
+        if !self.spec.header_used {
+            return Some("This CSV has no original header; use column numbers.".to_owned());
+        }
+        let mut names = std::collections::HashSet::new();
+        for name in &self.original_headers {
+            if crate::domain::sql_text_is_blank(name) {
+                return Some("An original CSV header is blank.".to_owned());
+            }
+            if !names.insert(name.to_ascii_lowercase()) {
+                return Some(format!("Duplicate original CSV header: {name}"));
+            }
+        }
+        None
+    }
+    fn sql_input_columns(
+        &self,
+        _source: &QuerySourceSpec,
+    ) -> Result<Vec<super::SqlInputColumn>, DataError> {
+        let mut visible = self.columns.iter();
+        self.spec
+            .profile
+            .columns
+            .iter()
+            .filter(|p| p.target_type != CsvTargetType::Skip)
+            .map(|profile| {
+                let column = visible.next().ok_or_else(|| {
+                    DataError::query_failed("CSV SQL schema does not match its profile.")
+                })?;
+                let index = profile.source_index;
+                let state = format!(
+                    "((p.\"__dv_state_word_{}\" >> {}) & 3)",
+                    index / 32,
+                    (index % 32) * 2
+                );
+                let target = query_target_type(column);
+                let (value, sql_type) = match target {
+                    CsvTargetType::Text | CsvTargetType::Auto => (
+                        if profile.trim {
+                            format!("p.\"__dv_value_{index}\"")
+                        } else {
+                            format!("p.\"__dv_base_raw_{index}\"")
+                        },
+                        "VARCHAR".to_owned(),
+                    ),
+                    CsvTargetType::Boolean => {
+                        (format!("p.\"__dv_value_{index}\""), "BOOLEAN".to_owned())
+                    }
+                    CsvTargetType::Int64 => {
+                        (format!("p.\"__dv_value_{index}\""), "BIGINT".to_owned())
+                    }
+                    CsvTargetType::UInt64 => {
+                        (format!("p.\"__dv_value_{index}\""), "UBIGINT".to_owned())
+                    }
+                    CsvTargetType::Float64 => {
+                        (format!("p.\"__dv_value_{index}\""), "DOUBLE".to_owned())
+                    }
+                    CsvTargetType::Decimal => {
+                        (format!("p.\"__dv_value_{index}\""), "DECIMAL".to_owned())
+                    }
+                    CsvTargetType::Date => (format!("p.\"__dv_value_{index}\""), "DATE".to_owned()),
+                    CsvTargetType::Timestamp => (
+                        format!("p.\"__dv_value_{index}\""),
+                        "TIMESTAMP_NS".to_owned(),
+                    ),
+                    CsvTargetType::Duration => {
+                        (format!("p.\"__dv_value_{index}\""), "BIGINT".to_owned())
+                    }
+                    CsvTargetType::Skip => unreachable!(),
+                };
+                let expression = if target == CsvTargetType::Text || target == CsvTargetType::Auto {
+                    format!("CASE {state} WHEN 0 THEN {value} WHEN 2 THEN '' ELSE NULL END")
+                } else {
+                    format!("CASE WHEN {state} = 0 THEN {value} ELSE NULL END")
+                };
+                Ok(super::SqlInputColumn {
+                    source_index: index,
+                    original_name: if self.spec.header_used {
+                        self.original_headers
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
+                    sql_type,
+                    nullable: true,
+                    expression,
+                    warning: (target == CsvTargetType::Duration).then(|| {
+                        format!(
+                            "{}: SQL duration is BIGINT in original {:?} units, not INTERVAL.",
+                            column.name, profile.duration_unit
+                        )
+                    }),
+                })
+            })
+            .collect()
+    }
     fn reusable_source_identity(&self) -> Option<String> {
         let profile = serde_json::to_string(&self.spec.profile).ok()?;
         Some(format!(
@@ -2656,6 +2755,7 @@ impl TabularSource for CsvSource {
             total_rows: summary.row_count,
             provider: Arc::new(CsvQueryProvider {
                 path: self.path.clone(),
+                original_headers: self.header_values.clone(),
                 columns,
                 spec: csv,
                 checkpoints: Mutex::new(Vec::new()),
@@ -4196,6 +4296,7 @@ mod tests {
         let columns = source.summary().columns;
         let provider = Arc::new(CsvQueryProvider {
             path: path.clone(),
+            original_headers: columns.iter().map(|c| c.name.clone()).collect(),
             columns: columns.clone(),
             spec: CsvQuerySpec {
                 header_used: true,
@@ -4662,6 +4763,7 @@ mod tests {
         }));
         let provider = CsvQueryProvider {
             path: path.clone(),
+            original_headers: columns.iter().map(|c| c.name.clone()).collect(),
             columns: columns.clone(),
             spec: CsvQuerySpec {
                 header_used: true,
@@ -4728,6 +4830,7 @@ mod tests {
         }));
         let provider = CsvQueryProvider {
             path: directory.path().join("source.csv"),
+            original_headers: columns.iter().map(|c| c.name.clone()).collect(),
             columns: columns.clone(),
             spec: CsvQuerySpec {
                 header_used: true,

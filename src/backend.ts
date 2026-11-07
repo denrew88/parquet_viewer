@@ -5,6 +5,14 @@ import {
   type ColumnValue,
 } from "./column-values/backend";
 import { createColumnValuesMock } from "./column-values/mock";
+import { createSqlWorkspaceTransport, type SqlWorkspaceBackend } from "./sql-workspace/backend";
+import {
+  createSqlWorkspaceMock,
+  SQL_MOCK_PATHS,
+  sqlMockOpened,
+  sqlMockSource,
+  sqlMockSourcePage,
+} from "./sql-workspace/mock";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { defaultAppSettings, parseAppSettings, type AppSettings } from "./settings/model";
@@ -620,6 +628,7 @@ export type OpenRequestHandler = (request: OpenDataRequest) => void;
 export type OpenRequestErrorHandler = (error: DataViewerError) => void;
 
 export interface BackendAdapter extends ColumnValuesBackend, CacheManagementBackend {
+  sqlWorkspace?: SqlWorkspaceBackend;
   healthCheck(): Promise<HealthCheckResponse>;
   listSupportedFormats(): Promise<FormatDescriptor[]>;
   getSettings(): Promise<AppSettings>;
@@ -2825,6 +2834,7 @@ async function validatedInvoke<T>(
 }
 
 export const tauriBackend: BackendAdapter = {
+  sqlWorkspace: createSqlWorkspaceTransport(),
   ...createColumnValuesTransport(parseCopyOperationStatus),
   async healthCheck() {
     return validatedInvoke("health_check", undefined, (response) => {
@@ -3798,6 +3808,7 @@ export function emitBrowserOpenDataRequest(request: OpenDataRequest): void {
 }
 
 function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile {
+  if (browserScenario() === "sql22") return sqlMockOpened(path, itemIndex);
   const extension = path.split(".").pop()?.toLocaleLowerCase();
   const descriptor = browserSupportedFormats.find((candidate) =>
     candidate.extensions.includes(extension ?? ""),
@@ -3882,6 +3893,9 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
 }
 
 export const browserMockBackend: BackendAdapter = {
+  sqlWorkspace: createSqlWorkspaceMock((status) =>
+    browserCopyOperations.set(status.operationId, status),
+  ),
   ...createColumnValuesMock(
     async (request) => {
       if (new URLSearchParams(window.location.search).has("phase21")) {
@@ -4042,6 +4056,16 @@ export const browserMockBackend: BackendAdapter = {
     return browserFixtureSummary;
   },
   async selectDataFilePath(requestId) {
+    if (browserScenario() === "sql22") {
+      const opened = SQL_MOCK_PATHS.map((path, index) => browserOpenedDataFile(path, index));
+      return {
+        requestId,
+        origin: "dialog",
+        opened,
+        failures: [],
+        activeDocumentId: opened[0].documentId,
+      };
+    }
     const summary = await browserMockBackend.selectDataFile();
     if (summary === null) return null;
     const path = summary.path;
@@ -4106,6 +4130,8 @@ export const browserMockBackend: BackendAdapter = {
   },
   async readPage(request) {
     await wait(request.offset >= 200 ? 240 : 60);
+    if (sqlMockSource(request.sessionId))
+      return sqlMockSourcePage(request.sessionId, request.offset, request.limit, request.columns);
     if (request.sessionId.includes("csv-session")) return browserCsvPage(request);
     if (request.sessionId.includes("large-parquet-session")) return browserLargePage(request);
     if (
@@ -4117,6 +4143,8 @@ export const browserMockBackend: BackendAdapter = {
     return browserFixturePage(request);
   },
   async readCellValue(request) {
+    if (sqlMockSource(request.sessionId))
+      return sqlMockSourcePage(request.sessionId, request.row, 1, [request.columnId]).rows[0][0];
     const columnNames = request.sessionId.includes("csv-session")
       ? browserCsvSummary("auto", false, 0).columns.map((column) => column.name)
       : request.sessionId.includes("large-parquet-session")
@@ -4686,6 +4714,8 @@ export const browserMockBackend: BackendAdapter = {
     };
   },
   async getDataFileStatus(_documentId, sessionId) {
+    const sqlSource = sqlMockSource(sessionId);
+    if (sqlSource) return sqlSource.opened.summary;
     await wait(80);
     const state = browserCsvStates.get(sessionId);
     return state

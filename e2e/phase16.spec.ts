@@ -344,26 +344,55 @@ test.describe("Phase 16 CSV preparation interaction gate", () => {
     const find = page.getByRole("button", { name: "Find", exact: true });
     const sorts = page.getByRole("button", { name: /^Sorts/ });
     const searchColumns = page.getByRole("searchbox", { name: "Search columns" });
+    // The preparing gate intentionally freezes these controls. Resolve once,
+    // then verify that geometry stays fixed without repeating costly ARIA
+    // locator resolution for every blocked physical click under tracing.
+    const targets = await Promise.all(
+      [filter, copy, find, sorts, searchColumns, grid].map((locator) => locator.elementHandle()),
+    );
+    const readBounds = () =>
+      page.evaluate(
+        (elements) =>
+          elements.map((element) => {
+            if (!element?.isConnected) throw new Error("A blocked pointer target detached.");
+            const r = element.getBoundingClientRect();
+            return {
+              left: r.left,
+              top: r.top,
+              right: r.right,
+              bottom: r.bottom,
+              width: r.width,
+              height: r.height,
+            };
+          }),
+        targets,
+      );
+    const pointerBounds = await readBounds();
+    for (const bounds of pointerBounds) {
+      expect(bounds.width).toBeGreaterThan(0);
+      expect(bounds.height).toBeGreaterThan(0);
+    }
 
     for (let index = 0; index < 10; index += 1) {
-      await clickCenter(page, filter);
-      await clickCenter(page, copy);
-      await clickCenter(page, find);
-      await clickCenter(page, sorts);
-      await clickCenter(page, searchColumns);
+      const currentBounds = await readBounds();
+      currentBounds.forEach((bounds, target) => expectStableRect(pointerBounds[target], bounds));
+      for (const bounds of pointerBounds.slice(0, 5)) {
+        await page.mouse.click(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      }
       await page.keyboard.press("Control+f");
       await page.keyboard.press("Control+c");
       await page.keyboard.press("Control+ArrowDown");
       await page.keyboard.press("Shift+ArrowRight");
-      const gridBounds = await grid.boundingBox();
-      if (gridBounds) {
-        await page.mouse.move(
-          gridBounds.x + gridBounds.width / 2,
-          gridBounds.y + gridBounds.height / 2,
-        );
-        await page.mouse.wheel(0, 240);
-      }
+      const gridBounds = pointerBounds[5];
+      await page.mouse.move(
+        gridBounds.left + gridBounds.width / 2,
+        gridBounds.top + gridBounds.height / 2,
+      );
+      await page.mouse.wheel(0, 240);
     }
+    (await readBounds()).forEach((bounds, target) =>
+      expectStableRect(pointerBounds[target], bounds),
+    );
 
     const after = await phase16Probe(page);
     expect(dataCounterTotal(after)).toBe(dataCounterTotal(before));

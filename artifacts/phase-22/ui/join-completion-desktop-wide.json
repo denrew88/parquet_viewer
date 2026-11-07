@@ -1,0 +1,22 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "geometry": [
+    {
+      "className": "cm-tooltip-autocomplete cm-tooltip cm-tooltip-below",
+      "left": 567.734375,
+      "top": 158,
+      "right": 836.90625,
+      "bottom": 176.953125
+    },
+    {
+      "className": "cm-tooltip cm-completionInfo cm-completionInfo-right",
+      "left": 835.90625,
+      "top": 160,
+      "right": 1044.84375,
+      "bottom": 208
+    }
+  ]
+}

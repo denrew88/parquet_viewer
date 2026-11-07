@@ -1,0 +1,167 @@
+{
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "geometry": [
+    {
+      "label": "orders",
+      "selected": false,
+      "card": {
+        "left": 10,
+        "top": 107,
+        "right": 207,
+        "bottom": 179,
+        "width": 197,
+        "height": 72
+      },
+      "button": {
+        "left": 11,
+        "top": 108,
+        "right": 206,
+        "bottom": 178,
+        "width": 195,
+        "height": 70
+      },
+      "pencil": {
+        "left": 182,
+        "top": 114,
+        "right": 200,
+        "bottom": 136,
+        "width": 18,
+        "height": 22
+      },
+      "list": {
+        "left": 10,
+        "top": 128,
+        "right": 207,
+        "bottom": 253,
+        "width": 197,
+        "height": 125
+      },
+      "path": {
+        "left": 17,
+        "top": 141,
+        "right": 174,
+        "bottom": 154,
+        "width": 157,
+        "height": 13
+      },
+      "mode": {
+        "left": 17,
+        "top": 159,
+        "right": 174,
+        "bottom": 172,
+        "width": 157,
+        "height": 13
+      },
+      "nestedButtons": 0
+    },
+    {
+      "label": "orders_2",
+      "selected": true,
+      "card": {
+        "left": 10,
+        "top": 182,
+        "right": 207,
+        "bottom": 254,
+        "width": 197,
+        "height": 72
+      },
+      "button": {
+        "left": 11,
+        "top": 183,
+        "right": 206,
+        "bottom": 253,
+        "width": 195,
+        "height": 70
+      },
+      "pencil": {
+        "left": 182,
+        "top": 189,
+        "right": 200,
+        "bottom": 211,
+        "width": 18,
+        "height": 22
+      },
+      "list": {
+        "left": 10,
+        "top": 128,
+        "right": 207,
+        "bottom": 253,
+        "width": 197,
+        "height": 125
+      },
+      "path": {
+        "left": 17,
+        "top": 216,
+        "right": 174,
+        "bottom": 229,
+        "width": 157,
+        "height": 13
+      },
+      "mode": {
+        "left": 17,
+        "top": 234,
+        "right": 174,
+        "bottom": 247,
+        "width": 157,
+        "height": 13
+      },
+      "nestedButtons": 0
+    },
+    {
+      "label": "customers",
+      "selected": false,
+      "card": {
+        "left": 10,
+        "top": 257,
+        "right": 207,
+        "bottom": 329,
+        "width": 197,
+        "height": 72
+      },
+      "button": {
+        "left": 11,
+        "top": 258,
+        "right": 206,
+        "bottom": 328,
+        "width": 195,
+        "height": 70
+      },
+      "pencil": {
+        "left": 182,
+        "top": 264,
+        "right": 200,
+        "bottom": 286,
+        "width": 18,
+        "height": 22
+      },
+      "list": {
+        "left": 10,
+        "top": 128,
+        "right": 207,
+        "bottom": 253,
+        "width": 197,
+        "height": 125
+      },
+      "path": {
+        "left": 17,
+        "top": 291,
+        "right": 174,
+        "bottom": 304,
+        "width": 157,
+        "height": 13
+      },
+      "mode": {
+        "left": 17,
+        "top": 309,
+        "right": 174,
+        "bottom": 322,
+        "width": 157,
+        "height": 13
+      },
+      "nestedButtons": 0
+    }
+  ]
+}

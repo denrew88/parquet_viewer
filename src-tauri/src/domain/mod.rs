@@ -5,6 +5,7 @@ mod error;
 mod models;
 mod query;
 mod settings;
+mod sql_workspace;
 
 pub use boundary::*;
 pub use copy::*;
@@ -23,3 +24,4 @@ pub use models::{
 };
 pub use query::*;
 pub use settings::*;
+pub use sql_workspace::*;

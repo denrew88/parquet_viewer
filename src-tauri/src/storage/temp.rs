@@ -649,7 +649,7 @@ fn directory_bytes_with_aliases(
         bytes = bytes.saturating_add(if metadata.is_dir() {
             directory_bytes_with_aliases(&entry.path(), aliases)?
         } else {
-            accounted_file_bytes(&entry.path(), &metadata, aliases)
+            accounted_file_bytes(&entry.path(), aliases)?
         });
     }
     Ok(bytes)
@@ -657,18 +657,40 @@ fn directory_bytes_with_aliases(
 
 fn accounted_file_bytes(
     path: &Path,
-    metadata: &fs::Metadata,
     aliases: &HashMap<PathBuf, PinnedSourceAlias>,
-) -> u64 {
+) -> Result<u64, DataError> {
+    // Directory enumeration can retain stale lengths while a Windows spill
+    // writer remains open. Query a fresh file handle for both identity and size.
+    let file = match open_temp_accounting_file(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(temp_io(path, error)),
+    };
     if let Some(alias) = aliases.get(path) {
-        if File::open(path)
-            .and_then(|file| file_identity(&file))
-            .is_ok_and(|identity| identity == alias.identity)
-        {
-            return 0;
+        if file_identity(&file).is_ok_and(|identity| identity == alias.identity) {
+            return Ok(0);
         }
     }
-    metadata.len()
+    file.metadata()
+        .map(|metadata| metadata.len())
+        .map_err(|error| temp_io(path, error))
+}
+
+pub(crate) fn open_temp_accounting_file(path: &Path) -> std::io::Result<File> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Metadata access works alongside DuckDB's exclusive data lock.
+        // Requesting data-read access here would reject a healthy live DB.
+        OpenOptions::new()
+            .access_mode(0x80)
+            .share_mode(0x7)
+            .open(path)
+    }
+    #[cfg(not(windows))]
+    {
+        File::open(path)
+    }
 }
 
 #[cfg(windows)]
@@ -742,7 +764,10 @@ fn directory_bytes_best_effort(path: &Path) -> u64 {
             bytes.saturating_add(if metadata.is_dir() {
                 directory_bytes_best_effort(&entry.path())
             } else {
-                metadata.len()
+                open_temp_accounting_file(&entry.path())
+                    .and_then(|file| file.metadata())
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0)
             })
         })
 }
@@ -787,6 +812,69 @@ fn temp_io(_path: &Path, _error: impl std::fmt::Display) -> DataError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tmp22_accounts_open_writer_using_current_handle_length() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("open-spill.tmp");
+        let mut writer = File::create(&path).unwrap();
+        let original = fs::read_dir(directory.path())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .metadata()
+            .unwrap();
+        writer.write_all(&vec![1; 8 * 1024 * 1024]).unwrap();
+        assert_eq!(original.len(), 0);
+        assert_eq!(
+            directory_bytes_with_aliases(directory.path(), &HashMap::new()).unwrap(),
+            8 * 1024 * 1024
+        );
+        assert_eq!(
+            directory_bytes_best_effort(directory.path()),
+            8 * 1024 * 1024
+        );
+        writer.write_all(&vec![2; 1024 * 1024]).unwrap();
+        assert_eq!(
+            accounted_file_bytes(&path, &HashMap::new()).unwrap(),
+            9 * 1024 * 1024
+        );
+        assert_eq!(
+            directory_bytes_with_aliases(directory.path(), &HashMap::new()).unwrap(),
+            9 * 1024 * 1024
+        );
+        assert_eq!(
+            accounted_file_bytes(&directory.path().join("removed.tmp"), &HashMap::new()).unwrap(),
+            0
+        );
+        assert_eq!(writer.metadata().unwrap().len(), 9 * 1024 * 1024);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn tmp22_metadata_accounting_respects_exclusive_database_data_lock() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("prepared.duckdb");
+        let mut writer = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        writer.write_all(&vec![3; 1024 * 1024]).unwrap();
+        assert!(
+            File::open(&path).is_err(),
+            "Fixture must deny data-read handles while writer is open"
+        );
+        assert_eq!(
+            directory_bytes_with_aliases(directory.path(), &HashMap::new()).unwrap(),
+            1024 * 1024
+        );
+        assert_eq!(directory_bytes_best_effort(directory.path()), 1024 * 1024);
+        assert_eq!(writer.metadata().unwrap().len(), 1024 * 1024);
+    }
     use super::*;
 
     #[test]

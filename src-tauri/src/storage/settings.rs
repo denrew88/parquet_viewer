@@ -11,8 +11,8 @@ use serde::Deserialize;
 
 use crate::domain::{
     AppSettingsV1, CopyLimits, CopyOptions, CopyPreset, CsvDefaultParsingMode, DataError,
-    DataErrorCode, DisplayFormats, APP_SETTINGS_SCHEMA_VERSION, DEFAULT_CSV_CACHE_LIMIT_BYTES,
-    MAX_QUERY_TEMP_LIMIT_BYTES,
+    DataErrorCode, DisplayFormats, SqlCompletionMode, APP_SETTINGS_SCHEMA_VERSION,
+    DEFAULT_CSV_CACHE_LIMIT_BYTES, DEFAULT_SQL_TEMP_LIMIT_BYTES, MAX_QUERY_TEMP_LIMIT_BYTES,
 };
 
 const LEGACY_SETTINGS_SCHEMA_VERSION: u8 = 1;
@@ -40,6 +40,8 @@ impl LegacyAppSettingsV1 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            sql_temp_limit_bytes: DEFAULT_SQL_TEMP_LIMIT_BYTES,
+            sql_completion_mode: SqlCompletionMode::Contextual,
             csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
             csv_cache_directory: None,
             copy_limits: CopyLimits::default(),
@@ -72,6 +74,8 @@ impl LegacyAppSettingsV2 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            sql_temp_limit_bytes: DEFAULT_SQL_TEMP_LIMIT_BYTES,
+            sql_completion_mode: SqlCompletionMode::Contextual,
             csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
             csv_cache_directory: None,
             copy_limits: self.copy_limits,
@@ -144,6 +148,8 @@ impl LegacyAppSettingsV3 {
             copy_custom_options: self.copy_custom_options,
             csv_default_parsing_mode: self.csv_default_parsing_mode,
             query_temp_limit_bytes: self.query_temp_limit_bytes.min(MAX_QUERY_TEMP_LIMIT_BYTES),
+            sql_temp_limit_bytes: DEFAULT_SQL_TEMP_LIMIT_BYTES,
+            sql_completion_mode: SqlCompletionMode::Contextual,
             csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
             csv_cache_directory: None,
             copy_limits: self.copy_limits,
@@ -188,6 +194,75 @@ impl SettingsStore {
             return Ok(settings);
         }
 
+        // V6 already has the SQL storage cap. Add only the completion default.
+        let v6_result = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|error| format!("Invalid V6 settings.json: {error}"))
+            .and_then(|mut value| {
+                let object = value
+                    .as_object_mut()
+                    .ok_or("V6 settings must be an object")?;
+                if object
+                    .get("schemaVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    != Some(6)
+                    || object.contains_key("sqlCompletionMode")
+                {
+                    return Err(String::from("Invalid V6 settings schema."));
+                }
+                object.insert(
+                    "schemaVersion".into(),
+                    serde_json::json!(APP_SETTINGS_SCHEMA_VERSION),
+                );
+                object.insert(
+                    "sqlCompletionMode".into(),
+                    serde_json::json!(SqlCompletionMode::Contextual),
+                );
+                let settings: AppSettingsV1 =
+                    serde_json::from_value(value).map_err(|error| error.to_string())?;
+                settings.validate()?;
+                Ok(settings)
+            });
+        if let Ok(settings) = v6_result {
+            return self.save(&settings);
+        }
+
+        // V5 predates the per-SQL working-space cap. Preserve every prior field.
+        let v5_result = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|error| format!("Invalid V5 settings.json: {error}"))
+            .and_then(|mut value| {
+                let object = value
+                    .as_object_mut()
+                    .ok_or("V5 settings must be an object")?;
+                if object
+                    .get("schemaVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    != Some(5)
+                    || object.contains_key("sqlTempLimitBytes")
+                    || object.contains_key("sqlCompletionMode")
+                {
+                    return Err(String::from("Invalid V5 settings schema."));
+                }
+                object.insert(
+                    "schemaVersion".into(),
+                    serde_json::json!(APP_SETTINGS_SCHEMA_VERSION),
+                );
+                object.insert(
+                    "sqlTempLimitBytes".into(),
+                    serde_json::json!(DEFAULT_SQL_TEMP_LIMIT_BYTES),
+                );
+                object.insert(
+                    "sqlCompletionMode".into(),
+                    serde_json::json!(SqlCompletionMode::Contextual),
+                );
+                let settings: AppSettingsV1 =
+                    serde_json::from_value(value).map_err(|error| error.to_string())?;
+                settings.validate()?;
+                Ok(settings)
+            });
+        if let Ok(settings) = v5_result {
+            return self.save(&settings);
+        }
+
         // V4 has the full display contract but predates dedicated cache settings.
         // Preserve all existing values while adding only the two new defaults.
         let v4_result = serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -205,6 +280,8 @@ impl SettingsStore {
                 }
                 if object.contains_key("csvCacheLimitBytes")
                     || object.contains_key("csvCacheDirectory")
+                    || object.contains_key("sqlTempLimitBytes")
+                    || object.contains_key("sqlCompletionMode")
                 {
                     return Err(String::from("V4 settings contains V5 cache fields."));
                 }
@@ -217,6 +294,14 @@ impl SettingsStore {
                     serde_json::json!(DEFAULT_CSV_CACHE_LIMIT_BYTES),
                 );
                 object.insert("csvCacheDirectory".into(), serde_json::Value::Null);
+                object.insert(
+                    "sqlTempLimitBytes".into(),
+                    serde_json::json!(DEFAULT_SQL_TEMP_LIMIT_BYTES),
+                );
+                object.insert(
+                    "sqlCompletionMode".into(),
+                    serde_json::json!(SqlCompletionMode::Contextual),
+                );
                 let settings: AppSettingsV1 =
                     serde_json::from_value(value).map_err(|error| error.to_string())?;
                 settings.validate()?;
@@ -376,9 +461,181 @@ mod tests {
 
     fn legacy_json(settings: &AppSettingsV1) -> serde_json::Value {
         let mut value = serde_json::to_value(settings).unwrap();
+        value.as_object_mut().unwrap().remove("sqlCompletionMode");
+        value.as_object_mut().unwrap().remove("sqlTempLimitBytes");
         value.as_object_mut().unwrap().remove("csvCacheLimitBytes");
         value.as_object_mut().unwrap().remove("csvCacheDirectory");
         value
+    }
+
+    #[test]
+    fn sql_completion_v6_migration_preserves_existing_settings_and_interrupted_save() {
+        for interrupted in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let expected = AppSettingsV1 {
+                sql_temp_limit_bytes: 322122547,
+                query_temp_limit_bytes: 1073741824,
+                csv_cache_limit_bytes: 67108864,
+                csv_cache_directory: Some("D:\\viewer-cache".into()),
+                copy_preset: CopyPreset::Csv,
+                ..AppSettingsV1::default()
+            };
+            let mut legacy = serde_json::to_value(&expected).unwrap();
+            legacy["schemaVersion"] = serde_json::json!(6);
+            legacy.as_object_mut().unwrap().remove("sqlCompletionMode");
+            let name = if interrupted {
+                "settings.previous-v6.json"
+            } else {
+                "settings.json"
+            };
+            fs::write(
+                directory.path().join(name),
+                serde_json::to_vec(&legacy).unwrap(),
+            )
+            .unwrap();
+            let store = SettingsStore::new(directory.path());
+            assert_eq!(store.load().unwrap(), expected);
+            assert_eq!(store.load().unwrap(), expected);
+            assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
+    fn sql_completion_all_modes_roundtrip_without_changing_sql_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(directory.path());
+        for sql_completion_mode in [
+            SqlCompletionMode::Automatic,
+            SqlCompletionMode::Contextual,
+            SqlCompletionMode::Manual,
+        ] {
+            let settings = AppSettingsV1 {
+                sql_completion_mode,
+                sql_temp_limit_bytes: 322122547,
+                ..AppSettingsV1::default()
+            };
+            store.save(&settings).unwrap();
+            assert_eq!(store.load().unwrap(), settings);
+        }
+    }
+
+    #[test]
+    fn sql_completion_invalid_current_field_is_preserved_and_recovered() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .map(|path| path.join("fixtures/phase-22/sql-completion-settings-boundaries.json"))
+            .find(|path| path.is_file())
+            .expect("shared completion settings corpus");
+        let corpus: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture).unwrap()).unwrap();
+        for case in corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["valid"] == false)
+        {
+            let directory = tempfile::tempdir().unwrap();
+            let mut wire = serde_json::to_value(AppSettingsV1::default()).unwrap();
+            if let Some(mode) = case.get("mode") {
+                wire["sqlCompletionMode"] = mode.clone();
+            } else {
+                wire.as_object_mut().unwrap().remove("sqlCompletionMode");
+            }
+            let original = serde_json::to_vec(&wire).unwrap();
+            fs::write(directory.path().join("settings.json"), &original).unwrap();
+            let store = SettingsStore::new(directory.path());
+            assert_eq!(
+                store.load().unwrap_err().code,
+                DataErrorCode::SettingsInvalid,
+                "{}",
+                case["name"]
+            );
+            let backup = fs::read_dir(directory.path())
+                .unwrap()
+                .map(Result::unwrap)
+                .find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("settings.corrupt-")
+                })
+                .unwrap();
+            assert_eq!(fs::read(backup.path()).unwrap(), original);
+            assert_eq!(store.load().unwrap(), AppSettingsV1::default());
+        }
+    }
+
+    #[test]
+    fn sql_storage_v5_migration_preserves_settings_and_restores_interrupted_upgrade() {
+        for interrupted in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let expected = AppSettingsV1 {
+                query_temp_limit_bytes: 322122547,
+                csv_cache_limit_bytes: 67108864,
+                csv_cache_directory: Some(String::from("D:\\viewer-cache")),
+                copy_preset: CopyPreset::Csv,
+                ..AppSettingsV1::default()
+            };
+            let mut value = serde_json::to_value(&expected).unwrap();
+            value["schemaVersion"] = serde_json::json!(5);
+            value.as_object_mut().unwrap().remove("sqlCompletionMode");
+            value.as_object_mut().unwrap().remove("sqlTempLimitBytes");
+            let name = if interrupted {
+                "settings.previous-v5.json"
+            } else {
+                "settings.json"
+            };
+            fs::write(
+                directory.path().join(name),
+                serde_json::to_vec(&value).unwrap(),
+            )
+            .unwrap();
+            let store = SettingsStore::new(directory.path());
+            assert_eq!(store.load().unwrap(), expected);
+            assert_eq!(store.load().unwrap(), expected);
+            assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
+    fn sql_storage_current_missing_field_is_backed_up_not_legacy_defaulted() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut value = serde_json::to_value(AppSettingsV1::default()).unwrap();
+        value.as_object_mut().unwrap().remove("sqlTempLimitBytes");
+        let original = serde_json::to_vec(&value).unwrap();
+        fs::write(directory.path().join("settings.json"), &original).unwrap();
+        let store = SettingsStore::new(directory.path());
+        assert_eq!(
+            store.load().unwrap_err().code,
+            DataErrorCode::SettingsInvalid
+        );
+        let backup = fs::read_dir(directory.path())
+            .unwrap()
+            .map(Result::unwrap)
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("settings.corrupt-")
+            })
+            .unwrap();
+        assert_eq!(fs::read(backup.path()).unwrap(), original);
+        assert_eq!(store.load().unwrap(), AppSettingsV1::default());
+    }
+
+    #[test]
+    fn sql_storage_caps_round_trip_independently_of_overall_cap() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(directory.path());
+        for sql_temp_limit_bytes in [67108864, 322122547, 536870912, 1073741824, 10737418240] {
+            let settings = AppSettingsV1 {
+                sql_temp_limit_bytes,
+                query_temp_limit_bytes: 67108864,
+                ..AppSettingsV1::default()
+            };
+            store.save(&settings).unwrap();
+            assert_eq!(store.load().unwrap(), settings);
+        }
     }
 
     #[test]

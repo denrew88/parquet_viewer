@@ -20,6 +20,17 @@ pub struct QuerySourceSpec {
     pub provider: Arc<dyn QueryInputProvider>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SqlInputColumn {
+    pub source_index: usize,
+    pub original_name: String,
+    pub sql_type: String,
+    pub nullable: bool,
+    /// Trusted provider expression over a physical Parquet relation named p.
+    pub expression: String,
+    pub warning: Option<String>,
+}
+
 pub struct QueryExactValues {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<crate::domain::DataValue>>,
@@ -99,6 +110,46 @@ pub struct CsvPreparedPhysicalColumn {
 
 pub trait QueryInputProvider: Debug + Send + Sync {
     fn prepare(&self, context: QueryPrepareContext<'_>) -> Result<(), DataError>;
+
+    fn sql_input_columns(
+        &self,
+        source: &QuerySourceSpec,
+    ) -> Result<Vec<SqlInputColumn>, DataError> {
+        Ok(source
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| SqlInputColumn {
+                source_index: index,
+                original_name: column.name.clone(),
+                sql_type: column.logical_type.clone(),
+                nullable: column.nullable,
+                expression: format!(
+                    "p.{}",
+                    query_quote_identifier(&format!("__sql_pos_{index}"))
+                ),
+                warning: column.logical_type.starts_with("Duration").then(|| {
+                    format!(
+                        "{}: SQL exposes duration as BIGINT in its original {} unit, not INTERVAL.",
+                        column.name, column.logical_type
+                    )
+                }),
+            })
+            .collect())
+    }
+
+    fn sql_name_mode_issue(&self, source: &QuerySourceSpec) -> Option<String> {
+        let mut names = std::collections::HashSet::new();
+        for column in &source.columns {
+            if crate::domain::sql_text_is_blank(&column.name) {
+                return Some("An original column name is blank.".to_owned());
+            }
+            if !names.insert(column.name.to_ascii_lowercase()) {
+                return Some(format!("Duplicate original column name: {}", column.name));
+            }
+        }
+        None
+    }
 
     /// Whether the visible columns in `dv_source` retain their native logical
     /// types. CSV deliberately stores converted display values as VARCHAR and

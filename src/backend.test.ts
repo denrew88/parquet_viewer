@@ -1044,9 +1044,14 @@ describe("backend adapters", () => {
       ...original,
       csvDefaultParsingMode: "askEveryTime" as const,
       queryTempLimitBytes: 512 * 1024 * 1024,
+      sqlTempLimitBytes: 322122547,
     };
     try {
       await expect(browserMockBackend.updateSettings(changed)).resolves.toEqual(changed);
+      await expect(browserMockBackend.getSettings()).resolves.toEqual(changed);
+      await expect(
+        browserMockBackend.updateSettings({ ...changed, sqlTempLimitBytes: 67108863 }),
+      ).rejects.toThrow("sqlTempLimitBytes");
       await expect(browserMockBackend.getSettings()).resolves.toEqual(changed);
       await expect(
         browserMockBackend.updateSettings({

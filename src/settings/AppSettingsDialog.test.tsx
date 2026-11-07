@@ -23,6 +23,65 @@ function renderDialog(overrides: Partial<React.ComponentProps<typeof AppSettings
 }
 
 describe("AppSettingsDialog", () => {
+  it("applies SQL suggestion modes only when saved and preserves other settings", async () => {
+    const original = { ...defaultAppSettings(), sqlTempLimitBytes: 322122547 };
+    const { onApply, onCancel, view } = renderDialog({ initialSettings: original });
+    const field = screen.getByRole("combobox", { name: "SQL suggestion mode" });
+    expect(field).toHaveValue("contextual");
+    fireEvent.change(field, { target: { value: "manual" } });
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(original.sqlCompletionMode).toBe("contextual");
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onApply).toHaveBeenCalledWith({ ...original, sqlCompletionMode: "manual" });
+    view.unmount();
+    renderDialog({ initialSettings: { ...original, sqlCompletionMode: "automatic" } });
+    expect(screen.getByRole("combobox", { name: "SQL suggestion mode" })).toHaveValue("automatic");
+  });
+  it("applies and reopens the SQL per-query cap independently of the overall cap", async () => {
+    const { onApply, view } = renderDialog({
+      initialSettings: {
+        ...defaultAppSettings(),
+        queryTempLimitBytes: Math.round(0.3 * 1024 ** 3),
+      },
+    });
+    const input = screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" });
+    expect(input).toHaveValue(0.5);
+    fireEvent.change(input, { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    const saved = onApply.mock.calls[0][0];
+    expect(saved).toEqual({
+      ...defaultAppSettings(),
+      queryTempLimitBytes: 322122547,
+      sqlTempLimitBytes: 1024 ** 3,
+    });
+    view.unmount();
+    const reopened = renderDialog({ initialSettings: saved });
+    expect(
+      screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" }),
+    ).toHaveValue(1);
+    fireEvent.click(screen.getByRole("button", { name: "Reset SQL temporary storage" }));
+    expect(reopened.onApply).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" }),
+    ).toHaveValue(0.5);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(reopened.onCancel).toHaveBeenCalledOnce();
+    expect(reopened.onApply).not.toHaveBeenCalled();
+  });
+  it.each(["", "0.0624999999", "10.0000000001", "-1"])(
+    "rejects SQL cap %s before applying",
+    (value) => {
+      const { onApply } = renderDialog();
+      fireEvent.change(
+        screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" }),
+        { target: { value } },
+      );
+      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+      expect(onApply).not.toHaveBeenCalled();
+    },
+  );
   it("keeps location recovery and settings usable when storage usage cannot be read", () => {
     const cacheBackend = {
       chooseCsvCacheLocation: vi.fn(),

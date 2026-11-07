@@ -1,0 +1,41 @@
+{
+  "description": "No case is executed by generation. Replace {canary}, {output}, {input}, and {url} only with test-owned resources. Denial must precede any file/network/settings side effect; a nonexistent-path failure is not sufficient evidence.",
+  "allowed": [
+    { "id": "constant", "sql": "SELECT 42 AS answer" },
+    { "id": "trailing-semicolon-comment", "sql": "SELECT 42 AS answer; -- one statement only" },
+    { "id": "quoted-semicolon", "sql": "SELECT '; COPY x;' AS text" },
+    { "id": "quoted-identifier", "sql": "SELECT 42 AS \"odd;name\"" },
+    { "id": "cte", "sql": "WITH x AS (SELECT 42 AS n) SELECT n FROM x" },
+    { "id": "window", "sql": "SELECT row_number() OVER (ORDER BY n) AS rank FROM (VALUES (2), (1)) AS t(n)" }
+  ],
+  "denied": [
+    { "id": "two-selects", "sql": "SELECT 1; SELECT 2", "guard": "multiple-statements" },
+    { "id": "prepare-ddl-before-select", "sql": "CREATE TABLE forbidden_probe(n INTEGER); SELECT 1", "guard": "before-prepare-side-effects" },
+    { "id": "prepare-copy-before-select", "sql": "COPY (SELECT 1) TO '{output}'; SELECT 1", "guard": "before-prepare-side-effects" },
+    { "id": "prepare-setting-before-select", "sql": "SET threads=1; SELECT 1", "guard": "before-prepare-side-effects" },
+    { "id": "prepare-write-invalid-tail", "sql": "COPY (SELECT 1) TO '{output}'; SELECT FROM", "guard": "before-prepare-side-effects" },
+    { "id": "copy", "sql": "COPY (SELECT 1) TO '{output}'", "guard": "statement-type" },
+    { "id": "create-as-select", "sql": "CREATE TABLE forbidden_probe AS SELECT 1", "guard": "statement-type" },
+    { "id": "attach", "sql": "ATTACH '{input}' AS forbidden", "guard": "statement-type" },
+    { "id": "pragma", "sql": "PRAGMA threads=1", "guard": "statement-type" },
+    { "id": "set", "sql": "SET enable_external_access=true", "guard": "statement-type" },
+    { "id": "install", "sql": "INSTALL httpfs", "guard": "statement-type" },
+    { "id": "load", "sql": "LOAD httpfs", "guard": "statement-type" },
+    { "id": "export", "sql": "EXPORT DATABASE '{output}'", "guard": "statement-type" },
+    { "id": "read-text", "sql": "SELECT * FROM read_text('{canary}')", "guard": "file-function" },
+    { "id": "read-blob", "sql": "SELECT * FROM read_blob('{canary}')", "guard": "file-function" },
+    { "id": "read-csv", "sql": "SELECT * FROM read_csv('{canary}')", "guard": "file-function" },
+    { "id": "read-parquet", "sql": "SELECT * FROM read_parquet('{input}')", "guard": "file-function" },
+    { "id": "parquet-scan", "sql": "SELECT * FROM parquet_scan('{input}')", "guard": "file-function" },
+    { "id": "replacement-scan", "sql": "SELECT * FROM '{input}'", "guard": "replacement-scan" },
+    { "id": "glob", "sql": "SELECT * FROM glob('{canary}')", "guard": "directory-function" },
+    { "id": "parquet-metadata", "sql": "SELECT * FROM parquet_metadata('{input}')", "guard": "metadata-file-function" },
+    { "id": "remote", "sql": "SELECT * FROM read_csv('{url}')", "guard": "network-no-request" },
+    { "id": "nested-read", "sql": "WITH x AS (SELECT * FROM read_text('{canary}')) SELECT * FROM x", "guard": "nested-file-function" },
+    { "id": "read-through-join", "sql": "SELECT x.* FROM (SELECT 1 AS n) t JOIN read_text('{canary}') x ON true", "guard": "nested-file-function" },
+    { "id": "user-explain-copy", "sql": "EXPLAIN COPY (SELECT 1) TO '{output}'", "guard": "explain-inner-statement" },
+    { "id": "user-analyze-copy", "sql": "EXPLAIN ANALYZE COPY (SELECT 1) TO '{output}'", "guard": "explain-inner-statement" },
+    { "id": "configuration-introspection", "sql": "SELECT * FROM duckdb_settings()", "guard": "registered-sources-only" },
+    { "id": "secret-introspection", "sql": "SELECT * FROM duckdb_secrets()", "guard": "registered-sources-only" }
+  ]
+}

@@ -214,6 +214,14 @@ fn start_csv_cache_migration_inner(
             .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| local_data.join("csv-cache-v1"));
+        if service
+            .as_ref()
+            .is_some_and(|service| service.has_live_sql_state())
+        {
+            return Err(DataError::invalid_request(
+                "Cancel the SQL job and clear its result before moving the CSV cache.",
+            ));
+        }
         let preview = if let Some(service) = &service {
             service.preview_csv_cache_migration(&parent)?
         } else {

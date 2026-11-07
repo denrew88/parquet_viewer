@@ -466,6 +466,44 @@ function QueryGridHarness({
 }
 
 describe("VirtualDataGrid", () => {
+  it("keeps duplicate SQL display headers separate from column and copy identities", async () => {
+    const summaryValue: FileSummary = {
+      ...summary,
+      rowCount: 1,
+      columnCount: 2,
+      columns: summary.columns.slice(0, 2).map((column, i) => ({ ...column, name: `r${i}` })),
+    };
+    const pageValue: DataPage = {
+      sessionId: summaryValue.sessionId,
+      offset: 0,
+      limit: 200,
+      totalRows: 1,
+      hasMore: false,
+      columns: ["r0", "r1"],
+      rows: [
+        [
+          { kind: "string", display: "first" },
+          { kind: "string", display: "second" },
+        ],
+      ],
+    };
+    const readPage = vi.fn(async () => pageValue);
+    const { grid, startCopy } = renderGrid(readPage, vi.fn(), summaryValue, pageValue, {
+      columnLabels: { r0: "value", r1: "value" },
+    });
+    const first = screen.getByRole("columnheader", { name: "value (r0)" }),
+      second = screen.getByRole("columnheader", { name: "value (r1)" });
+    expect(first).toHaveTextContent("value");
+    expect(second).toHaveTextContent("value");
+    expect(second).toHaveAttribute("data-column-id", "r1");
+    fireEvent.click(second);
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() =>
+      expect(startCopy).toHaveBeenCalledWith(
+        expect.objectContaining({ selection: expect.objectContaining({ columnIds: ["r1"] }) }),
+      ),
+    );
+  });
   it("builds a bounded ordered projection that reaches the final logical column", () => {
     expect(orderedProjectionForWindow(oesColumns, [0, 1, 2], oesInitialColumns)).toEqual(
       oesInitialColumns,

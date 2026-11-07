@@ -54,6 +54,19 @@ impl ClipboardWriter for TauriClipboardWriter {
 /// replace this adapter with a format-specific hyperslab/row-group implementation
 /// without changing operation, staging, cancellation, or clipboard atomicity.
 pub trait CopyRowReader: Send + Sync + 'static {
+    /// Resolve display headers independently from projection IDs. SQL results
+    /// can have duplicate labels while each projected column remains unique.
+    fn column_headers(&self, columns: &[String]) -> Result<Vec<String>, DataError> {
+        Ok(columns.to_vec())
+    }
+
+    /// Check managed staging allowance before writing the next serialized piece.
+    /// SQL copy readers reserve a dedicated lease instead of borrowing free space
+    /// already promised to another query or result snapshot.
+    fn validate_staging_bytes(&self, _total_bytes: u64) -> Result<(), DataError> {
+        Ok(())
+    }
+
     /// Return at most `limit` rows. A bounded nonempty batch may be shorter;
     /// `has_more` distinguishes that case from the end of the source.
     fn read_rows(
@@ -481,13 +494,25 @@ fn execute_copy(
     let mut has_content = false;
 
     if request.options.include_headers {
-        let line = request
-            .selection
-            .column_ids
+        let headers = runtime
+            .reader
+            .column_headers(&request.selection.column_ids)
+            .map_err(|error| failure(CopyFailureReason::SourceRead, error))?;
+        if headers.len() != request.selection.column_ids.len() {
+            return Err(failure(
+                CopyFailureReason::SourceRead,
+                "Copy header count does not match the selected columns.",
+            ));
+        }
+        let line = headers
             .iter()
             .map(|header| serialize_text(header, false, &request.options))
             .collect::<Result<Vec<_>, _>>()?
             .join(&request.options.delimiter);
+        runtime
+            .reader
+            .validate_staging_bytes(bytes.saturating_add(line.len() as u64))
+            .map_err(source_failure)?;
         write_piece(
             &mut writer,
             &mut bytes,
@@ -540,6 +565,18 @@ fn execute_copy(
                 ));
             }
             let line = serialize_row(row, &request.options, &runtime.display_formats)?;
+            let projected_bytes =
+                bytes
+                    .saturating_add(line.len() as u64)
+                    .saturating_add(if has_content {
+                        line_ending.len() as u64
+                    } else {
+                        0
+                    });
+            runtime
+                .reader
+                .validate_staging_bytes(projected_bytes)
+                .map_err(source_failure)?;
             write_piece(
                 &mut writer,
                 &mut bytes,
@@ -948,6 +985,48 @@ mod tests {
 
     struct SlowReader(MemoryReader);
 
+    struct LabeledReader {
+        inner: MemoryReader,
+        headers: Vec<String>,
+    }
+
+    struct BudgetedReader(MemoryReader);
+
+    impl CopyRowReader for BudgetedReader {
+        fn validate_staging_bytes(&self, total_bytes: u64) -> Result<(), DataError> {
+            if total_bytes > 8 {
+                return Err(DataError::query_temp_limit(
+                    "The SQL copy staging allowance was exceeded.",
+                ));
+            }
+            Ok(())
+        }
+
+        fn read_rows(
+            &self,
+            offset: u64,
+            limit: usize,
+            columns: &[String],
+        ) -> Result<DataPage, DataError> {
+            self.0.read_rows(offset, limit, columns)
+        }
+    }
+
+    impl CopyRowReader for LabeledReader {
+        fn column_headers(&self, _columns: &[String]) -> Result<Vec<String>, DataError> {
+            Ok(self.headers.clone())
+        }
+
+        fn read_rows(
+            &self,
+            offset: u64,
+            limit: usize,
+            columns: &[String],
+        ) -> Result<DataPage, DataError> {
+            self.inner.read_rows(offset, limit, columns)
+        }
+    }
+
     struct BoundedReader(MemoryReader);
 
     impl CopyRowReader for BoundedReader {
@@ -1127,6 +1206,84 @@ mod tests {
             }
             assert!(directory.path().read_dir().unwrap().next().is_none());
         }
+    }
+
+    #[test]
+    fn sql_workspace_copy_preserves_duplicate_labels_and_rejects_mismatched_headers() {
+        for header_count in [2, 1] {
+            let directory = tempfile::tempdir().unwrap();
+            let manager = CopyManager::default();
+            let clipboard = Arc::new(MemoryClipboard::default());
+            let mut copy = request("sql-label-copy", 1024);
+            copy.selection.column_ids = vec!["r0".to_owned(), "r1".to_owned()];
+            copy.options.include_headers = true;
+            manager
+                .start(
+                    copy,
+                    Arc::new(LabeledReader {
+                        inner: MemoryReader {
+                            rows: vec![
+                                vec![
+                                    DataValue::displayed(ValueKind::String, "alpha"),
+                                    DataValue::displayed(ValueKind::String, "beta"),
+                                ],
+                                vec![
+                                    DataValue::displayed(ValueKind::String, "gamma"),
+                                    DataValue::displayed(ValueKind::String, "delta"),
+                                ],
+                            ],
+                        },
+                        headers: vec!["duplicate".to_owned(); header_count],
+                    }),
+                    clipboard.clone(),
+                    directory.path().to_path_buf(),
+                )
+                .unwrap();
+            let status = wait_terminal(&manager, "sql-label-copy");
+            if header_count == 2 {
+                assert_eq!(status.state, CopyOperationState::Complete);
+                assert_eq!(
+                    clipboard.writes.lock().unwrap().as_slice(),
+                    ["duplicate\tduplicate\r\nalpha\tbeta\r\ngamma\tdelta"]
+                );
+            } else {
+                assert_eq!(status.state, CopyOperationState::Failed);
+                assert_eq!(
+                    status.failure.unwrap().reason,
+                    CopyFailureReason::SourceRead
+                );
+                assert!(clipboard.writes.lock().unwrap().is_empty());
+            }
+            assert!(directory.path().read_dir().unwrap().next().is_none());
+        }
+    }
+
+    #[test]
+    fn sql_workspace_copy_checks_storage_before_each_piece_and_never_commits_partial() {
+        let directory = tempfile::tempdir().unwrap();
+        let manager = CopyManager::default();
+        let clipboard = Arc::new(MemoryClipboard::default());
+        manager
+            .start(
+                request("sql-budget-copy", 1024),
+                Arc::new(BudgetedReader(MemoryReader {
+                    rows: vec![
+                        vec![DataValue::displayed(ValueKind::String, "alpha")],
+                        vec![DataValue::displayed(ValueKind::String, "beta")],
+                    ],
+                })),
+                clipboard.clone(),
+                directory.path().to_path_buf(),
+            )
+            .unwrap();
+        let status = wait_terminal(&manager, "sql-budget-copy");
+        assert_eq!(status.state, CopyOperationState::Failed);
+        assert_eq!(
+            status.failure.unwrap().reason,
+            CopyFailureReason::SourceRead
+        );
+        assert!(clipboard.writes.lock().unwrap().is_empty());
+        assert!(directory.path().read_dir().unwrap().next().is_none());
     }
 
     #[test]

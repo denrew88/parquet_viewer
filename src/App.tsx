@@ -85,6 +85,7 @@ import type { QueryToolbarStatus } from "./query/QueryToolbar";
 import { moveId } from "./gridOrdering";
 import { isInternalPointerReorderActive, usePointerReorder } from "./components/usePointerReorder";
 import "./App.css";
+import { SqlWorkspace } from "./sql-workspace/SqlWorkspace";
 
 const defaultBackend = createDefaultBackend();
 const defaultDragDropAdapter = createDefaultDragDropAdapter();
@@ -1215,6 +1216,7 @@ function normalizedSummaryResponse(
 }
 
 function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapter }: AppProps) {
+  const [sqlWorkspaceActive, setSqlWorkspaceActive] = useState(false);
   const [backendState, setBackendState] = useState<BackendState>({ kind: "checking" });
   const [formatCatalog, setFormatCatalog] = useState<FormatDescriptor[]>([]);
   const [emptyActiveTab, setEmptyActiveTab] = useState<WorkspaceTab>("data");
@@ -3341,6 +3343,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (sqlWorkspaceActive) return;
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       if (event.key === "Tab") {
         event.preventDefault();
@@ -3352,7 +3355,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeDocumentId, closeDocument, switchDocument]);
+  }, [activeDocumentId, closeDocument, switchDocument, sqlWorkspaceActive]);
 
   useEffect(() => {
     document.title = summary ? `${summary.fileName} - Data Viewer` : "Data Viewer";
@@ -3539,7 +3542,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sqlWorkspaceActive ? " app-shell--sql" : ""}`}>
       <header className="app-toolbar" data-testid="toolbar">
         <div className="app-brand">
           <FileSpreadsheet className="app-brand__icon" aria-hidden="true" />
@@ -3609,6 +3612,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                   id={`document-tab-${document.id}`}
                   onClick={() => {
                     if (!documentReorder.consumeSuppressedClick(document.id)) {
+                      setSqlWorkspaceActive(false);
                       setActiveDocumentId(document.id);
                     }
                   }}
@@ -3636,6 +3640,17 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           })}
           {documents.length === 0 && <span className="document-tabs__empty">No files open</span>}
         </div>
+        {backend.sqlWorkspace && (
+          <button
+            aria-label="SQL workspace"
+            aria-pressed={sqlWorkspaceActive}
+            className="document-tabs__sql"
+            onClick={() => setSqlWorkspaceActive(true)}
+            type="button"
+          >
+            SQL
+          </button>
+        )}
         <button
           aria-label="Scroll file tabs right"
           className="document-tabs__scroll"
@@ -3727,7 +3742,8 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       </nav>
 
       <main
-        aria-labelledby={`tab-${activeTab}`}
+        aria-labelledby={sqlWorkspaceActive ? undefined : `tab-${activeTab}`}
+        aria-label={sqlWorkspaceActive ? "SQL workspace panel" : undefined}
         aria-busy={
           openingCount > 0 ||
           activeDocument?.isPageLoading ||
@@ -3740,6 +3756,30 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         role="tabpanel"
         tabIndex={0}
       >
+        {backend.sqlWorkspace && (
+          <SqlWorkspace
+            active={sqlWorkspaceActive}
+            backend={backend}
+            sources={documents.flatMap((document) =>
+              document.status === "ready" &&
+              document.documentId &&
+              document.sessionId &&
+              document.summary &&
+              ["csv", "parquet"].includes(document.summary.format)
+                ? [{ documentId: document.documentId, sessionId: document.sessionId }]
+                : [],
+            )}
+            settings={appSettings}
+            onOpenCopySettings={openCopySettings}
+            onOpenSource={(source) => {
+              setSqlWorkspaceActive(false);
+              const document = documents.find(
+                (d) => d.documentId === source.documentId && d.sessionId === source.sessionId,
+              );
+              if (document) setActiveDocumentId(document.id);
+            }}
+          />
+        )}
         {settingsWarning && (
           <div className="settings-warning" role="status">
             <TriangleAlert aria-hidden="true" />
@@ -3777,7 +3817,9 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             </button>
           </div>
         )}
-        {documents.length === 0 && <EmptyState formats={formatCatalog} tab={emptyActiveTab} />}
+        {documents.length === 0 && !sqlWorkspaceActive && (
+          <EmptyState formats={formatCatalog} tab={emptyActiveTab} />
+        )}
         {openingCount > 0 && (
           <span className="opening-announcement" role="status" aria-live="polite">
             Opening data file
@@ -3787,7 +3829,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           <section
             aria-labelledby={`document-tab-${document.id}`}
             className="document-panel"
-            hidden={activeDocumentId !== document.id}
+            hidden={sqlWorkspaceActive || activeDocumentId !== document.id}
             id={`document-panel-${document.id}`}
             key={document.id}
             role="tabpanel"
@@ -3843,7 +3885,11 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                 <div className="document-view" hidden={document.activeTab !== "data"}>
                   <DataView
                     columnValuesBackend={backend}
-                    active={activeDocumentId === document.id && document.activeTab === "data"}
+                    active={
+                      !sqlWorkspaceActive &&
+                      activeDocumentId === document.id &&
+                      document.activeTab === "data"
+                    }
                     cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
                     copyLimits={appSettings.copyLimits}
                     copyOptions={activeCopyOptions(appSettings)}

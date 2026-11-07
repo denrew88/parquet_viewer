@@ -1,0 +1,35 @@
+{
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "geometry": [
+    {
+      "className": "sql-function-hint cm-tooltip cm-tooltip-above",
+      "left": 354.984375,
+      "top": 94,
+      "right": 654.9375,
+      "bottom": 144,
+      "width": 299.953125,
+      "height": 50
+    },
+    {
+      "className": "cm-tooltip-autocomplete cm-tooltip cm-tooltip-below",
+      "left": 420.984375,
+      "top": 158,
+      "right": 672.984375,
+      "bottom": 280,
+      "width": 252,
+      "height": 122
+    },
+    {
+      "className": "cm-tooltip cm-completionInfo cm-completionInfo-right",
+      "left": 671.984375,
+      "top": 160,
+      "right": 783.140625,
+      "bottom": 204,
+      "width": 111.15625,
+      "height": 44
+    }
+  ]
+}

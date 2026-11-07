@@ -1,0 +1,42 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "captures": [
+    {
+      "help": "open",
+      "left": 8644,
+      "client": 932,
+      "scroll": 9576,
+      "tail": {
+        "left": 1127.453125,
+        "right": 1186.84375
+      },
+      "view": {
+        "left": 257,
+        "right": 1189,
+        "bottom": 348
+      },
+      "hostBottom": 349,
+      "visibleText": " END_TAIL"
+    },
+    {
+      "help": "closed",
+      "left": 8404,
+      "client": 1172,
+      "scroll": 9576,
+      "tail": {
+        "left": 1367.453125,
+        "right": 1426.84375
+      },
+      "view": {
+        "left": 257,
+        "right": 1429,
+        "bottom": 348
+      },
+      "hostBottom": 349,
+      "visibleText": " END_TAIL"
+    }
+  ]
+}

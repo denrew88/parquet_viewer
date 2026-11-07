@@ -23,6 +23,7 @@ const psStep = (name, entry, args = []) => ({
   name, program: "powershell", args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", entry, ...args], env: {},
 });
 const tasks = {
+  "phase22-identifier-keywords": () => [nodeStep("phase22-identifier-keywords", "scripts/sync_sql_identifier_keywords.mjs")],
   "frontend-check": () => [
     nodeStep("format", "node_modules/prettier/bin/prettier.cjs", ["--check", "src/**/*.{ts,tsx,css}", "e2e/**/*.ts", "vite.config.ts", "playwright.config.ts", "tsconfig.e2e.json", "index.html"]),
     nodeStep("lint", "node_modules/eslint/bin/eslint.js", [".", "--ignore-pattern", ".tmp/", "--max-warnings", "0"]),
@@ -32,6 +33,33 @@ const tasks = {
   ],
   "phase21-frontend-format": () => [nodeStep("phase21-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/column-values/backend.ts", "src/column-values/backend.test.ts", "src/column-values/mock.ts", "src/column-values/mock.test.ts", "src/column-values/ColumnValuesPanel.tsx", "src/column-values/ColumnValuesPanel.test.tsx", "e2e/phase21.spec.ts"])],
   "frontend-test": (filter) => [nodeStep("frontend-test", "node_modules/vitest/vitest.mjs", ["run", ...(filter ? [filter] : [])])],
+  "phase22-frontend-format": () => [nodeStep("phase22-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/sql-workspace/**/*.{ts,tsx,css}", "src/settings/**/*.{ts,tsx,css}", "src/App.tsx", "src/backend.ts", "src/backend.test.ts", "src/VirtualDataGrid.tsx", "src/VirtualDataGrid.test.tsx"])],
+  "phase22-e2e-format": () => [nodeStep("phase22-e2e-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "e2e/phase16.spec.ts", "e2e/phase22-sql.spec.ts", "e2e/phase22-sql-storage.spec.ts", "e2e/phase22-intellisense.spec.ts", "e2e/phase22-source-lifecycle.spec.ts", "e2e/phase22-join-completion.spec.ts", "e2e/phase22-editor-usability.spec.ts", "e2e/phase22-editor-layout.spec.ts"])],
+  "phase22-types": () => [nodeStep("phase22-types", "node_modules/typescript/bin/tsc", ["--noEmit"])],
+  "phase22-fixtures": () => [{name: "phase22-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-22/generate.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
+  "phase22-commerce-fixtures": () => [{name: "phase22-commerce-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-22/commerce/generate.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
+  "phase22-join-fixtures": () => [{name: "phase22-join-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-22/join-completion/generate.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
+  "phase22-stress-fixture": () => [{name: "phase22-stress-fixture", program: "C:/ProgramData/miniforge3/python.exe", args: ["scripts/phase22_stress_fixture.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
+  "phase22-stress": (filter) => [nodeStep("phase22-stress", "scripts/native_phase22_stress.mjs", filter ? [filter] : [])],
+  "phase22-sql-diagnostics": () => [psStep("phase22-sql-diagnostics", "scripts/phase22_diagnostics.ps1")],
+  "phase22-csv-waiter": () => [psStep("phase22-csv-waiter", "scripts/phase22_checks.ps1", ["-Stage", "csv-waiter"])],
+  "phase22-csv-corrupt": () => [psStep("phase22-csv-corrupt", "scripts/phase22_checks.ps1", ["-Stage", "csv-corrupt"])],
+  "phase22-format": () => [psStep("phase22-format", "scripts/phase22_checks.ps1", ["-Stage", "format"])],
+  "phase22-check": () => [psStep("phase22-check", "scripts/phase22_checks.ps1", ["-Stage", "check"])],
+  "phase22-static-check": () => [psStep("phase22-static-check", "scripts/phase22_static_check.ps1")],
+  "phase22-static-test-check": () => [psStep("phase22-static-test-check", "scripts/phase22_static_check.ps1", ["-Stage", "test-check"])],
+  "phase22-static-clippy": () => [psStep("phase22-static-clippy", "scripts/phase22_static_check.ps1", ["-Stage", "clippy"])],
+  "phase22-test": () => [psStep("phase22-test", "scripts/phase22_checks.ps1", ["-Stage", "test"])],
+  "phase22-sql-unit": () => [psStep("phase22-sql-unit", "scripts/phase22_checks.ps1", ["-Stage", "sql-unit"])],
+  "phase22-clippy": () => [psStep("phase22-clippy", "scripts/phase22_checks.ps1", ["-Stage", "clippy"])],
+  "phase22-build": () => [nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"]), psStep("phase22-build", "scripts/phase22_checks.ps1", ["-Stage", "build"])],
+  "phase22-native-build": () => [nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"]), psStep("phase22-native-build", "scripts/phase22_checks.ps1", ["-Stage", "native-build"])],
+  "phase22-native": () => [nodeStep("phase22-native", "scripts/native_phase22_sql.mjs")],
+  "phase22-native-export": () => [nodeStep("phase22-native-export", "scripts/native_phase22_sql.mjs", ["--export-only"])],
+  "phase22-native-export-candidate": () => [nodeStep("phase22-native-export-candidate", "scripts/native_phase22_sql.mjs", ["--export-only", "--export-candidate"])],
+  "phase22-bundle": () => [psStep("phase22-bundle", "scripts/phase22_checks.ps1", ["-Stage", "bundle"])],
+  "phase22-e2e": (filter) => [nodeStep("phase22-e2e", "scripts/phase22_e2e.mjs", filter ? [filter] : [])],
+  "phase22-restore-evidence": () => [nodeStep("phase22-restore-evidence", "scripts/phase22_restore_evidence.mjs")],
   "backend-test": () => [psStep("backend-test", scripts.backend, ["-Stage", "full"])],
   "backend-check": () => [psStep("backend-check", scripts.backend, ["-Stage", "clippy"])],
   "backend-format": () => [psStep("backend-format", scripts.backend, ["-Stage", "format"])],
@@ -78,7 +106,7 @@ if (args.length === 1 && args[0] === "--list") {
 }
 const [task, filter] = args;
 if (!Object.hasOwn(tasks, task) || args.length > 2 ||
-    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
+    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
   console.error("Usage: node scripts/dev-check.mjs [--dry-run] TASK [FILTER]\nUse --list for the fixed task list. Filters are supported only for frontend-test and e2e.");
   process.exit(2);
 }

@@ -1,0 +1,86 @@
+{
+  "generator": "generate.py",
+  "pyarrow": "26.0.0",
+  "files": [
+    {
+      "path": "sales/orders.csv",
+      "bytes": 457,
+      "sha256": "fd301e764a501cc3a0fd5efa990dfa98cb418003bfe4cbf99cefc407b7dde831"
+    },
+    {
+      "path": "archive/orders.csv",
+      "bytes": 155,
+      "sha256": "e6bb10a5f051b752fa01056371054c3fc2393ecc176f771b6e6a2558f9bd14cc"
+    },
+    {
+      "path": "customers.parquet",
+      "bytes": 2530,
+      "sha256": "462dbf9aaa8df13506978112426f505229c498dd01509f9cf70a852abc11e143"
+    },
+    {
+      "path": "headers/duplicates.csv",
+      "bytes": 86,
+      "sha256": "16a9e5f91aea05d37638ba5d20dc0427ffe2b294ebcbdef170ff809f80f49720"
+    },
+    {
+      "path": "headers/duplicates.parquet",
+      "bytes": 1491,
+      "sha256": "b32033ce62bdf7dfa3c7a7ebbd7a9cf5960eb466576432a5a7710417cc5d57cb"
+    },
+    {
+      "path": "headers/case-duplicates.csv",
+      "bytes": 23,
+      "sha256": "ca2b38b2a8887f227bad9baa4478747683454779cd7045ed9dcad8f5ce76cd84"
+    },
+    {
+      "path": "headers/blank.csv",
+      "bytes": 17,
+      "sha256": "a4b2b428308dcfb286f1c47c1148acf57fadf9922eb6cbb3d46e422d035c664a"
+    },
+    {
+      "path": "headers/collisions.csv",
+      "bytes": 64,
+      "sha256": "99b09b17fe9c58a5d40943c4562c5db91a8a87f00564caaa92afb64e357e3b7e"
+    },
+    {
+      "path": "headers/no-header.csv",
+      "bytes": 31,
+      "sha256": "4eaeb258235d97d1d78127bd5bf6fa7046c051e0c7ad78bbcbc8d485cabef8a9"
+    },
+    {
+      "path": "headers/late-duplicate.csv",
+      "bytes": 63318,
+      "sha256": "4d0162441c11f2e855e28a9ce98b112cf2bc15d1b5866765adb35f892b59431e"
+    },
+    {
+      "path": "wide.csv",
+      "bytes": 96089,
+      "sha256": "621198447adb3906bea06d60b39a86441a30129b7658b99038d1f104700bcadd"
+    },
+    {
+      "path": "typed-invalid.csv",
+      "bytes": 224,
+      "sha256": "6182c87211694f4e1e97cd9f0f47cf8ad3cf8e07efcb48da0d5dc954673ff929"
+    },
+    {
+      "path": "types.parquet",
+      "bytes": 2690,
+      "sha256": "295328044dd84e98148630dbc066b96d3bb9b044296d0bdc7c2b1cea20d2f4be"
+    },
+    {
+      "path": "temporal-extra.parquet",
+      "bytes": 886,
+      "sha256": "51409dae2a75fff5c3e2ef8e9349f51fe5aad6cc06c0c080d7f0ede6ab3fdd70"
+    },
+    {
+      "path": "nested-blob.parquet",
+      "bytes": 1198,
+      "sha256": "a32388fd1db47965a38fee4158aa5a976bd721e84ca14221d6ee2df3e562db12"
+    },
+    {
+      "path": "golden.json",
+      "bytes": 3529,
+      "sha256": "6b08f9f410d0ab1a994f22f8f423c8d029f71fe1a582b591f4d92765e3d5932b"
+    }
+  ]
+}

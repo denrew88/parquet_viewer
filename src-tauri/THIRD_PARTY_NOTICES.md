@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Embedded SQL editor
+
+The CodeMirror6 SQL editor and its JavaScript dependencies are distributed under MIT licences.
+Exact package versions and complete copyright/permission notices are embedded in the application's web
+assets as `third-party-codemirror.txt` (source: `public/third-party-codemirror.txt`).
+Regenerate with `node scripts/update_codemirror_notices.mjs` after editor dependency updates.
+
 The application statically links the following software. The exact Rust package versions are
 recorded in `Cargo.lock`.
 

@@ -9,4 +9,5 @@ pub(crate) use csv_cache::{
     CsvPersistentCache, CsvPersistentCacheLease,
 };
 pub use settings::SettingsStore;
+pub(crate) use temp::{open_temp_accounting_file, QUERY_TEMP_SAFETY_RESERVE_BYTES};
 pub use temp::{QueryTempCleanupResult, QueryTempLease, QueryTempManager, QueryTempUsage};

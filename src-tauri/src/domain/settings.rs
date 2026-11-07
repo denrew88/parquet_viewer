@@ -1,16 +1,28 @@
 use serde::{Deserialize, Serialize};
 
-pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 5;
+pub const APP_SETTINGS_SCHEMA_VERSION: u8 = 7;
 pub const DEFAULT_CSV_CACHE_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const DEFAULT_QUERY_TEMP_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub const MIN_QUERY_TEMP_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_QUERY_TEMP_LIMIT_BYTES: u64 = DEFAULT_QUERY_TEMP_LIMIT_BYTES;
+pub const DEFAULT_SQL_TEMP_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
+pub const MIN_SQL_TEMP_LIMIT_BYTES: u64 = MIN_QUERY_TEMP_LIMIT_BYTES;
+pub const MAX_SQL_TEMP_LIMIT_BYTES: u64 = MAX_QUERY_TEMP_LIMIT_BYTES;
 pub const DEFAULT_COPY_MAX_CELLS: u64 = 1_000_000;
 pub const MIN_COPY_MAX_CELLS: u64 = 1_000;
 pub const MAX_COPY_MAX_CELLS: u64 = 10_000_000;
 pub const DEFAULT_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 pub const MIN_COPY_MAX_BYTES: u64 = 1024 * 1024;
 pub const MAX_COPY_MAX_BYTES: u64 = 256 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SqlCompletionMode {
+    Automatic,
+    #[default]
+    Contextual,
+    Manual,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -381,6 +393,8 @@ pub struct AppSettingsV1 {
     pub copy_custom_options: CopyOptions,
     pub csv_default_parsing_mode: CsvDefaultParsingMode,
     pub query_temp_limit_bytes: u64,
+    pub sql_temp_limit_bytes: u64,
+    pub sql_completion_mode: SqlCompletionMode,
     pub csv_cache_limit_bytes: u64,
     pub csv_cache_directory: Option<String>,
     pub copy_limits: CopyLimits,
@@ -407,6 +421,8 @@ impl Default for AppSettingsV1 {
             },
             csv_default_parsing_mode: CsvDefaultParsingMode::Auto,
             query_temp_limit_bytes: DEFAULT_QUERY_TEMP_LIMIT_BYTES,
+            sql_temp_limit_bytes: DEFAULT_SQL_TEMP_LIMIT_BYTES,
+            sql_completion_mode: SqlCompletionMode::Contextual,
             csv_cache_limit_bytes: DEFAULT_CSV_CACHE_LIMIT_BYTES,
             csv_cache_directory: None,
             copy_limits: CopyLimits::default(),
@@ -444,6 +460,13 @@ impl AppSettingsV1 {
         ) {
             return Err(String::from(
                 "settings.copyCustomOptions.dateTimeRepresentation.format cannot be empty.",
+            ));
+        }
+        if !(MIN_SQL_TEMP_LIMIT_BYTES..=MAX_SQL_TEMP_LIMIT_BYTES)
+            .contains(&self.sql_temp_limit_bytes)
+        {
+            return Err(format!(
+                "settings.sqlTempLimitBytes must be between {MIN_SQL_TEMP_LIMIT_BYTES} and {MAX_SQL_TEMP_LIMIT_BYTES}."
             ));
         }
         if !(MIN_QUERY_TEMP_LIMIT_BYTES..=MAX_QUERY_TEMP_LIMIT_BYTES)
@@ -517,6 +540,8 @@ mod tests {
         assert_eq!(value["copyCustomOptions"]["preset"], "custom");
         assert_eq!(value["csvDefaultParsingMode"], "auto");
         assert_eq!(value["queryTempLimitBytes"], DEFAULT_QUERY_TEMP_LIMIT_BYTES);
+        assert_eq!(value["sqlTempLimitBytes"], DEFAULT_SQL_TEMP_LIMIT_BYTES);
+        assert_eq!(value["sqlCompletionMode"], "contextual");
         assert_eq!(value["copyLimits"]["maxCells"], DEFAULT_COPY_MAX_CELLS);
         assert_eq!(value["copyLimits"]["maxBytes"], DEFAULT_COPY_MAX_BYTES);
         assert_eq!(value["displayFormats"]["integer"]["grouping"], "none");
@@ -530,6 +555,54 @@ mod tests {
         );
         assert_eq!(value["displayFormats"]["binary"]["previewBytes"], 32);
         assert_eq!(value["displayFormats"]["string"]["maximumVisibleLines"], 2);
+    }
+
+    #[test]
+    fn sql_storage_shared_wire_boundary_parity() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture = manifest
+            .ancestors()
+            .map(|path| path.join("fixtures/phase-22/sql-storage-boundaries.json"))
+            .find(|path| path.is_file())
+            .expect("shared SQL setting corpus");
+        let corpus: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+        assert_eq!(corpus["minimumBytes"], MIN_SQL_TEMP_LIMIT_BYTES);
+        assert_eq!(corpus["maximumBytes"], MAX_SQL_TEMP_LIMIT_BYTES);
+        assert_eq!(corpus["defaultBytes"], DEFAULT_SQL_TEMP_LIMIT_BYTES);
+        for case in corpus["byteCases"].as_array().unwrap() {
+            let mut wire = serde_json::to_value(AppSettingsV1::default()).unwrap();
+            if let Some(value) = case.get("value") {
+                wire["sqlTempLimitBytes"] = value.clone();
+            } else {
+                wire.as_object_mut().unwrap().remove("sqlTempLimitBytes");
+            }
+            let valid = serde_json::from_value::<AppSettingsV1>(wire)
+                .is_ok_and(|settings| settings.validate().is_ok());
+            assert_eq!(valid, case["valid"].as_bool().unwrap(), "{}", case["id"]);
+        }
+    }
+
+    #[test]
+    fn sql_completion_shared_wire_boundary_parity() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .map(|path| path.join("fixtures/phase-22/sql-completion-settings-boundaries.json"))
+            .find(|path| path.is_file())
+            .expect("shared completion settings corpus");
+        let corpus: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+        for case in corpus["cases"].as_array().unwrap() {
+            let mut wire = serde_json::to_value(AppSettingsV1::default()).unwrap();
+            if let Some(mode) = case.get("mode") {
+                wire["sqlCompletionMode"] = mode.clone();
+            } else {
+                wire.as_object_mut().unwrap().remove("sqlCompletionMode");
+            }
+            let valid = serde_json::from_value::<AppSettingsV1>(wire)
+                .is_ok_and(|settings| settings.validate().is_ok());
+            assert_eq!(valid, case["valid"].as_bool().unwrap(), "{}", case["name"]);
+        }
     }
 
     #[test]

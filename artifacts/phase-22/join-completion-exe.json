@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-11-07T00:23:58.5329870Z",
+  "version": "0.22.0",
+  "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+  "bytes": 60487680,
+  "sha256": "3345e981800b2ab62bea30a28683ff85778bb1034639a92e49a0949527e87fde",
+  "baseline": {
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\data-viewer.exe",
+    "version": "0.22.0",
+    "bytes": 60469760,
+    "sha256": "6c45505f92e4ade2dfe455551136b17d6632d006f9cb0fbea259cd984dd24c88"
+  },
+  "deltaBytes": 17920,
+  "deltaKiB": 17.5,
+  "candidate": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-22\\data-viewer.exe",
+  "candidateSha256": "3345e981800b2ab62bea30a28683ff85778bb1034639a92e49a0949527e87fde",
+  "nativeAcceptanceSha256": "56ac6a7d6150ae3e375a160dfe0d9d5fc2858d669bd1b598e043c71bc152e0f6",
+  "nativeEvidence": "artifacts/phase-22/native/stress-join.json",
+  "buildLog": "artifacts/dev-check/2026-11-07T00-18-13-441Z-phase22-build.log",
+  "phaseWidePromotion": false
+}

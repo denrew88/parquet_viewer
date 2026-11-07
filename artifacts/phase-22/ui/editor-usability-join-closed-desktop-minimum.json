@@ -1,0 +1,33 @@
+{
+  "workspace": {
+    "left": 0,
+    "top": 94,
+    "right": 800,
+    "bottom": 570,
+    "width": 800,
+    "height": 476
+  },
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "context": [],
+  "tooltips": [
+    {
+      "left": 530.828125,
+      "top": 158,
+      "right": 800,
+      "bottom": 176.953125,
+      "width": 269.171875,
+      "height": 18.953125
+    },
+    {
+      "left": 322.890625,
+      "top": 160,
+      "right": 531.828125,
+      "bottom": 208,
+      "width": 208.9375,
+      "height": 48
+    }
+  ]
+}
