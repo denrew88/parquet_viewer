@@ -2057,7 +2057,12 @@ impl QueryService {
         task: &QueryTask,
     ) -> Result<QueryResult, DataError> {
         self.csv_cache.refresh_usage()?;
-        let per_query_cap = self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64;
+        let sql_view = request.document_id == sql_workspace::VIEW_DOCUMENT;
+        let per_query_cap = if sql_view {
+            sql_workspace::sql_view_temp_cap(self.temp.configured_limit())
+        } else {
+            self.temp.configured_limit() / MAX_CONCURRENT_QUERIES as u64
+        };
         self.csv_cache.reclaim_for_query(per_query_cap)?;
         let lease =
             self.temp
@@ -2136,6 +2141,11 @@ impl QueryService {
                 source_index: *index,
             })
             .collect();
+        if sql_view {
+            // Keep the physical index charged, while freeing the unused
+            // workspace reservation before an updated plan or export starts.
+            lease.commit_usage();
+        }
         Ok(QueryResult {
             document_id: request.document_id.clone(),
             session_id: request.session_id.clone(),
@@ -7267,6 +7277,87 @@ mod tests {
                     .collect::<Vec<_>>();
                 assert_eq!(values, ["3", expected], "case: {case}");
             }
+        }
+    }
+
+    #[test]
+    fn csv_timestamp_filters_distinguish_nanoseconds_with_offsets() {
+        let (directory, service) = service();
+        let path = directory.path().join("timestamp-nanos.csv");
+        std::fs::write(
+            &path,
+            "id,event_time\n1,1969-12-31T23:59:59.999999998Z\n2,1970-01-01T08:59:59.999999999+09:00\n3,1970-01-01T00:00:00.000000001Z\n4,2500-01-01T00:00:00.123456789Z\n5,NULL\n",
+        )
+        .unwrap();
+        let source = DataSource::open(path).unwrap();
+        let mut profile = source.active_csv_profile().unwrap();
+        profile.mode = CsvProfileMode::Custom;
+        profile.generation += 1;
+        profile.columns[1].target_type = CsvTargetType::Timestamp;
+        let source = source.prepare_csv_profile(&profile).unwrap();
+        for (index, (operator, values, expected)) in [
+            (
+                FilterOperator::Equals,
+                vec!["1969-12-31 23:59:59.999999999Z"],
+                vec!["2"],
+            ),
+            (
+                FilterOperator::Between,
+                vec![
+                    "1969-12-31 23:59:59.999999999Z",
+                    "1970-01-01 00:00:00.000000001Z",
+                ],
+                vec!["2", "3"],
+            ),
+            (
+                FilterOperator::Equals,
+                vec!["2500-01-01 00:00:00.123456789Z"],
+                vec!["4"],
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let plan = QueryPlan {
+                filters: vec![QueryFilter {
+                    id: "timestamp".to_owned(),
+                    column_id: "event_time".to_owned(),
+                    scalar_type: QueryScalarType::Timestamp,
+                    operator,
+                    values: values.into_iter().map(str::to_owned).collect(),
+                }],
+                search: None,
+                sort: vec![],
+                projection: vec!["id".to_owned()],
+            };
+            let request = request(
+                &format!("task-ns-{index}"),
+                &format!("query-ns-{index}"),
+                plan,
+            );
+            service
+                .execute(request.clone(), source.query_source_spec().unwrap())
+                .unwrap();
+            let status = wait_complete(&service, &request);
+            assert_eq!(status.state, QueryTaskState::Complete, "{:?}", status.error);
+            let page = service
+                .read_page(ReadQueryPageRequest {
+                    document_id: request.document_id,
+                    session_id: request.session_id,
+                    query_id: request.query_id,
+                    offset: 0,
+                    limit: 10,
+                    columns: vec!["id".to_owned()],
+                })
+                .unwrap()
+                .page;
+            assert_eq!(
+                page.rows
+                    .iter()
+                    .map(|row| row[0].display.as_deref().unwrap())
+                    .collect::<Vec<_>>(),
+                expected
+            );
         }
     }
 

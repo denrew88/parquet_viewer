@@ -1,0 +1,31 @@
+{
+  "status": "PASS",
+  "startedAt": "2026-11-08T08:42:51.865Z",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-timestamp-precision\\data-viewer.exe",
+  "identifier": "com.denrew88.data-viewer-phase23-acceptance",
+  "checks": [
+    {
+      "name": "T-P23-011 actual commerce JOIN timestamp filter",
+      "status": "PASS",
+      "elapsedMs": 53405,
+      "sourceRows": 124769,
+      "filteredRows": 118,
+      "materializedMs": 52013,
+      "input": [
+        "2024-07-01 00:00",
+        "2024-07-02 00:00"
+      ]
+    }
+  ],
+  "sha256": "d6faebc793003fb98bd9d3f9ecd140e0f7f4fb99dc022d3425dfdde367590a5a",
+  "process": {
+    "pid": 26488,
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-timestamp-precision\\data-viewer.exe",
+    "ticks": "639297565722376121"
+  },
+  "health": {
+    "status": "ok",
+    "appVersion": "0.23.0"
+  },
+  "finishedAt": "2026-11-08T08:43:46.976Z"
+}

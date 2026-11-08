@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "startedAt": "2026-11-08T11:25:58.330Z",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23\\data-viewer.exe",
+  "identifier": "com.denrew88.data-viewer",
+  "checks": [
+    {
+      "name": "Product identity, version and WebView startup",
+      "status": "PASS",
+      "elapsedMs": 0,
+      "appVersion": "0.23.0",
+      "identifier": "com.denrew88.data-viewer"
+    }
+  ],
+  "sha256": "5f37809f196ff1640649d2db7d66c4d5fd6ba8caf37cc8f94de6c8d5d19ca2f2",
+  "process": {
+    "pid": 17712,
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23\\data-viewer.exe",
+    "ticks": "639297663654421544"
+  },
+  "health": {
+    "status": "ok",
+    "appVersion": "0.23.0"
+  },
+  "finishedAt": "2026-11-08T11:26:06.559Z"
+}

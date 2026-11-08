@@ -22,7 +22,29 @@ const nodeStep = (name, entry, args = [], env = {}) => ({
 const psStep = (name, entry, args = []) => ({
   name, program: "powershell", args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", entry, ...args], env: {},
 });
+const phase23Rust = (stage) => psStep(`phase23-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "23", "-Stage", stage]);
+const frontendBuild = () => nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"]);
 const tasks = {
+  "phase23-format": () => [phase23Rust("format")],
+  "phase23-check": () => [phase23Rust("check")],
+  "phase23-clippy": () => [phase23Rust("clippy")],
+  "phase23-test": () => [phase23Rust("test")],
+  "phase23-sql-unit": () => [phase23Rust("sql-unit")],
+  "phase23-build": () => [frontendBuild(), phase23Rust("build")],
+  "phase23-native-build": () => [frontendBuild(), phase23Rust("native-build")],
+  "phase23-storage-draft-build": () => [frontendBuild(), phase23Rust("storage-draft-build")],
+  "phase23-storage-draft": () => [nodeStep("phase23-storage-draft", "scripts/native_phase23_results.mjs", ["--storage-draft"])],
+  "phase23-storage-baseline": () => [nodeStep("phase23-storage-baseline", "scripts/native_phase23_results.mjs", ["--storage-baseline"])],
+  "phase23-storage-precision": () => [nodeStep("phase23-storage-precision", "scripts/native_phase23_results.mjs", ["--timestamp-precision", "--storage-draft"])],
+  "phase23-product-smoke": () => [nodeStep("phase23-product-smoke", "scripts/native_phase23_results.mjs", ["--product-smoke"])],
+  "phase23-export-overwrite-build": () => [frontendBuild(), phase23Rust("export-overwrite-build")],
+  "phase23-export-overwrite": () => [nodeStep("phase23-export-overwrite", "scripts/native_phase23_results.mjs", ["--export-overwrite"])],
+  "phase23-native": () => [nodeStep("phase23-native", "scripts/native_phase23_results.mjs")],
+  "phase23-native-timestamp": () => [nodeStep("phase23-native-timestamp", "scripts/native_phase23_results.mjs", ["--timestamp-followup"])],
+  "phase23-native-precision": () => [nodeStep("phase23-native-precision", "scripts/native_phase23_results.mjs", ["--timestamp-precision"])],
+  "phase23-frontend-format": () => [nodeStep("phase23-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/sql-workspace/**/*.{ts,tsx,css}", "src/VirtualDataGrid.tsx", "src/backend.ts", "src/query/QueryToolbar.tsx"])],
+  "phase23-e2e-format": () => [nodeStep("phase23-e2e-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "e2e/phase23-results.spec.ts"])],
+  "phase23-e2e": (filter) => [nodeStep("phase23-e2e", "scripts/phase22_e2e.mjs", filter ? [filter] : [])],
   "phase22-identifier-keywords": () => [nodeStep("phase22-identifier-keywords", "scripts/sync_sql_identifier_keywords.mjs")],
   "frontend-check": () => [
     nodeStep("format", "node_modules/prettier/bin/prettier.cjs", ["--check", "src/**/*.{ts,tsx,css}", "e2e/**/*.ts", "vite.config.ts", "playwright.config.ts", "tsconfig.e2e.json", "index.html"]),
@@ -106,7 +128,7 @@ if (args.length === 1 && args[0] === "--list") {
 }
 const [task, filter] = args;
 if (!Object.hasOwn(tasks, task) || args.length > 2 ||
-    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
+    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase23-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
   console.error("Usage: node scripts/dev-check.mjs [--dry-run] TASK [FILTER]\nUse --list for the fixed task list. Filters are supported only for frontend-test and e2e.");
   process.exit(2);
 }

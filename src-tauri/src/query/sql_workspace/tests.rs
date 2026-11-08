@@ -556,6 +556,48 @@ fn sql_workspace_quoted_catalog_names_cannot_impersonate_input() {
 }
 
 #[test]
+fn sql_workspace_packs_stream_batches_without_changing_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = worker::execute_for_test(&job(
+        dir.path(),
+        "SELECT i FROM range(70000) AS t(i) ORDER BY i",
+        SqlAction::Execute,
+    ))
+    .unwrap();
+    assert_eq!(output.rows, 70_000);
+    assert_eq!(
+        output
+            .chunks
+            .iter()
+            .map(|chunk| (chunk.offset, chunk.rows))
+            .collect::<Vec<_>>(),
+        [(0, 32_768), (32_768, 32_768), (65_536, 4_464)]
+    );
+    let mut expected = 0;
+    for chunk in output.chunks {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(
+            File::open(dir.path().join(chunk.file)).unwrap(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let values = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap();
+            for value in values.values() {
+                assert_eq!(*value, expected);
+                expected += 1;
+            }
+        }
+    }
+    assert_eq!(expected, 70_000);
+}
+
+#[test]
 fn sql_workspace_metadata_result_and_analyze() {
     let dir = tempfile::tempdir().unwrap();
     let mut j = job(

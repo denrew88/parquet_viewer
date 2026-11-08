@@ -3,6 +3,8 @@ use arrow_schema::Schema;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+static NEXT_EXPORT_STAGE: AtomicU64 = AtomicU64::new(0);
+
 impl QueryService {
     pub fn export_sql_result(
         &self,
@@ -12,31 +14,89 @@ impl QueryService {
         path: &Path,
     ) -> Result<(), DataError> {
         let result = self.sql_result(run_id, result_id)?;
-        write_export(path, |file| match format {
-            SqlExportFormat::Csv => export_text(&result, file, b','),
-            SqlExportFormat::Tsv => export_text(&result, file, b'\t'),
-            SqlExportFormat::Parquet => export_parquet(&result, file),
+        export_batches(&result, format, path, |visit| {
+            for_each_batch(&result, visit)
         })
+    }
+}
+
+type BatchVisitor<'a> = dyn FnMut(RecordBatch) -> Result<(), DataError> + 'a;
+
+pub(super) fn export_batches(
+    result: &SqlResult,
+    format: SqlExportFormat,
+    path: &Path,
+    batches: impl FnOnce(&mut BatchVisitor<'_>) -> Result<(), DataError>,
+) -> Result<(), DataError> {
+    let existing = existing_export(path)?;
+    if let Some(target) = &existing {
+        if result.source_fingerprints.iter().any(|source| {
+            source.canonical_path == target.canonical_path
+                || source.file_identity == target.file_identity
+        }) {
+            return Err(invalid(
+                "A SQL input file cannot be replaced by its export.",
+            ));
+        }
+        let snapshot =
+            fs::canonicalize(result._lease.path()).map_err(|err| io(result._lease.path(), err))?;
+        if target.canonical_path.starts_with(snapshot) {
+            return Err(invalid("A SQL export cannot replace its result snapshot."));
+        }
+    }
+    write_export(path, existing, |file| match format {
+        SqlExportFormat::Csv => export_text(result, file, b',', batches),
+        SqlExportFormat::Tsv => export_text(result, file, b'\t', batches),
+        SqlExportFormat::Parquet => export_parquet(result, file, batches),
+    })
+}
+
+fn existing_export(path: &Path) -> Result<Option<SourceFingerprint>, DataError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => source_fingerprint(path).map(Some),
+        Ok(_) => Err(invalid("Choose a regular file for the SQL export.")),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(io(path, err)),
     }
 }
 
 fn write_export(
     path: &Path,
+    existing: Option<SourceFingerprint>,
     write: impl FnOnce(&mut File) -> Result<(), DataError>,
 ) -> Result<(), DataError> {
+    let staged = existing.as_ref().map(|_| {
+        let sequence = NEXT_EXPORT_STAGE.fetch_add(1, Ordering::Relaxed);
+        path.with_file_name(format!(
+            ".data-viewer-export-{}-{sequence}.tmp",
+            std::process::id()
+        ))
+    });
+    let output = staged.as_deref().unwrap_or(path);
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(path)
-        .map_err(|err| io(path, err))?;
-    let outcome = write(&mut file).and_then(|()| file.sync_all().map_err(|err| io(path, err)));
+        .open(output)
+        .map_err(|err| io(output, err))?;
+    let outcome = write(&mut file).and_then(|()| file.sync_all().map_err(|err| io(output, err)));
     drop(file);
+    let outcome = outcome.and_then(|()| {
+        if let Some(staged) = &staged {
+            if existing_export(path)? != existing {
+                return Err(invalid(
+                    "The export destination changed while saving. Choose it again.",
+                ));
+            }
+            fs::rename(staged, path).map_err(|err| io(path, err))?;
+        }
+        Ok(())
+    });
     if let Err(err) = outcome {
-        if let Err(cleanup) = fs::remove_file(path) {
+        if let Err(cleanup) = fs::remove_file(output) {
             return Err(error(format!(
                 "{} Partial output could not be removed: {}",
                 err.message,
-                io(path, cleanup).message
+                io(output, cleanup).message
             )));
         }
         return Err(err);
@@ -44,7 +104,7 @@ fn write_export(
     Ok(())
 }
 
-fn reader_builder(
+pub(super) fn reader_builder(
     result: &SqlResult,
     file_name: &str,
 ) -> Result<ParquetRecordBatchReaderBuilder<File>, DataError> {
@@ -71,7 +131,12 @@ fn for_each_batch(
     Ok(())
 }
 
-fn export_text(result: &SqlResult, file: &mut File, delimiter: u8) -> Result<(), DataError> {
+fn export_text(
+    result: &SqlResult,
+    file: &mut File,
+    delimiter: u8,
+    batches: impl FnOnce(&mut BatchVisitor<'_>) -> Result<(), DataError>,
+) -> Result<(), DataError> {
     let mut writer = BufWriter::new(file);
     let output_error = |err: std::io::Error| error(format!("Could not write SQL export: {err}"));
     writer.write_all(b"\xEF\xBB\xBF").map_err(output_error)?;
@@ -80,7 +145,7 @@ fn export_text(result: &SqlResult, file: &mut File, delimiter: u8) -> Result<(),
         write_text_field(&mut writer, delimiter, Some(&column.name)).map_err(output_error)?;
     }
     writer.write_all(b"\r\n").map_err(output_error)?;
-    for_each_batch(result, |batch| {
+    batches(&mut |batch| {
         for row in 0..batch.num_rows() {
             for (index, column) in batch.columns().iter().enumerate() {
                 write_separator(&mut writer, delimiter, index).map_err(output_error)?;
@@ -130,7 +195,11 @@ fn write_text_field(
     writer.write_all(b"\"")
 }
 
-fn export_parquet(result: &SqlResult, file: &mut File) -> Result<(), DataError> {
+fn export_parquet(
+    result: &SqlResult,
+    file: &mut File,
+    batches: impl FnOnce(&mut BatchVisitor<'_>) -> Result<(), DataError>,
+) -> Result<(), DataError> {
     let schema_file = result
         .chunks
         .first()
@@ -157,7 +226,7 @@ fn export_parquet(result: &SqlResult, file: &mut File) -> Result<(), DataError> 
         .build();
     let mut writer = ArrowWriter::try_new(file, Arc::clone(&schema), Some(properties))
         .map_err(|err| error(err.to_string()))?;
-    for_each_batch(result, |batch| {
+    batches(&mut |batch| {
         let batch = RecordBatch::try_new(Arc::clone(&schema), batch.columns().to_vec())
             .map_err(|err| error(err.to_string()))?;
         writer.write(&batch).map_err(|err| error(err.to_string()))
@@ -226,7 +295,8 @@ mod tests {
             let path = dir.path().join(filename);
             service.export_sql_result("text", &id, format, &path).unwrap();
             assert_eq!(fs::read_to_string(&path).unwrap(), expected);
-            assert!(service.export_sql_result("text", &id, format, &path).is_err());
+            fs::write(&path, b"previous export").unwrap();
+            service.export_sql_result("text", &id, format, &path).unwrap();
             assert_eq!(fs::read_to_string(&path).unwrap(), expected);
         }
     }
@@ -272,11 +342,27 @@ mod tests {
     fn failed_write_removes_partial_output() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("failed.csv");
-        assert!(write_export(&path, |file| {
+        assert!(write_export(&path, None, |file| {
             file.write_all(b"partial").unwrap();
             Err(error("injected export failure"))
         })
         .is_err());
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn failed_replacement_preserves_existing_export_and_removes_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("existing.csv");
+        fs::write(&path, b"previous export").unwrap();
+        assert!(
+            write_export(&path, existing_export(&path).unwrap(), |file| {
+                file.write_all(b"partial").unwrap();
+                Err(error("injected export failure"))
+            })
+            .is_err()
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"previous export");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

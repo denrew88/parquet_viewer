@@ -334,6 +334,18 @@ impl<T> Default for DocumentRegistry<T> {
 }
 
 impl<T> DocumentRegistry<T> {
+    pub(crate) fn has_open_or_reserved_path(
+        &self,
+        canonical_key: &str,
+    ) -> Result<bool, DocumentAccessError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| DocumentAccessError::Unavailable)?;
+        Ok(state.paths.contains_key(canonical_key)
+            || state.reservations.contains_key(canonical_key))
+    }
+
     /// Reserves capacity for a canonical path without performing file I/O while
     /// the registry is locked. Concurrent opens of the same path wait for the
     /// first reservation to commit or fail, then reuse or retry deterministically.

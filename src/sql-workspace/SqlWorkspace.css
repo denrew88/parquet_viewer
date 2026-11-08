@@ -11,7 +11,7 @@
 .sql-workspace[hidden] {
   display: none;
 }
-.sql-workspace button {
+.sql-workspace button:not(:where(.query-column-actions button)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -25,20 +25,20 @@
   font-size: 11px;
   cursor: pointer;
 }
-.sql-workspace button:hover:not(:disabled) {
+.sql-workspace button:not(:where(.query-column-actions button)):hover:not(:disabled) {
   background: #f1f6f6;
 }
-.sql-workspace button:disabled {
+.sql-workspace button:not(:where(.query-column-actions button)):disabled {
   cursor: default;
   opacity: 0.5;
 }
-.sql-workspace button[aria-pressed="true"],
-.sql-workspace button[aria-selected="true"] {
+.sql-workspace button:not(:where(.query-column-actions button))[aria-pressed="true"],
+.sql-workspace button:not(:where(.query-column-actions button))[aria-selected="true"] {
   background: #e4f3f1;
   color: #076d68;
   border-color: #78aaa4;
 }
-.sql-workspace button svg {
+.sql-workspace button:not(:where(.query-column-actions button)) svg {
   width: 14px;
   height: 14px;
 }
@@ -302,10 +302,22 @@
 .sql-query-heading h2 {
   margin: 0;
 }
+.sql-split {
+  display: grid;
+  grid-template-rows: clamp(205px, 34vh, 320px) 7px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.sql-output {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
 .sql-editing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
-  flex: 0 0 clamp(205px, 34vh, 320px);
   min-height: 0;
   min-width: 0;
 }
@@ -509,8 +521,15 @@
   color: #596f77;
 }
 .sql-result-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.sql-result-content {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -542,7 +561,7 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 10;
+  z-index: 25;
   display: grid;
   gap: 3px;
   min-width: 95px;
@@ -554,6 +573,18 @@
 }
 .sql-export-options button {
   text-align: left;
+}
+.sql-export-options--scoped {
+  grid-template-columns: repeat(2, minmax(90px, 1fr));
+  gap: 6px;
+}
+.sql-export-scope {
+  display: grid;
+  gap: 3px;
+}
+.sql-export-scope > strong {
+  padding: 2px 5px;
+  white-space: nowrap;
 }
 .sql-output-context {
   display: flex;
@@ -667,7 +698,7 @@
   .sql-editing--help-closed {
     grid-template-columns: 1fr;
   }
-  .sql-workspace button {
+  .sql-workspace button:not(:where(.query-column-actions button)) {
     font-size: 10px;
     padding-left: 6px;
     padding-right: 6px;
@@ -675,10 +706,64 @@
   .sql-run-actions {
     gap: 3px;
   }
+  .sql-result-content .query-find-form {
+    flex: 0 1 220px;
+    min-width: 126px;
+  }
+  .sql-result-content .query-find-form .query-search {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .sql-result-content
+    .query-toolbar
+    :is(
+      .query-submit-find,
+      .query-targets,
+      .query-find-navigation,
+      .query-close-find,
+      .query-sort-editor
+    ) {
+    flex-shrink: 0;
+  }
+  .sql-result-content .query-filter-chips {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .sql-result-content .query-filter-chip {
+    min-width: 0;
+  }
+  .sql-result-content .query-filter-chips > button,
+  .sql-result-content .query-filter-chip > button {
+    flex-shrink: 0;
+  }
 }
 @media (max-height: 700px) {
-  .sql-editing {
-    flex-basis: 205px;
+  .sql-split {
+    grid-template-rows: minmax(125px, 37%) 7px minmax(0, 1fr);
+  }
+  .sql-result-content {
+    --grid-query-toolbar-height: 34px;
+    --grid-column-toolbar-height: 34px;
+    --grid-paging-height: 32px;
+  }
+  .sql-result-content .query-toolbar {
+    min-height: 34px;
+  }
+  .sql-result-content :is(.query-toolbar, .column-toolbar, .paging-bar) {
+    padding-block: 2px;
+  }
+  .sql-result-content .paging-button {
+    height: 28px;
+  }
+  .sql-result-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 7px;
+  }
+  .sql-result-summary .sql-output-context {
+    margin-top: 0;
   }
   .sql-column-mode label {
     min-height: 33px;

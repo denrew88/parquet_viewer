@@ -18,6 +18,8 @@ use std::{
 };
 
 mod export;
+mod result_view;
+pub(super) use result_view::{sql_view_temp_cap, VIEW_DOCUMENT};
 mod security;
 mod worker;
 pub use worker::try_run_sql_worker_from_args;
@@ -45,10 +47,12 @@ struct SqlTask {
 }
 struct SqlResult {
     run_id: String,
+    source_fingerprints: Vec<SourceFingerprint>,
     columns: Vec<SqlResultColumn>,
     chunks: Vec<ResultChunk>,
     rows: u64,
     alive: AtomicBool,
+    views: Mutex<HashMap<String, Arc<result_view::SqlResultView>>>,
     _lease: Arc<QueryTempLease>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -638,10 +642,12 @@ impl QueryService {
             lease.commit_usage();
             let result = Arc::new(SqlResult {
                 run_id: task.request.run_id.clone(),
+                source_fingerprints: fingerprints.into_iter().map(|(_, source)| source).collect(),
                 columns: output.columns.clone(),
                 chunks: output.chunks,
                 rows: output.rows,
                 alive: AtomicBool::new(true),
+                views: Mutex::new(HashMap::new()),
                 _lease: Arc::clone(&lease),
             });
             self.sql_workspace
@@ -740,6 +746,7 @@ impl QueryService {
         // Publication takes this same tasks mutex, so it must either precede
         // this cleanup or observe cancellation before inserting any result.
         task.cancel.store(true, Ordering::Release);
+        let mut discarded = Vec::new();
         self.sql_workspace
             .results
             .lock()
@@ -747,6 +754,7 @@ impl QueryService {
             .retain(|_, result| {
                 if result.run_id == run {
                     result.alive.store(false, Ordering::Release);
+                    discarded.push(Arc::clone(result));
                     false
                 } else {
                     true
@@ -765,6 +773,11 @@ impl QueryService {
             status.row_count = None;
             status.plan_text = None;
             status.plan_json = None;
+        }
+        drop(status);
+        drop(tasks);
+        for result in discarded {
+            self.close_sql_result_views(&result)?;
         }
         // An active worker reports terminal state only after stop/wait and
         // execution-lease cleanup in the existing control thread.
@@ -818,7 +831,7 @@ impl QueryService {
             .lock()
             .map_err(|_| registry_error())?
             .remove(id);
-        Ok(())
+        self.close_sql_result_views(&result)
     }
     pub fn sql_copy_context(
         self: &Arc<Self>,
@@ -827,11 +840,20 @@ impl QueryService {
         operation: &str,
         max_bytes: u64,
     ) -> Result<(Arc<dyn CopyRowReader>, PathBuf), DataError> {
+        let result = self.sql_result(run, id)?;
+        let (reader, path) = self.sql_copy_reader(result, operation, max_bytes)?;
+        Ok((Arc::new(reader), path))
+    }
+    fn sql_copy_reader(
+        self: &Arc<Self>,
+        result: Arc<SqlResult>,
+        operation: &str,
+        max_bytes: u64,
+    ) -> Result<(SqlCopyReader, PathBuf), DataError> {
         validate_sql_identity(operation)?;
         if max_bytes == 0 || max_bytes > 256 * 1024 * 1024 {
             return Err(invalid("SQL copy bytes must be within 1..256MiB."));
         }
-        let result = self.sql_result(run, id)?;
         self.csv_cache.refresh_usage()?;
         let lease = Arc::new(
             self.temp
@@ -843,7 +865,7 @@ impl QueryService {
             service: Arc::clone(self),
             lease,
         };
-        Ok((Arc::new(reader), path))
+        Ok((reader, path))
     }
     pub(super) fn shutdown_sql(&self) {
         if let Ok(tasks) = self.sql_workspace.tasks.lock() {
@@ -871,6 +893,7 @@ impl QueryService {
         if let Ok(mut results) = self.sql_workspace.results.lock() {
             for result in results.values() {
                 result.alive.store(false, Ordering::Release);
+                result.invalidate_views();
             }
             results.clear();
         }
@@ -966,7 +989,7 @@ impl SqlResult {
         let mut rows = Vec::new();
         let mut bytes = 0usize;
         'chunks: for chunk in &self.chunks {
-            if chunk.offset + chunk.rows <= offset || chunk.offset >= end {
+            if offset >= end || chunk.offset + chunk.rows <= offset || chunk.offset >= end {
                 continue;
             }
             let path = self._lease.path().join(&chunk.file);
@@ -981,19 +1004,21 @@ impl SqlResult {
                 v.sort_unstable();
                 v
             };
+            let start = offset.saturating_sub(chunk.offset) as usize;
+            let stop = (end - chunk.offset).min(chunk.rows) as usize;
+            let selection = parquet::arrow::arrow_reader::RowSelection::from_consecutive_ranges(
+                std::iter::once(start..stop),
+                chunk.rows as usize,
+            );
             let reader = builder
                 .with_projection(mask)
+                .with_row_selection(selection)
                 .with_batch_size(256)
                 .build()
                 .map_err(|e| error(e.to_string()))?;
-            let mut base = chunk.offset;
             for batch in reader {
                 let batch = batch.map_err(|e| error(e.to_string()))?;
                 for r in 0..batch.num_rows() {
-                    let row_id = base + r as u64;
-                    if row_id < offset || row_id >= end {
-                        continue;
-                    }
                     let mut row = Vec::new();
                     let mut row_bytes = 0;
                     for index in &indices {
@@ -1022,7 +1047,6 @@ impl SqlResult {
                     bytes += row_bytes;
                     rows.push(row);
                 }
-                base += batch.num_rows() as u64;
             }
         }
         if !self.alive.load(Ordering::Acquire) {

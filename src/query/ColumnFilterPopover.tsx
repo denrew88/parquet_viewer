@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Check, LoaderCircle, Search, X } from "lucide-react";
 import {
   operatorsForType,
@@ -93,6 +93,8 @@ export function ColumnFilterPopover({
 }: ColumnFilterPopoverProps) {
   const [draft, setDraft] = useState(() => newDraft(columnId, scalarType, initialFilter));
   const [distinctSearch, setDistinctSearch] = useState("");
+  const timestampHint = useId();
+  const isTimestamp = scalarType === "timestamp";
 
   useEffect(() => {
     setDraft(newDraft(columnId, scalarType, initialFilter));
@@ -165,25 +167,27 @@ export function ColumnFilterPopover({
         </select>
       </label>
       {draft.operator !== "oneOf" && valueCount > 0 && (
-        <div className="column-filter-popover__values">
+        <div
+          className={`column-filter-popover__values${isTimestamp ? " column-filter-popover__values--timestamp" : ""}`}
+        >
           {Array.from({ length: valueCount }, (_, index) => (
             <label key={index}>
               {valueCount === 2 ? (index === 0 ? "From" : "To") : "Value"}
               <input
+                aria-describedby={isTimestamp ? timestampHint : undefined}
                 aria-invalid={Boolean(error)}
                 aria-label={valueCount === 2 ? (index === 0 ? "From value" : "To value") : "Value"}
                 onChange={(event) => updateValue(index, event.target.value)}
-                type={
-                  scalarType === "date"
-                    ? "date"
-                    : scalarType === "timestamp"
-                      ? "datetime-local"
-                      : "text"
-                }
+                placeholder={isTimestamp ? "YYYY-MM-DD HH:mm:ss" : undefined}
+                spellCheck={isTimestamp ? false : undefined}
+                type={scalarType === "date" ? "date" : "text"}
                 value={draft.values[index] ?? ""}
               />
             </label>
           ))}
+          {isTimestamp && (
+            <small id={timestampHint}>24-hour time. Include seconds before a UTC offset.</small>
+          )}
         </div>
       )}
       {distinct && (

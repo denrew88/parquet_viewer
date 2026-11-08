@@ -767,6 +767,10 @@
   grid-column: 1 / -1;
 }
 
+.column-filter-popover__values--timestamp {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .distinct-values {
   display: grid;
   min-height: 0;

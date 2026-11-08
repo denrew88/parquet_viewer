@@ -1,6 +1,6 @@
 [package]
 name = "data-viewer"
-version = "0.22.0"
+version = "0.23.0"
 description = "A read-only desktop viewer for CSV and Parquet files"
 authors = ["Data Viewer contributors"]
 edition = "2021"

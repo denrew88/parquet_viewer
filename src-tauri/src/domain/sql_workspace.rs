@@ -121,6 +121,7 @@ pub enum SqlExportFormat {
 pub struct SqlExportRequest {
     pub run_id: String,
     pub result_id: String,
+    pub view_id: Option<String>,
     pub format: SqlExportFormat,
 }
 

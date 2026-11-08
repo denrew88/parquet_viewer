@@ -67,6 +67,39 @@ describe("ColumnFilterPopover", () => {
     );
   });
 
+  it("accepts exact 24-hour text boundaries for ordered_at", () => {
+    const onApply = vi.fn();
+    render(
+      <ColumnFilterPopover
+        columnId="r3"
+        columnLabel="ordered_at"
+        initialFilter={null}
+        onApply={onApply}
+        onCancel={vi.fn()}
+        onClear={vi.fn()}
+        scalarType="timestamp"
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Filter operator"), { target: { value: "between" } });
+    const from = screen.getByRole("textbox", { name: "From value" });
+    const to = screen.getByRole("textbox", { name: "To value" });
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expect(from).toHaveAccessibleDescription("24-hour time. Include seconds before a UTC offset.");
+    fireEvent.change(from, { target: { value: "2024-07-26 24:00" } });
+    fireEvent.change(to, { target: { value: "2024-07-26 23:59:59.123456789" } });
+    expect(apply).toBeDisabled();
+    fireEvent.change(from, { target: { value: "2024-07-26 13:05" } });
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        columnId: "r3",
+        operator: "between",
+        values: ["2024-07-26 13:05", "2024-07-26 23:59:59.123456789"],
+      }),
+    );
+  });
+
   it("cancels the draft on Escape", () => {
     const onCancel = vi.fn();
     render(

@@ -192,6 +192,29 @@ export function isValidDurationLiteral(value: string, targetUnit?: DurationUnit)
   }
 }
 
+function isValidTimestampLiteral(value: string): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))?)?$/.exec(
+      value,
+    );
+  if (!match || match[0] !== value) return false;
+  const [year, month, day, hour, minute, second, offsetHour, offsetMinute] = match
+    .slice(1)
+    .map((part) => Number(part ?? "0"));
+  if (year === 0 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  return (
+    day >= 1 &&
+    day <= daysInMonth &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
+  );
+}
+
 export function validateFilter(filter: QueryFilter, durationUnit?: DurationUnit): string | null {
   if (!filter.id.trim()) return "Filter id is required.";
   if (!filter.columnId.trim()) return "Column is required.";
@@ -227,11 +250,7 @@ export function validateFilter(filter: QueryFilter, durationUnit?: DurationUnit)
     if (invalid !== undefined) return `“${invalid}” is not a valid date.`;
   }
   if (filter.scalarType === "timestamp") {
-    const invalid = filter.values.find(
-      (value) =>
-        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value) ||
-        Number.isNaN(Date.parse(value)),
-    );
+    const invalid = filter.values.find((value) => !isValidTimestampLiteral(value));
     if (invalid !== undefined) return `“${invalid}” is not a valid timestamp.`;
   }
   if (filter.scalarType === "duration") {

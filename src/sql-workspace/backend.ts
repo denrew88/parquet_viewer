@@ -4,11 +4,19 @@ import {
   parseCopyOperationStatus,
   parseDataPage,
   parseDataValue,
+  parseFindQueryMatchResponse,
+  parseQueryPlan,
+  parseQueryStatus,
+  validatedFindQueryMatchRequest,
   type CopyOperationStatus,
   type DataPage,
   type DataValue,
   type StartCopyRequest,
+  type FindQueryMatchRequest,
+  type FindQueryMatchResponse,
+  type QueryStatusResponse,
 } from "../backend";
+import type { QueryPlan } from "../query/model";
 
 export type SqlColumnMode = "name" | "ordinal";
 export type SqlAction = "execute" | "explain" | "analyze";
@@ -67,25 +75,52 @@ export interface SqlPageRequest {
   offset: number;
   limit: number;
   columns: string[];
+  viewId?: string;
 }
 export interface SqlExportRequest {
   runId: string;
   resultId: string;
   format: "csv" | "tsv" | "parquet";
+  viewId?: string;
+}
+export interface SqlResultViewBackend {
+  start(
+    runId: string,
+    resultId: string,
+    viewId: string,
+    plan: QueryPlan,
+  ): Promise<QueryStatusResponse>;
+  status(runId: string, resultId: string, viewId: string): Promise<QueryStatusResponse>;
+  cancel(runId: string, resultId: string, viewId: string): Promise<QueryStatusResponse>;
+  release(runId: string, resultId: string, viewId: string): Promise<void>;
+  find(
+    runId: string,
+    resultId: string,
+    viewId: string,
+    request: FindQueryMatchRequest,
+  ): Promise<FindQueryMatchResponse>;
 }
 export interface SqlWorkspaceBackend {
+  resultView?: SqlResultViewBackend;
   describeTables(sources: SqlSourceIdentity[]): Promise<SqlTableDescriptor[]>;
   startQuery(request: StartSqlRequest): Promise<SqlStatus>;
   getStatus(runId: string): Promise<SqlStatus>;
   cancelQuery(runId: string): Promise<SqlStatus>;
   readPage(request: SqlPageRequest): Promise<DataPage>;
-  readCell(runId: string, resultId: string, row: number, columnId: string): Promise<DataValue>;
+  readCell(
+    runId: string,
+    resultId: string,
+    row: number,
+    columnId: string,
+    viewId?: string,
+  ): Promise<DataValue>;
   releaseResult(runId: string, resultId: string): Promise<void>;
   exportResult(request: SqlExportRequest): Promise<boolean>;
   startCopy(
     runId: string,
     resultId: string,
     request: StartCopyRequest,
+    viewId?: string,
   ): Promise<CopyOperationStatus>;
 }
 
@@ -252,6 +287,7 @@ export function validateSqlPage(request: SqlPageRequest): SqlPageRequest {
   try {
     identity(request.runId);
     identity(request.resultId);
+    if (request.viewId !== undefined) identity(request.viewId);
     integer(request.offset, 1_000_000);
     integer(request.limit, 200);
     if (
@@ -274,6 +310,30 @@ export function validateSqlPage(request: SqlPageRequest): SqlPageRequest {
     );
   }
 }
+function viewIdentity(runId: string, resultId: string, viewId: string) {
+  identity(runId);
+  identity(resultId);
+  identity(viewId);
+  return { runId, resultId, viewId };
+}
+function verifyViewIdentity(
+  value: { documentId: string; sessionId: string; queryId: string },
+  resultId: string,
+  viewId: string,
+) {
+  if (
+    value.documentId !== "sql-workspace" ||
+    value.sessionId !== resultId ||
+    value.queryId !== viewId
+  )
+    fail("SQL result view identity does not match.");
+}
+function viewStatus(value: unknown, resultId: string, viewId: string) {
+  const status = parseQueryStatus(value);
+  verifyViewIdentity(status, resultId, viewId);
+  if (status.taskId !== viewId) fail("SQL result view task identity does not match.");
+  return status;
+}
 async function call<T>(
   command: string,
   args: Record<string, unknown>,
@@ -292,6 +352,44 @@ async function call<T>(
 }
 export function createSqlWorkspaceTransport(): SqlWorkspaceBackend {
   return {
+    resultView: {
+      start(runId, resultId, viewId, plan) {
+        const args = viewIdentity(runId, resultId, viewId);
+        return call("start_sql_result_view", { ...args, plan: parseQueryPlan(plan) }, (v) =>
+          viewStatus(v, resultId, viewId),
+        );
+      },
+      status(runId, resultId, viewId) {
+        return call("get_sql_result_view_status", viewIdentity(runId, resultId, viewId), (v) =>
+          viewStatus(v, resultId, viewId),
+        );
+      },
+      cancel(runId, resultId, viewId) {
+        return call("cancel_sql_result_view", viewIdentity(runId, resultId, viewId), (v) =>
+          viewStatus(v, resultId, viewId),
+        );
+      },
+      release(runId, resultId, viewId) {
+        return call(
+          "release_sql_result_view",
+          viewIdentity(runId, resultId, viewId),
+          () => undefined,
+        );
+      },
+      find(runId, resultId, viewId, request) {
+        const args = viewIdentity(runId, resultId, viewId);
+        verifyViewIdentity(request, resultId, viewId);
+        return call(
+          "find_sql_result_view_match",
+          { ...args, request: validatedFindQueryMatchRequest(request) },
+          (v) => {
+            const result = parseFindQueryMatchResponse(v);
+            verifyViewIdentity(result, resultId, viewId);
+            return result;
+          },
+        );
+      },
+    },
     describeTables(sources) {
       if (sources.length > 32)
         return Promise.reject(
@@ -328,36 +426,42 @@ export function createSqlWorkspaceTransport(): SqlWorkspaceBackend {
     },
     readPage(request) {
       validateSqlPage(request);
-      return call("read_sql_query_page", { request }, (v) => {
-        const wire = obj(v);
-        if (
-          Object.prototype.hasOwnProperty.call(wire, "sessionId") &&
-          wire.sessionId !== request.resultId
-        )
-          fail("SQL page belongs to another result/projection.");
-        // Native DataPage carries page data only. The validated SQL request binds
-        // it to the result; frontend grid adapters use that result as sessionId.
-        const page = parseDataPage({ ...wire, sessionId: request.resultId });
-        if (
-          page.sessionId !== request.resultId ||
-          page.offset !== request.offset ||
-          page.limit !== request.limit ||
-          JSON.stringify(page.columns) !== JSON.stringify(request.columns)
-        )
-          fail("SQL page belongs to another result/projection.");
-        return page;
-      });
+      const { viewId, ...pageRequest } = request;
+      return call(
+        "read_sql_query_page",
+        { request: pageRequest, ...(viewId && { viewId }) },
+        (v) => {
+          const wire = obj(v);
+          if (
+            Object.prototype.hasOwnProperty.call(wire, "sessionId") &&
+            wire.sessionId !== request.resultId
+          )
+            fail("SQL page belongs to another result/projection.");
+          // Native DataPage carries page data only. The validated SQL request binds
+          // it to the result; frontend grid adapters use that result as sessionId.
+          const page = parseDataPage({ ...wire, sessionId: request.resultId });
+          if (
+            page.sessionId !== request.resultId ||
+            page.offset !== request.offset ||
+            page.limit !== request.limit ||
+            JSON.stringify(page.columns) !== JSON.stringify(request.columns)
+          )
+            fail("SQL page belongs to another result/projection.");
+          return page;
+        },
+      );
     },
-    readCell(runId, resultId, row, columnId) {
+    readCell(runId, resultId, row, columnId, viewId) {
       identity(runId);
       identity(resultId);
       integer(row, 999_999);
       identity(columnId);
+      if (viewId !== undefined) identity(viewId);
       if (!/^r(?:0|[1-9][0-9]*)$/.test(columnId) || Number(columnId.slice(1)) > 4095)
         throw new DataViewerError("InvalidRequest", "Unknown SQL column identity.");
       return call(
         "read_sql_query_cell",
-        { runId, resultId, row, columnId },
+        { runId, resultId, row, columnId, ...(viewId && { viewId }) },
         (v) => parseDataValue(v) ?? fail(),
       );
     },
@@ -369,28 +473,35 @@ export function createSqlWorkspaceTransport(): SqlWorkspaceBackend {
     exportResult(request) {
       identity(request.runId);
       identity(request.resultId);
+      if (request.viewId !== undefined) identity(request.viewId);
       return call("export_sql_result", { request }, bool);
     },
-    startCopy(runId, resultId, request) {
+    startCopy(runId, resultId, request, viewId) {
       identity(runId);
       identity(resultId);
+      if (viewId !== undefined) identity(viewId);
+      const queryId = viewId ?? runId;
       if (
         request.documentId !== "sql-workspace" ||
         request.sessionId !== resultId ||
-        request.queryId !== runId
+        request.queryId !== queryId
       )
         throw new DataViewerError("InvalidRequest", "Copy belongs to another SQL result.");
-      return call("start_sql_copy", { runId, resultId, request }, (v) => {
-        const status = parseCopyOperationStatus(v);
-        if (
-          status.operationId !== request.operationId ||
-          status.documentId !== request.documentId ||
-          status.sessionId !== resultId ||
-          status.queryId !== runId
-        )
-          fail("SQL copy belongs to another result.");
-        return status;
-      });
+      return call(
+        "start_sql_copy",
+        { runId, resultId, request, ...(viewId && { viewId }) },
+        (v) => {
+          const status = parseCopyOperationStatus(v);
+          if (
+            status.operationId !== request.operationId ||
+            status.documentId !== request.documentId ||
+            status.sessionId !== resultId ||
+            status.queryId !== queryId
+          )
+            fail("SQL copy belongs to another result.");
+          return status;
+        },
+      );
     },
   };
 }

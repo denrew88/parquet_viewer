@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-11-08T11:41:28.4199713+09:00",
+  "version": "0.23.0",
+  "identifier": "com.denrew88.data-viewer",
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 60955136,
+  "sha256": "6f1387e465d5bb4df535779fd9235a4d0b11b88deea724f8dc5cd46552342e83",
+  "baseline": {
+    "version": "0.22.0",
+    "bytes": 60678144,
+    "sha256": "f4d16fb83cc9d69a70d0a504628c4d9da068ffb1efa8da917c6052ccc90aea9d"
+  },
+  "deltaBytes": 276992,
+  "previousProduct": {
+    "bytes": 67525632,
+    "sha256": "7d5ff905776e3580e2814354f1acf36500aacf880fa2c7ab1edb31f371275077",
+    "buildLog": "artifacts/dev-check/2026-11-07T22-12-10-878Z-phase23-build.log"
+  },
+  "reductionFromPreviousProductBytes": 6570496,
+  "productCandidateSha256": "6f1387e465d5bb4df535779fd9235a4d0b11b88deea724f8dc5cd46552342e83",
+  "nativeAcceptanceSha256": "38d85db68e64e3bed2b070bae0fb565fae70eba2aa67fe33e191710ec037d6c2",
+  "nativeEvidence": "artifacts/phase-23/export-optimization/native-report.json",
+  "buildLog": "artifacts/dev-check/2026-11-08T02-36-51-919Z-phase23-build.log"
+}

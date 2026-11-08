@@ -1,0 +1,33 @@
+{
+  "recordedAt": "2026-11-08T17:51:55.0557737+09:00",
+  "version": "0.23.0",
+  "identifier": "com.denrew88.data-viewer",
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 60961792,
+  "sha256": "6bf605e4b5306bffa4aabf4ae3153c99bed1357d94b971f0b1ab759de05be167",
+  "previousProduct": {
+    "bytes": 60955136,
+    "sha256": "6f1387e465d5bb4df535779fd9235a4d0b11b88deea724f8dc5cd46552342e83",
+    "record": "artifacts/phase-23/product-exe.json"
+  },
+  "buildLog": "artifacts/dev-check/2026-11-08T08-46-42-435Z-phase23-build.log",
+  "productSmoke": "product-smoke.json",
+  "nativeEvidence": "native-precision-and-storage.json",
+  "commerceRuns": {
+    "baselineMs": [
+      70086,
+      52013
+    ],
+    "optimizedMs": [
+      1089,
+      1098
+    ],
+    "optimizedFiles": 4,
+    "rows": 124769
+  },
+  "rustTests": {
+    "status": "blocked",
+    "windowsError": 4551,
+    "log": "artifacts/dev-check/2026-11-08T08-37-27-778Z-phase23-test.log"
+  }
+}

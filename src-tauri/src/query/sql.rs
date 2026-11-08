@@ -102,18 +102,37 @@ pub fn materialize_sql(
             .iter()
             .position(|column| column.name == filter.column_id)
             .expect("validated filter column");
-        let column = typed_source_column(
-            source,
-            &quote_identifier(&filter.column_id),
-            filter.scalar_type,
-        );
+        let schema = &source.columns[column_index];
+        let identifier = quote_identifier(&filter.column_id);
+        let native = source.provider.native_query_types();
+        // DuckDB reads Parquet's unannotated second timestamps as epoch integers.
+        let epoch_seconds = native
+            && filter.scalar_type == QueryScalarType::Timestamp
+            && schema.logical_type == "TIMESTAMP_S";
+        let column = if epoch_seconds {
+            format!("CAST({identifier} AS HUGEINT) * 1000000000")
+        } else {
+            typed_source_column(source, &identifier, filter.scalar_type)
+        };
+        let placeholder =
+            if filter.scalar_type == QueryScalarType::Timestamp && (!native || epoch_seconds) {
+                // Bind the literal once, even though conversion uses it twice.
+                format!(
+                    "list_transform([CAST(? AS VARCHAR)], lambda t: {})[1]",
+                    timestamp_nanos("t", epoch_seconds)
+                )
+            } else if native {
+                format!("cast_to_type(?, {column})")
+            } else {
+                format!("TRY_CAST(? AS {})", scalar_sql_type(filter.scalar_type))
+            };
         let invalid = invalid_name(column_index);
-        let values = normalized_filter_values(&source.columns[column_index], filter)?;
+        let values = normalized_filter_values(schema, filter)?;
         predicates.push(filter_predicate(
             &column,
             &invalid,
             filter.scalar_type,
-            source.provider.native_query_types(),
+            &placeholder,
             filter.operator,
             &values,
             &mut parameters,
@@ -228,18 +247,11 @@ fn filter_predicate(
     column: &str,
     invalid: &str,
     scalar: QueryScalarType,
-    native_query_types: bool,
+    placeholder: &str,
     operator: FilterOperator,
     values: &[String],
     parameters: &mut Vec<String>,
 ) -> String {
-    let placeholder = || {
-        if native_query_types {
-            format!("cast_to_type(?, {column})")
-        } else {
-            format!("TRY_CAST(? AS {})", scalar_sql_type(scalar))
-        }
-    };
     match operator {
         FilterOperator::IsNull => format!("({column} IS NULL AND NOT {invalid})"),
         FilterOperator::IsNotNull => format!("({column} IS NOT NULL OR {invalid})"),
@@ -253,9 +265,9 @@ fn filter_predicate(
                 .iter()
                 .map(|_| {
                     if scalar == QueryScalarType::Text {
-                        String::from("?")
+                        "?"
                     } else {
-                        placeholder()
+                        placeholder
                     }
                 })
                 .collect::<Vec<_>>()
@@ -264,7 +276,7 @@ fn filter_predicate(
         }
         FilterOperator::Between => {
             parameters.extend(values.iter().cloned());
-            format!("{column} BETWEEN {} AND {}", placeholder(), placeholder())
+            format!("{column} BETWEEN {placeholder} AND {placeholder}")
         }
         FilterOperator::Contains | FilterOperator::StartsWith | FilterOperator::EndsWith => {
             parameters.push(values[0].clone());
@@ -278,9 +290,9 @@ fn filter_predicate(
         operator => {
             parameters.push(values[0].clone());
             let mark = if scalar == QueryScalarType::Text {
-                String::from("?")
+                "?"
             } else {
-                placeholder()
+                placeholder
             };
             let comparison = match operator {
                 FilterOperator::Equals => "=",
@@ -311,9 +323,23 @@ pub fn scalar_sql_type(scalar: QueryScalarType) -> &'static str {
 fn typed_column(identifier: &str, scalar: QueryScalarType) -> String {
     if matches!(scalar, QueryScalarType::Text | QueryScalarType::Other) {
         identifier.to_owned()
+    } else if scalar == QueryScalarType::Timestamp {
+        timestamp_nanos(identifier, false)
     } else {
         format!("TRY_CAST({identifier} AS {})", scalar_sql_type(scalar))
     }
+}
+
+fn timestamp_nanos(value: &str, naive_without_offset: bool) -> String {
+    // TIMESTAMPTZ handles offsets and the full calendar range at microsecond
+    // precision. Recover the remaining fractional digits before comparing.
+    let micros = format!("epoch_us(TRY_CAST({value} AS TIMESTAMPTZ))");
+    let micros = if naive_without_offset {
+        format!("CASE WHEN regexp_matches({value}, '(Z|[+-][0-9]{{2}}:[0-9]{{2}})$') THEN {micros} ELSE epoch_us(TRY_CAST({value} AS TIMESTAMP)) END")
+    } else {
+        micros
+    };
+    format!("(CAST({micros} AS HUGEINT) * 1000 + CAST(rpad(regexp_extract({value}, ':[0-9]{{2}}[.][0-9]{{6}}([0-9]{{1,3}})', 1), 3, '0') AS HUGEINT))")
 }
 
 fn typed_source_column(

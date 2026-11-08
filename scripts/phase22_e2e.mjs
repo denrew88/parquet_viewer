@@ -22,7 +22,7 @@ async function snapshot(directory) {
     }
   }
 }
-for (let phase = 0; phase <= 21; phase++) await snapshot(path.join(root, `artifacts/phase-${phase}/ui`));
+for (let phase = 0; phase <= 22; phase++) await snapshot(path.join(root, `artifacts/phase-${phase}/ui`));
 let exitCode = 1;
 try {
   exitCode = await new Promise((resolve, reject) => {

@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "startedAt": "2026-11-08T08:47:58.251Z",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-storage-draft\\data-viewer.exe",
+  "identifier": "com.denrew88.data-viewer-phase23-acceptance",
+  "checks": [
+    {
+      "name": "CSV exact nanosecond filters",
+      "status": "PASS",
+      "elapsedMs": 713,
+      "cases": 3
+    },
+    {
+      "name": "SQL Results exact TIMESTAMP_S filters",
+      "status": "PASS",
+      "elapsedMs": 1185,
+      "cases": 5
+    },
+    {
+      "name": "SQL result row-group and file page boundaries",
+      "status": "PASS",
+      "elapsedMs": 2198,
+      "offsets": [
+        0,
+        2047,
+        32767,
+        65535,
+        69999
+      ],
+      "rows": 70000,
+      "exportSha256": "644f705751aca9d35c223caa008b1da62d8f0e5228d21c193a030675f4c6e47f"
+    },
+    {
+      "name": "SQL result storage budget and cancellation",
+      "status": "PASS",
+      "elapsedMs": 286,
+      "budgetError": "QueryTempLimitExceeded",
+      "cancelState": "cancelled"
+    }
+  ],
+  "sha256": "b7836d14d9fc06d36536b443d760f42649714edacaaaf2848987c9020ca97fd0",
+  "process": {
+    "pid": 26740,
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-storage-draft\\data-viewer.exe",
+    "ticks": "639297568786026776"
+  },
+  "health": {
+    "status": "ok",
+    "appVersion": "0.23.0"
+  },
+  "finishedAt": "2026-11-08T08:48:04.126Z"
+}

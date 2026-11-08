@@ -309,16 +309,7 @@ fn validate_literal(scalar: QueryScalarType, value: &str) -> Result<(), DataErro
             value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
         }
         QueryScalarType::Date => valid_date_literal(value),
-        QueryScalarType::Timestamp => {
-            let value = value.strip_suffix('Z').unwrap_or(value);
-            value
-                .split_once('T')
-                .or_else(|| value.split_once(' '))
-                .is_some_and(|(date, time)| {
-                    valid_date_literal(date)
-                        && time.split(':').take(3).collect::<Vec<_>>().len() == 3
-                })
-        }
+        QueryScalarType::Timestamp => valid_timestamp_literal(value),
         QueryScalarType::Duration => valid_duration_literal(value),
         QueryScalarType::Other => false,
     };
@@ -329,6 +320,74 @@ fn validate_literal(scalar: QueryScalarType, value: &str) -> Result<(), DataErro
             "Filter literal is invalid for {scalar:?}: {value}"
         )))
     }
+}
+
+fn valid_timestamp_literal(value: &str) -> bool {
+    let Some((date, time)) = value.split_once(['T', ' ']) else {
+        return false;
+    };
+    if !matches!(
+        date.as_bytes(),
+        [
+            b'0'..=b'9',
+            b'0'..=b'9',
+            b'0'..=b'9',
+            b'0'..=b'9',
+            b'-',
+            b'0'..=b'9',
+            b'0'..=b'9',
+            b'-',
+            b'0'..=b'9',
+            b'0'..=b'9'
+        ]
+    ) || !valid_date_literal(date)
+    {
+        return false;
+    }
+
+    let (clock, zoned) = if let Some(clock) = time.strip_suffix('Z') {
+        (clock, true)
+    } else if let Some(offset_start) = time.find(['+', '-']) {
+        let (clock, offset) = time.split_at(offset_start);
+        if !valid_timestamp_hour_minute(&offset[1..]) {
+            return false;
+        }
+        (clock, true)
+    } else {
+        (time, false)
+    };
+
+    let Some((hour_minute, seconds)) = clock.split_at_checked(5) else {
+        return false;
+    };
+    if !valid_timestamp_hour_minute(hour_minute) {
+        return false;
+    }
+    if seconds.is_empty() {
+        return !zoned;
+    }
+    let Some(seconds) = seconds.strip_prefix(':') else {
+        return false;
+    };
+    if let Some((seconds, fraction)) = seconds.split_once('.') {
+        valid_timestamp_clock_field(seconds, 59)
+            && (1..=9).contains(&fraction.len())
+            && fraction.bytes().all(|digit| digit.is_ascii_digit())
+    } else {
+        valid_timestamp_clock_field(seconds, 59)
+    }
+}
+
+fn valid_timestamp_hour_minute(value: &str) -> bool {
+    value.split_once(':').is_some_and(|(hour, minute)| {
+        valid_timestamp_clock_field(hour, 23) && valid_timestamp_clock_field(minute, 59)
+    })
+}
+
+fn valid_timestamp_clock_field(value: &str, maximum: u8) -> bool {
+    value.len() == 2
+        && value.bytes().all(|digit| digit.is_ascii_digit())
+        && value.parse::<u8>().is_ok_and(|value| value <= maximum)
 }
 
 fn valid_duration_literal(value: &str) -> bool {
@@ -596,6 +655,30 @@ mod tests {
         assert!(validate_literal(QueryScalarType::Number, "not-a-number").is_err());
         assert!(validate_literal(QueryScalarType::Date, "2025-02-29").is_err());
         assert!(validate_literal(QueryScalarType::Date, "2024-02-29").is_ok());
+    }
+
+    #[test]
+    fn timestamp_filter_shared_wire_boundary_parity() {
+        #[derive(Deserialize)]
+        struct Case {
+            value: String,
+            valid: bool,
+        }
+
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .map(|path| path.join("fixtures/phase-23/timestamp-filter-boundaries.json"))
+            .find(|path| path.is_file())
+            .expect("shared timestamp filter corpus");
+        let cases: Vec<Case> = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+        for case in cases {
+            assert_eq!(
+                validate_literal(QueryScalarType::Timestamp, &case.value).is_ok(),
+                case.valid,
+                "{:?}",
+                case.value
+            );
+        }
     }
 
     #[test]

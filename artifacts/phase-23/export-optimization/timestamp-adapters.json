@@ -1,0 +1,106 @@
+[
+  {
+    "changePercent": 0.6817032162182768,
+    "format": "parquet",
+    "legacyMedianMs": 876.3491,
+    "narrowMedianMs": 882.3231999999999,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 10895915,
+        "legacyMs": 1129.9391,
+        "narrowBytes": 10895915,
+        "narrowMs": 867.9567999999999,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 10895915,
+        "legacyMs": 993.8551,
+        "narrowBytes": 10895915,
+        "narrowMs": 881.3417000000001,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 10895915,
+        "legacyMs": 876.3491,
+        "narrowBytes": 10895915,
+        "narrowMs": 882.3231999999999,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 10895915,
+        "legacyMs": 865.8727,
+        "narrowBytes": 10895915,
+        "narrowMs": 1121.5453,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text-timestamp-adapters",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": -0.558635389714357,
+    "format": "csv",
+    "legacyMedianMs": 1259.0143999999998,
+    "narrowMedianMs": 1251.9811,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 109610044,
+        "legacyMs": 1254.4461000000001,
+        "narrowBytes": 109610044,
+        "narrowMs": 1238.5360999999998,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 109610044,
+        "legacyMs": 1240.6081,
+        "narrowBytes": 109610044,
+        "narrowMs": 1251.9811,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 109610044,
+        "legacyMs": 1259.0143999999998,
+        "narrowBytes": 109610044,
+        "narrowMs": 1248.6517999999999,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 109610044,
+        "legacyMs": 1260.5022999999999,
+        "narrowBytes": 109610044,
+        "narrowMs": 1366.3106,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text-timestamp-adapters",
+    "snapshotRows": 240000
+  }
+]

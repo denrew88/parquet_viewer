@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-11-08T20:26:30.8895952+09:00",
+  "version": "0.23.0",
+  "identifier": "com.denrew88.data-viewer",
+  "path": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 60978176,
+  "sha256": "5f37809f196ff1640649d2db7d66c4d5fd6ba8caf37cc8f94de6c8d5d19ca2f2",
+  "previousProduct": {
+    "bytes": 60961792,
+    "sha256": "6bf605e4b5306bffa4aabf4ae3153c99bed1357d94b971f0b1ab759de05be167",
+    "record": "artifacts/phase-23/storage-followup/product-exe.json"
+  },
+  "buildLog": "artifacts/dev-check/2026-11-08T11-18-45-583Z-phase23-build.log",
+  "productSmoke": "product-smoke.json",
+  "nativeEvidence": "native-export.json",
+  "nativeAcceptanceSha256": "5870120258b685db78e6871dacc921e18a6873ee2d99e439866477337b6b98e4"
+}

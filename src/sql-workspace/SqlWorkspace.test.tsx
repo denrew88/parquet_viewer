@@ -318,6 +318,9 @@ describe("SQL workspace", () => {
     expect(screen.getByTestId("sql-test-grid")).toHaveAttribute("data-result", previous);
     replaceEditorText(editor, "SELECT 2");
     fireEvent.click(screen.getByRole("button", { name: "Retry result page" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sql-test-grid")).not.toHaveAttribute("data-result", previous),
+    );
     const context = await screen.findByRole("status", { name: "Result context" });
     expect(context).toHaveTextContent("SQL changed · previous result");
     expect(api.startQuery).toHaveBeenCalledTimes(3);

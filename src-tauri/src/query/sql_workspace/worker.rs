@@ -325,9 +325,15 @@ fn execute(job: &WorkerJob) -> Result<WorkerOutput, DataError> {
     let mut stream = db.stream(&sql, schema)?;
     let mut rows = 0u64;
     let mut chunks = Vec::new();
+    let mut pending: Option<PendingChunk> = None;
+    let properties = WriterProperties::builder()
+        .set_compression(Compression::SNAPPY)
+        .set_max_row_group_row_count(Some(2048))
+        .build();
     while let Some(batch) = stream.next_batch()? {
         watchdog.check()?;
-        if batch.get_array_memory_size() > MAX_BATCH_BYTES {
+        let bytes = batch.get_array_memory_size();
+        if bytes > MAX_BATCH_BYTES {
             return Err(invalid("A SQL result batch exceeds the 16MiB decoded limit; reduce selected columns or value sizes."));
         }
         if rows.saturating_add(batch.num_rows() as u64) > SQL_MAX_ROWS {
@@ -335,40 +341,47 @@ fn execute(job: &WorkerJob) -> Result<WorkerOutput, DataError> {
                 "SQL result exceeds 1000000 rows; add a condition or LIMIT.",
             ));
         }
-        // Each chunk is small and independently readable, giving bounded random
-        // access without OFFSET rescans or retaining the full result in memory.
-        for offset in (0..batch.num_rows()).step_by(2048) {
-            let len = (batch.num_rows() - offset).min(2048);
-            let batch = batch.slice(offset, len);
-            let batch = RecordBatch::try_new(Arc::clone(&stored_schema), batch.columns().to_vec())
-                .map_err(|e| error(e.to_string()))?;
-            let filename = format!("chunk-{:06}.parquet", chunks.len());
-            let path = job.directory.join(&filename);
-            let properties = WriterProperties::builder()
-                .set_compression(Compression::SNAPPY)
-                .set_max_row_group_row_count(Some(2048))
-                .build();
-            let mut writer = ArrowWriter::try_new(
-                File::create(&path).map_err(|e| io(&path, e))?,
-                Arc::clone(&stored_schema),
-                Some(properties),
-            )
-            .map_err(|e| error(e.to_string()))?;
-            writer.write(&batch).map_err(|e| error(e.to_string()))?;
-            writer.close().map_err(|e| error(e.to_string()))?;
-            chunks.push(ResultChunk {
-                file: filename,
-                offset: rows,
-                rows: len as u64,
-            });
-            rows += len as u64;
-            if directory_bytes(&job.directory)? > job.allowance {
-                return Err(DataError::query_temp_limit(
-                    "SQL output and spill exceeded their shared allowance.",
-                ));
+        if let Some(chunk) = pending.take() {
+            if chunk.rows + batch.num_rows() > RESULT_CHUNK_ROWS
+                || chunk.decoded_bytes + bytes > MAX_BATCH_BYTES
+            {
+                finish_chunk(chunk, job, &mut chunks)?;
+            } else {
+                pending = Some(chunk);
             }
-            write_json(&job.directory.join("progress.json"), &rows)?;
         }
+        let chunk = match &mut pending {
+            Some(chunk) => chunk,
+            None => {
+                let file = format!("chunk-{:06}.parquet", chunks.len());
+                let path = job.directory.join(&file);
+                let writer = ArrowWriter::try_new(
+                    File::create(&path).map_err(|e| io(&path, e))?,
+                    Arc::clone(&stored_schema),
+                    Some(properties.clone()),
+                )
+                .map_err(|e| error(e.to_string()))?;
+                pending.insert(PendingChunk {
+                    writer,
+                    file,
+                    offset: rows,
+                    rows: 0,
+                    decoded_bytes: 0,
+                })
+            }
+        };
+        let batch = RecordBatch::try_new(Arc::clone(&stored_schema), batch.columns().to_vec())
+            .map_err(|e| error(e.to_string()))?;
+        chunk
+            .writer
+            .write(&batch)
+            .map_err(|e| error(e.to_string()))?;
+        chunk.rows += batch.num_rows();
+        chunk.decoded_bytes += bytes;
+        rows += batch.num_rows() as u64;
+    }
+    if let Some(chunk) = pending {
+        finish_chunk(chunk, job, &mut chunks)?;
     }
     watchdog.check()?;
     if job.directory.join("cancel").exists() {
@@ -401,6 +414,39 @@ fn execute(job: &WorkerJob) -> Result<WorkerOutput, DataError> {
         warnings,
         error: None,
     })
+}
+
+// Keep files large enough to amortize metadata checks while limiting each
+// file's decoded size and retaining small Parquet row groups for point reads.
+const RESULT_CHUNK_ROWS: usize = 32_768;
+
+struct PendingChunk {
+    writer: ArrowWriter<File>,
+    file: String,
+    offset: u64,
+    rows: usize,
+    decoded_bytes: usize,
+}
+
+fn finish_chunk(
+    chunk: PendingChunk,
+    job: &WorkerJob,
+    chunks: &mut Vec<ResultChunk>,
+) -> Result<(), DataError> {
+    chunk.writer.close().map_err(|e| error(e.to_string()))?;
+    if directory_bytes(&job.directory)? > job.allowance {
+        return Err(DataError::query_temp_limit(
+            "SQL output and spill exceeded their shared allowance.",
+        ));
+    }
+    let rows = chunk.rows as u64;
+    write_json(&job.directory.join("progress.json"), &(chunk.offset + rows))?;
+    chunks.push(ResultChunk {
+        file: chunk.file,
+        offset: chunk.offset,
+        rows,
+    });
+    Ok(())
 }
 
 #[cfg(test)]

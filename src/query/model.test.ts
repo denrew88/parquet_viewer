@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import timestampBoundaries from "../../fixtures/phase-23/timestamp-filter-boundaries.json";
 import {
   EMPTY_QUERY_PLAN,
   clearFilters,
@@ -87,6 +88,14 @@ describe("query model", () => {
       ),
     ).toContain("valid duration");
   });
+
+  it.each(timestampBoundaries)(
+    "matches Rust timestamp validation for $value",
+    ({ value, valid }) => {
+      const filter = textFilter({ scalarType: "timestamp", operator: "equals", values: [value] });
+      expect(validateFilter(filter) === null).toBe(valid);
+    },
+  );
 
   it("upserts and removes filters without mutating the previous plan", () => {
     const first = upsertFilter(EMPTY_QUERY_PLAN, textFilter());

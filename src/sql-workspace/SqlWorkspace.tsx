@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { BookOpen, Pencil, Play, Square, X } from "lucide-react";
-import { VirtualDataGrid } from "../VirtualDataGrid";
 import type { BackendAdapter, DataPage, FileSummary } from "../backend";
-import { activeCopyOptions, type AppSettings } from "../settings/model";
+import type { AppSettings } from "../settings/model";
 import {
   SQL_MAX_BYTES,
   trimSqlWhitespace,
   validateSqlRequest,
   type SqlAction,
-  type SqlExportRequest,
   type SqlSourceIdentity,
   type SqlStatus,
 } from "./backend";
@@ -28,7 +26,9 @@ import {
 import "./SqlWorkspace.css";
 import { SqlEditor, type SqlEditorHandle } from "./SqlEditor";
 import { SqlPlan } from "./SqlPlan";
+import { SqlResults } from "./SqlResults";
 import { clampSourcePane, SOURCE_SEPARATOR_PX } from "./sourcePaneState";
+import { clampQueryPane, QUERY_SEPARATOR_PX, useVerticalSplitter } from "./useVerticalSplitter";
 import {
   captureSqlExecution,
   readSqlHelpOpen,
@@ -111,11 +111,12 @@ export function SqlWorkspace({
   const [status, setStatus] = useState<SqlStatus | null>(null);
   const [planSnapshot, setPlanSnapshot] = useState<PendingResult | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportNotice, setExportNotice] = useState<{ text: string; error: boolean } | null>(null);
   const exportInProgress = useRef(false);
-  const resultClipboard = useRef<{ copyAll(): Promise<void> }>(null);
+  const onExportBusyChange = useCallback((busy: boolean) => {
+    exportInProgress.current = busy;
+    setExporting(busy);
+  }, []);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pendingResult, setPendingResult] = useState<PendingResult | null>(null);
   const [output, setOutput] = useState<"result" | "plan" | "messages">("result");
@@ -124,54 +125,8 @@ export function SqlWorkspace({
   const [example, setExample] = useState<SqlExample>("basic");
   const editor = useRef<SqlEditorHandle>(null);
   const columnScroll = useRef<HTMLDivElement>(null);
-  const sourcePane = useRef<HTMLElement>(null);
-  const [sourceHeight, setSourceHeight] = useState(0);
-  const [preferredSourceTop, setPreferredSourceTop] = useState<number | null>(null);
-  const sourceHeightRef = useRef(sourceHeight);
-  sourceHeightRef.current = sourceHeight;
-  const sourceDrag = useRef<{
-    pointerId: number;
-    startY: number;
-    startTop: number;
-    previous: number | null;
-    element: HTMLElement;
-  } | null>(null);
-  const sourceSplit = clampSourcePane(sourceHeight, preferredSourceTop);
-  const finishSourceDrag = useCallback((revert: boolean) => {
-    const drag = sourceDrag.current;
-    if (!drag) return;
-    sourceDrag.current = null;
-    if (revert) setPreferredSourceTop(drag.previous);
-    if (drag.element.hasPointerCapture?.(drag.pointerId))
-      drag.element.releasePointerCapture(drag.pointerId);
-  }, []);
-  useLayoutEffect(() => {
-    if (!active) {
-      finishSourceDrag(true);
-      return;
-    }
-    const measure = () => {
-      const height = sourcePane.current?.getBoundingClientRect().height ?? 0;
-      if (height > 0) setSourceHeight(height);
-    };
-    measure();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    if (sourcePane.current) observer?.observe(sourcePane.current);
-    window.addEventListener("resize", measure);
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && sourceDrag.current) {
-        event.preventDefault();
-        event.stopPropagation();
-        finishSourceDrag(true);
-      }
-    };
-    window.addEventListener("keydown", escape, true);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("keydown", escape, true);
-    };
-  }, [active, finishSourceDrag]);
+  const sourceSplit = useVerticalSplitter<HTMLElement>(active, clampSourcePane);
+  const querySplit = useVerticalSplitter<HTMLDivElement>(active, clampQueryPane);
   const mounted = useRef(true),
     opened = useRef(false),
     sourceGeneration = useRef(0),
@@ -313,8 +268,6 @@ export function SqlWorkspace({
     const value = { status: next, page, summary: resultSummary(next), execution };
     resultRef.current = value;
     setResult(value);
-    setExportOpen(false);
-    setExportNotice(null);
     setPendingResult(null);
     pendingResultRef.current = null;
     setOutput("result");
@@ -441,37 +394,9 @@ export function SqlWorkspace({
       await api.releaseResult(old.status.runId, old.status.resultId);
       resultRef.current = null;
       setResult(null);
-      setExportOpen(false);
-      setExportNotice(null);
       setPageError(null);
     } catch (cause) {
       setError(errorMessage(cause));
-    }
-  }
-  async function exportResult(format: SqlExportRequest["format"] | "clipboard") {
-    const snapshot = resultRef.current?.status;
-    if (!api || !snapshot?.resultId || busy || exportInProgress.current) return;
-    setExportOpen(false);
-    setExportNotice(null);
-    if (format === "clipboard") {
-      await resultClipboard.current?.copyAll();
-      return;
-    }
-    exportInProgress.current = true;
-    setExporting(true);
-    try {
-      const saved = await api.exportResult({
-        runId: snapshot.runId,
-        resultId: snapshot.resultId,
-        format,
-      });
-      if (mounted.current)
-        setExportNotice({ text: saved ? "Result exported." : "Export cancelled.", error: false });
-    } catch (cause) {
-      if (mounted.current) setExportNotice({ text: errorMessage(cause), error: true });
-    } finally {
-      exportInProgress.current = false;
-      if (mounted.current) setExporting(false);
     }
   }
   const resultSnapshot = result?.status;
@@ -502,9 +427,9 @@ export function SqlWorkspace({
       <aside
         className="sql-sources"
         aria-label="SQL tables and columns"
-        ref={sourcePane}
+        ref={sourceSplit.pane}
         style={
-          sourceHeight > 0
+          sourceSplit.height > 0
             ? { gridTemplateRows: `${sourceSplit.top}px ${SOURCE_SEPARATOR_PX}px minmax(0, 1fr)` }
             : undefined
         }
@@ -614,64 +539,9 @@ export function SqlWorkspace({
           </p>
         </div>
         <div
-          role="separator"
+          {...sourceSplit.separator}
           aria-label="Resize tables and columns"
-          aria-orientation="horizontal"
-          tabIndex={0}
-          aria-valuemin={sourceSplit.min}
-          aria-valuemax={sourceSplit.max}
-          aria-valuenow={sourceSplit.top}
           className="sql-source-separator"
-          onPointerDown={(event) => {
-            if (event.button !== 0 || sourceDrag.current) return;
-            event.preventDefault();
-            event.currentTarget.focus();
-            sourceDrag.current = {
-              pointerId: event.pointerId,
-              startY: event.clientY,
-              startTop: sourceSplit.top,
-              previous: preferredSourceTop,
-              element: event.currentTarget,
-            };
-            event.currentTarget.setPointerCapture?.(event.pointerId);
-          }}
-          onPointerMove={(event) => {
-            const drag = sourceDrag.current;
-            if (drag?.pointerId === event.pointerId)
-              setPreferredSourceTop(
-                clampSourcePane(
-                  sourceHeightRef.current,
-                  drag.startTop + event.clientY - drag.startY,
-                ).top,
-              );
-          }}
-          onPointerUp={(event) => {
-            if (sourceDrag.current?.pointerId === event.pointerId) finishSourceDrag(false);
-          }}
-          onPointerCancel={(event) => {
-            if (sourceDrag.current?.pointerId === event.pointerId) finishSourceDrag(true);
-          }}
-          onLostPointerCapture={() => finishSourceDrag(true)}
-          onDoubleClick={() => {
-            finishSourceDrag(false);
-            setPreferredSourceTop(null);
-          }}
-          onKeyDown={(event) => {
-            const next =
-              event.key === "ArrowUp"
-                ? sourceSplit.top - 10
-                : event.key === "ArrowDown"
-                  ? sourceSplit.top + 10
-                  : event.key === "Home"
-                    ? sourceSplit.min
-                    : event.key === "End"
-                      ? sourceSplit.max
-                      : null;
-            if (next !== null) {
-              event.preventDefault();
-              setPreferredSourceTop(clampSourcePane(sourceHeight, next).top);
-            }
-          }}
         />
         <div className="sql-column-area">
           <h2>
@@ -789,424 +659,373 @@ export function SqlWorkspace({
             Examples & help
           </button>
         </header>
-        <div className={`sql-editing${helpOpen ? "" : " sql-editing--help-closed"}`}>
-          <div className="sql-editor-area">
-            <SqlEditor
-              completionMode={settings.sqlCompletionMode}
-              tables={sourceLoading ? [] : tables}
-              value={sql}
-              onChange={setSql}
-              onRun={(statement, draft) => void execute("execute", statement, draft)}
-              editorRef={editor}
-            />
-            <div className="sql-run-actions">
-              <button
-                type="button"
-                className="sql-run-button"
-                disabled={
-                  !api ||
-                  busy ||
-                  exporting ||
-                  sourceLoading ||
-                  !tables.length ||
-                  !sql.trim() ||
-                  sqlBytes > SQL_MAX_BYTES
-                }
-                onClick={() => void execute("execute")}
-              >
-                <Play aria-hidden="true" />
-                Run
-              </button>
-              <button type="button" disabled={!busy} onClick={() => void cancel()}>
-                <Square aria-hidden="true" />
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!api || busy || exporting || !sql.trim() || !tables.length}
-                onClick={() => void execute("explain")}
-              >
-                Explain
-              </button>
-              <button
-                type="button"
-                disabled={!api || busy || exporting || !sql.trim() || !tables.length}
-                onClick={() => void execute("analyze")}
-              >
-                Analyze
-              </button>
-            </div>
-            <p className={`sql-help-note${sqlBytes > SQL_MAX_BYTES ? " sql-error" : ""}`}>
-              Ctrl+Enter runs statement at cursor · {sqlBytes.toLocaleString()}/
-              {SQL_MAX_BYTES.toLocaleString()} UTF-8 bytes · Analyze executes the query.
-            </p>
-            <p className="sql-help-note" aria-label="Column completion help">
-              Before FROM, use{" "}
-              <code>{selected ? sqlTableName(selected.alias) : '"table_alias"'}.</code>;{" "}
-              <code>c.</code> needs a declared alias.
-            </p>
-          </div>
-          {helpOpen && (
-            <aside className="sql-help" aria-label="SQL examples and help">
-              <div role="tablist" aria-label="SQL help">
+        <div
+          className="sql-split"
+          ref={querySplit.pane}
+          style={
+            querySplit.height > 0
+              ? { gridTemplateRows: `${querySplit.top}px ${QUERY_SEPARATOR_PX}px minmax(0, 1fr)` }
+              : undefined
+          }
+        >
+          <div
+            id="sql-query-editor-pane"
+            className={`sql-editing${helpOpen ? "" : " sql-editing--help-closed"}`}
+          >
+            <div className="sql-editor-area">
+              <SqlEditor
+                completionMode={settings.sqlCompletionMode}
+                tables={sourceLoading ? [] : tables}
+                value={sql}
+                onChange={setSql}
+                onRun={(statement, draft) => void execute("execute", statement, draft)}
+                editorRef={editor}
+              />
+              <div className="sql-run-actions">
                 <button
-                  role="tab"
-                  id="sql-help-examples"
-                  aria-controls="sql-examples-panel"
-                  aria-selected={helpTab === "examples"}
                   type="button"
-                  onClick={() => setHelpTab("examples")}
+                  className="sql-run-button"
+                  disabled={
+                    !api ||
+                    busy ||
+                    exporting ||
+                    sourceLoading ||
+                    !tables.length ||
+                    !sql.trim() ||
+                    sqlBytes > SQL_MAX_BYTES
+                  }
+                  onClick={() => void execute("execute")}
                 >
-                  Examples
+                  <Play aria-hidden="true" />
+                  Run
+                </button>
+                <button type="button" disabled={!busy} onClick={() => void cancel()}>
+                  <Square aria-hidden="true" />
+                  Cancel
                 </button>
                 <button
-                  role="tab"
-                  id="sql-help-guide"
-                  aria-controls="sql-guide-panel"
-                  aria-selected={helpTab === "guide"}
                   type="button"
-                  onClick={() => setHelpTab("guide")}
+                  disabled={!api || busy || exporting || !sql.trim() || !tables.length}
+                  onClick={() => void execute("explain")}
                 >
-                  Writing guide
+                  Explain
+                </button>
+                <button
+                  type="button"
+                  disabled={!api || busy || exporting || !sql.trim() || !tables.length}
+                  onClick={() => void execute("analyze")}
+                >
+                  Analyze
                 </button>
               </div>
-              <div
-                role="tabpanel"
-                id="sql-examples-panel"
-                aria-labelledby="sql-help-examples"
-                hidden={helpTab !== "examples"}
-              >
-                <div className="sql-example-options">
-                  {(["basic", "filter", "group", "join"] as const).map((item) => (
+              <p className={`sql-help-note${sqlBytes > SQL_MAX_BYTES ? " sql-error" : ""}`}>
+                Ctrl+Enter runs statement at cursor · {sqlBytes.toLocaleString()}/
+                {SQL_MAX_BYTES.toLocaleString()} UTF-8 bytes · Analyze executes the query.
+              </p>
+              <p className="sql-help-note" aria-label="Column completion help">
+                Before FROM, use{" "}
+                <code>{selected ? sqlTableName(selected.alias) : '"table_alias"'}.</code>;{" "}
+                <code>c.</code> needs a declared alias.
+              </p>
+            </div>
+            {helpOpen && (
+              <aside className="sql-help" aria-label="SQL examples and help">
+                <div role="tablist" aria-label="SQL help">
+                  <button
+                    role="tab"
+                    id="sql-help-examples"
+                    aria-controls="sql-examples-panel"
+                    aria-selected={helpTab === "examples"}
+                    type="button"
+                    onClick={() => setHelpTab("examples")}
+                  >
+                    Examples
+                  </button>
+                  <button
+                    role="tab"
+                    id="sql-help-guide"
+                    aria-controls="sql-guide-panel"
+                    aria-selected={helpTab === "guide"}
+                    type="button"
+                    onClick={() => setHelpTab("guide")}
+                  >
+                    Writing guide
+                  </button>
+                </div>
+                <div
+                  role="tabpanel"
+                  id="sql-examples-panel"
+                  aria-labelledby="sql-help-examples"
+                  hidden={helpTab !== "examples"}
+                >
+                  <div className="sql-example-options">
+                    {(["basic", "filter", "group", "join"] as const).map((item) => (
+                      <button
+                        type="button"
+                        key={item}
+                        aria-pressed={example === item}
+                        onClick={() => setExample(item)}
+                      >
+                        {
+                          {
+                            basic: "First rows",
+                            filter: "Filter / sort",
+                            group: "Aggregate",
+                            join: "JOIN",
+                          }[item]
+                        }
+                      </button>
+                    ))}
+                  </div>
+                  <pre aria-label="SQL example">{exampleSql}</pre>
+                  <button
+                    type="button"
+                    disabled={!tables.length}
+                    onClick={() => {
+                      setSql(exampleSql);
+                      setNotice("Example inserted. It has not been executed.");
+                      editor.current?.focus();
+                    }}
+                  >
+                    Insert example
+                  </button>
+                  <p className="sql-help-note">
+                    Replaces editor text. Uses the current aliases and each table’s selected mode;
+                    does not run automatically.
+                  </p>
+                </div>
+                <div
+                  role="tabpanel"
+                  id="sql-guide-panel"
+                  aria-labelledby="sql-help-guide"
+                  hidden={helpTab !== "guide"}
+                >
+                  <h3>Editor shortcuts</h3>
+                  <p>
+                    Declare aliases in FROM/JOIN first. Before declaring an alias, use a registered
+                    table name before the dot, or select a table to search and insert its columns.
+                  </p>
+                  <code>{`SELECT ${selected ? sqlTableName(selected.alias) : '"table_alias"'}.\n-- Choose a column, then add FROM ${selected ? sqlTableName(selected.alias) : '"table_alias"'}\nSELECT c.* FROM ${selected ? sqlTableName(selected.alias) : '"table_alias"'} AS c;`}</code>
+                  <p>
+                    Ctrl+Space opens suggestions in every mode. Enter or Tab accepts the selected
+                    suggestion. Shift+Enter starts a new line. Escape closes suggestions for the
+                    current token. Ctrl+Enter runs the statement at the cursor. Ctrl+F searches the
+                    editor text.
+                  </p>
+                  <p>
+                    Contextual (default) suggests tables after FROM, JOIN or a table-list comma,
+                    columns after a dot or in HAVING, and possible JOIN conditions after ON.
+                    Automatic adds expression suggestions after two characters. Manual opens only
+                    with Ctrl+Space.
+                  </p>
+                  <p>
+                    Suggestions use current file aliases and column modes. Function hints describe
+                    common signatures; they do not validate SQL. CTE and subquery output columns are
+                    not inferred.
+                  </p>
+                  <h3>One mode per table</h3>
+                  <p>
+                    Names mode exposes original names only. Number mode exposes c1, c2… only.
+                    Different tables may use different modes.
+                  </p>
+                  <h3>Names and text</h3>
+                  <code>
+                    {'"Payment amount"\n"Product ""name"""\nWHERE c2 = \'Seoul\'\nWHERE c2 IS NULL'}
+                  </code>
+                  <p>
+                    Double quotes identify names; single quotes identify text. Simple names are
+                    inserted without quotes. Spaces, special characters and DuckDB keywords are
+                    quoted automatically.
+                  </p>
+                  <h3>JOIN keys</h3>
+                  <p>
+                    Use a.c1 and b.c1, or quoted names in names mode. Check matching key types; a
+                    JOIN can greatly increase output rows.
+                  </p>
+                  <h3>Read-only queries</h3>
+                  <p>
+                    One SELECT or CTE. Registered files only. Add LIMIT explicitly for a smaller
+                    output; LIMIT does not bound every intermediate operation.
+                  </p>
+                </div>
+              </aside>
+            )}
+          </div>
+          <div
+            {...querySplit.separator}
+            aria-label="Resize query and output"
+            aria-controls="sql-query-editor-pane sql-output-pane"
+            className="sql-source-separator sql-query-separator"
+          />
+          <div className="sql-output" id="sql-output-pane">
+            {!api && (
+              <div className="sql-error-banner" role="alert">
+                SQL execution is unavailable in this backend.
+              </div>
+            )}
+            {notice && (
+              <div className="sql-notice" role="status">
+                <span>{notice}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss SQL notice"
+                  onClick={() => setNotice(null)}
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+            )}
+            <div className="sql-output-tabs" role="tablist" aria-label="SQL output">
+              {(["result", "plan", "messages"] as const).map((name) => (
+                <button
+                  type="button"
+                  role="tab"
+                  key={name}
+                  id={`sql-output-${name}`}
+                  aria-controls={`sql-${name}-panel`}
+                  aria-selected={output === name}
+                  onClick={() => setOutput(name)}
+                >
+                  {{ result: "Results", plan: "Execution plan", messages: "Messages" }[name]}
+                </button>
+              ))}
+              <span role="status" aria-live="polite">
+                {status
+                  ? `${status.state} · ${status.phase} · ${(status.elapsedMs / 1000).toFixed(2)} s`
+                  : "Ready"}
+              </span>
+            </div>
+            <section
+              className="sql-result-panel"
+              role="tabpanel"
+              id="sql-result-panel"
+              aria-labelledby="sql-output-result"
+              hidden={output !== "result"}
+            >
+              {pendingResult && pageError && (
+                <div role="alert" className="sql-error-banner">
+                  {pageError}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void publishResult(pendingResult.status, pendingResult.execution).catch(
+                        (cause) => {
+                          if (
+                            mounted.current &&
+                            currentRun.current?.runId === pendingResult.status.runId
+                          )
+                            setPageError(errorMessage(cause));
+                        },
+                      )
+                    }
+                  >
+                    Retry result page
+                  </button>
+                </div>
+              )}
+              {result && resultSnapshot?.resultId && api ? (
+                <SqlResults
+                  key={resultSnapshot.resultId}
+                  active={active && output === "result"}
+                  api={api}
+                  backend={backend}
+                  busy={busy}
+                  runId={resultSnapshot.runId}
+                  resultId={resultSnapshot.resultId}
+                  columns={resultSnapshot.columns}
+                  summary={result.summary}
+                  page={result.page}
+                  settings={settings}
+                  context={resultContext}
+                  onClear={() => void clearResult()}
+                  onExportBusyChange={onExportBusyChange}
+                  onOpenCopySettings={onOpenCopySettings}
+                  onReadError={(cause) => setPageError(errorMessage(cause))}
+                />
+              ) : (
+                <div className="sql-empty">
+                  Run a query to view its result. Input files are read-only.
+                </div>
+              )}
+              {pageError && !pendingResult && (
+                <p className="sql-error" role="alert">
+                  {pageError}
+                </p>
+              )}
+            </section>
+            <section
+              className="sql-plan-panel"
+              role="tabpanel"
+              id="sql-plan-panel"
+              aria-labelledby="sql-output-plan"
+              hidden={output !== "plan"}
+            >
+              {planContext && (
+                <div
+                  className="sql-output-context"
+                  role="status"
+                  aria-label="Plan context"
+                  data-current={planContext.current}
+                >
+                  {planContext.labels.map((label) => (
+                    <span key={label}>{label}</span>
+                  ))}
+                </div>
+              )}
+              <SqlPlan key={planSnapshot?.status.runId} status={planSnapshot?.status ?? null} />
+            </section>
+            <section
+              className="sql-messages-panel"
+              role="tabpanel"
+              id="sql-messages-panel"
+              aria-labelledby="sql-output-messages"
+              hidden={output !== "messages"}
+            >
+              {error && (
+                <div className="sql-error-banner" role="alert">
+                  {error}
+                </div>
+              )}
+              {status?.warnings.map((warning, index) => (
+                <p className="sql-warning" key={index}>
+                  {warning}
+                </p>
+              ))}
+              {status?.state === "cancelled" && (
+                <p>
+                  {status.error?.message ??
+                    "Execution cancelled. Previous successful results remain available."}
+                </p>
+              )}
+              <p>
+                One read-only statement. SQL results and working files share the managed storage
+                limit.
+              </p>
+              {tables.length > 0 && (
+                <div className="sql-warning-sources">
+                  Inspect source parsing profiles:{" "}
+                  {tables.map((table) => (
                     <button
                       type="button"
-                      key={item}
-                      aria-pressed={example === item}
-                      onClick={() => setExample(item)}
+                      key={sourceKey(table)}
+                      onClick={() => onOpenSource(table)}
                     >
-                      {
-                        {
-                          basic: "First rows",
-                          filter: "Filter / sort",
-                          group: "Aggregate",
-                          join: "JOIN",
-                        }[item]
-                      }
+                      {table.alias}
                     </button>
                   ))}
                 </div>
-                <pre aria-label="SQL example">{exampleSql}</pre>
-                <button
-                  type="button"
-                  disabled={!tables.length}
-                  onClick={() => {
-                    setSql(exampleSql);
-                    setNotice("Example inserted. It has not been executed.");
-                    editor.current?.focus();
-                  }}
-                >
-                  Insert example
+              )}
+            </section>
+            {status?.warnings.length ? (
+              <div className="sql-warning" role="status">
+                {status.warnings.length} SQL warning(s).{" "}
+                <button type="button" onClick={() => setOutput("messages")}>
+                  View messages
                 </button>
-                <p className="sql-help-note">
-                  Replaces editor text. Uses the current aliases and each table’s selected mode;
-                  does not run automatically.
-                </p>
               </div>
-              <div
-                role="tabpanel"
-                id="sql-guide-panel"
-                aria-labelledby="sql-help-guide"
-                hidden={helpTab !== "guide"}
-              >
-                <h3>Editor shortcuts</h3>
-                <p>
-                  Declare aliases in FROM/JOIN first. Before declaring an alias, use a registered
-                  table name before the dot, or select a table to search and insert its columns.
-                </p>
-                <code>{`SELECT ${selected ? sqlTableName(selected.alias) : '"table_alias"'}.\n-- Choose a column, then add FROM ${selected ? sqlTableName(selected.alias) : '"table_alias"'}\nSELECT c.* FROM ${selected ? sqlTableName(selected.alias) : '"table_alias"'} AS c;`}</code>
-                <p>
-                  Ctrl+Space opens suggestions in every mode. Enter or Tab accepts the selected
-                  suggestion. Shift+Enter starts a new line. Escape closes suggestions for the
-                  current token. Ctrl+Enter runs the statement at the cursor. Ctrl+F searches the
-                  editor text.
-                </p>
-                <p>
-                  Contextual (default) suggests tables after FROM, JOIN or a table-list comma,
-                  columns after a dot or in HAVING, and possible JOIN conditions after ON. Automatic
-                  adds expression suggestions after two characters. Manual opens only with
-                  Ctrl+Space.
-                </p>
-                <p>
-                  Suggestions use current file aliases and column modes. Function hints describe
-                  common signatures; they do not validate SQL. CTE and subquery output columns are
-                  not inferred.
-                </p>
-                <h3>One mode per table</h3>
-                <p>
-                  Names mode exposes original names only. Number mode exposes c1, c2… only.
-                  Different tables may use different modes.
-                </p>
-                <h3>Names and text</h3>
-                <code>
-                  {'"Payment amount"\n"Product ""name"""\nWHERE c2 = \'Seoul\'\nWHERE c2 IS NULL'}
-                </code>
-                <p>
-                  Double quotes identify names; single quotes identify text. Simple names are
-                  inserted without quotes. Spaces, special characters and DuckDB keywords are quoted
-                  automatically.
-                </p>
-                <h3>JOIN keys</h3>
-                <p>
-                  Use a.c1 and b.c1, or quoted names in names mode. Check matching key types; a JOIN
-                  can greatly increase output rows.
-                </p>
-                <h3>Read-only queries</h3>
-                <p>
-                  One SELECT or CTE. Registered files only. Add LIMIT explicitly for a smaller
-                  output; LIMIT does not bound every intermediate operation.
-                </p>
-              </div>
-            </aside>
-          )}
+            ) : null}
+          </div>
         </div>
-        {!api && (
-          <div className="sql-error-banner" role="alert">
-            SQL execution is unavailable in this backend.
-          </div>
-        )}
-        {notice && (
-          <div className="sql-notice" role="status">
-            <span>{notice}</span>
-            <button type="button" aria-label="Dismiss SQL notice" onClick={() => setNotice(null)}>
-              <X aria-hidden="true" />
-            </button>
-          </div>
-        )}
-        <div className="sql-output-tabs" role="tablist" aria-label="SQL output">
-          {(["result", "plan", "messages"] as const).map((name) => (
-            <button
-              type="button"
-              role="tab"
-              key={name}
-              id={`sql-output-${name}`}
-              aria-controls={`sql-${name}-panel`}
-              aria-selected={output === name}
-              onClick={() => setOutput(name)}
-            >
-              {{ result: "Results", plan: "Execution plan", messages: "Messages" }[name]}
-            </button>
-          ))}
-          <span role="status" aria-live="polite">
-            {status
-              ? `${status.state} · ${status.phase} · ${(status.elapsedMs / 1000).toFixed(2)} s`
-              : "Ready"}
-          </span>
-        </div>
-        <section
-          className="sql-result-panel"
-          role="tabpanel"
-          id="sql-result-panel"
-          aria-labelledby="sql-output-result"
-          hidden={output !== "result"}
-        >
-          {pendingResult && pageError && (
-            <div role="alert" className="sql-error-banner">
-              {pageError}
-              <button
-                type="button"
-                onClick={() =>
-                  void publishResult(pendingResult.status, pendingResult.execution).catch(
-                    (cause) => {
-                      if (
-                        mounted.current &&
-                        currentRun.current?.runId === pendingResult.status.runId
-                      )
-                        setPageError(errorMessage(cause));
-                    },
-                  )
-                }
-              >
-                Retry result page
-              </button>
-            </div>
-          )}
-          {result && resultSnapshot?.resultId && api ? (
-            <>
-              <div className="sql-result-heading">
-                <div className="sql-result-summary">
-                  <span>
-                    {resultSnapshot.rowCount?.toLocaleString()} rows ·{" "}
-                    {resultSnapshot.columns.length} columns
-                  </span>
-                  <div
-                    className="sql-output-context"
-                    role="status"
-                    aria-label="Result context"
-                    data-current={resultContext?.current}
-                  >
-                    {resultContext?.labels.map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </div>
-                  {exportNotice && (
-                    <div role={exportNotice.error ? "alert" : "status"}>{exportNotice.text}</div>
-                  )}
-                </div>
-                <div className="sql-result-actions">
-                  <div className="sql-export">
-                    <button
-                      type="button"
-                      disabled={busy || exporting}
-                      aria-expanded={exportOpen}
-                      onClick={() => setExportOpen((open) => !open)}
-                    >
-                      {exporting ? "Exporting…" : "Export results"}
-                    </button>
-                    {exportOpen && !busy && (
-                      <div className="sql-export-options" role="group" aria-label="Export format">
-                        {(
-                          [
-                            ["csv", "CSV"],
-                            ["tsv", "TSV"],
-                            ["parquet", "Parquet"],
-                            ["clipboard", "Clipboard"],
-                          ] as const
-                        ).map(([format, label]) => (
-                          <button
-                            key={format}
-                            type="button"
-                            onClick={() => void exportResult(format)}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy || exporting}
-                    onClick={() => void clearResult()}
-                  >
-                    Clear result
-                  </button>
-                </div>
-              </div>
-              <VirtualDataGrid
-                active={active && output === "result"}
-                resultClipboardRef={resultClipboard}
-                documentId="sql-workspace"
-                summary={result.summary}
-                page={result.page}
-                isLoading={false}
-                resultKey={`${resultSnapshot.runId}:${resultSnapshot.resultId}`}
-                queryId={resultSnapshot.runId}
-                columnLabels={Object.fromEntries(resultSnapshot.columns.map((c) => [c.id, c.name]))}
-                logicalColumnNames={resultSnapshot.columns.map((c) => c.id)}
-                copyOptions={activeCopyOptions(settings)}
-                displayFormats={settings.displayFormats}
-                copyLimits={settings.copyLimits}
-                onOpenCopySettings={onOpenCopySettings}
-                onPageChange={() => {}}
-                onReadError={(cause) => setPageError(errorMessage(cause))}
-                readPage={(request) =>
-                  api.readPage({
-                    runId: resultSnapshot.runId,
-                    resultId: resultSnapshot.resultId!,
-                    offset: request.offset,
-                    limit: request.limit,
-                    columns:
-                      request.columns ?? resultSnapshot.columns.slice(0, 64).map((c) => c.id),
-                  })
-                }
-                readCellValue={(row, columnId) =>
-                  api.readCell(resultSnapshot.runId, resultSnapshot.resultId!, row, columnId)
-                }
-                startCopy={(request) =>
-                  api.startCopy(resultSnapshot.runId, resultSnapshot.resultId!, request)
-                }
-                getCopyStatus={backend.getCopyStatus}
-                cancelCopyOperation={backend.cancelCopy}
-                getCopyHistory={backend.getCopyHistory}
-              />
-            </>
-          ) : (
-            <div className="sql-empty">
-              Run a query to view its result. Input files are read-only.
-            </div>
-          )}
-          {pageError && !pendingResult && (
-            <p className="sql-error" role="alert">
-              {pageError}
-            </p>
-          )}
-        </section>
-        <section
-          className="sql-plan-panel"
-          role="tabpanel"
-          id="sql-plan-panel"
-          aria-labelledby="sql-output-plan"
-          hidden={output !== "plan"}
-        >
-          {planContext && (
-            <div
-              className="sql-output-context"
-              role="status"
-              aria-label="Plan context"
-              data-current={planContext.current}
-            >
-              {planContext.labels.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
-          )}
-          <SqlPlan key={planSnapshot?.status.runId} status={planSnapshot?.status ?? null} />
-        </section>
-        <section
-          className="sql-messages-panel"
-          role="tabpanel"
-          id="sql-messages-panel"
-          aria-labelledby="sql-output-messages"
-          hidden={output !== "messages"}
-        >
-          {error && (
-            <div className="sql-error-banner" role="alert">
-              {error}
-            </div>
-          )}
-          {status?.warnings.map((warning, index) => (
-            <p className="sql-warning" key={index}>
-              {warning}
-            </p>
-          ))}
-          {status?.state === "cancelled" && (
-            <p>
-              {status.error?.message ??
-                "Execution cancelled. Previous successful results remain available."}
-            </p>
-          )}
-          <p>
-            One read-only statement. SQL results and working files share the managed storage limit.
-          </p>
-          {tables.length > 0 && (
-            <div className="sql-warning-sources">
-              Inspect source parsing profiles:{" "}
-              {tables.map((table) => (
-                <button type="button" key={sourceKey(table)} onClick={() => onOpenSource(table)}>
-                  {table.alias}
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-        {status?.warnings.length ? (
-          <div className="sql-warning" role="status">
-            {status.warnings.length} SQL warning(s).{" "}
-            <button type="button" onClick={() => setOutput("messages")}>
-              View messages
-            </button>
-          </div>
-        ) : null}
       </div>
     </section>
   );

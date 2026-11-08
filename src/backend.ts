@@ -2773,7 +2773,9 @@ function validatedDistinctValuesRequest(request: DistinctValuesRequest): Distinc
   return request;
 }
 
-function validatedFindQueryMatchRequest(request: FindQueryMatchRequest): FindQueryMatchRequest {
+export function validatedFindQueryMatchRequest(
+  request: FindQueryMatchRequest,
+): FindQueryMatchRequest {
   if (
     !isNonEmptyString(request.documentId) ||
     !isNonEmptyString(request.sessionId) ||

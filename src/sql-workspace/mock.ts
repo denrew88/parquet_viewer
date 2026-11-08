@@ -5,9 +5,12 @@ import {
   type DataValue,
   type FileSummary,
   type OpenedDataFile,
+  type QueryStatusResponse,
+  type FindQueryMatchResponse,
 } from "../backend";
 import { serializeCopyRows } from "../copy/serializer";
 import type { CopyOptions } from "../copy/model";
+import type { QueryFilter, QuerySearch } from "../query/model";
 import {
   parseSqlStatus,
   validateSqlPage,
@@ -181,6 +184,15 @@ export function createSqlWorkspaceMock(
     { status: SqlStatus; started: number; delay: number; fail: boolean; action: string }
   >();
   const results = new Map<string, SqlStatus>();
+  type Match = NonNullable<FindQueryMatchResponse["match"]>;
+  const views = new Map<
+    string,
+    {
+      status: QueryStatusResponse;
+      rows: number[];
+      matches: Omit<Match, "wrapped" | "matchIndex" | "totalMatches">[];
+    }
+  >();
   const value = (row: number, column: string): DataValue => {
     if (column === "r0")
       return {
@@ -207,6 +219,70 @@ export function createSqlWorkspaceMock(
     if (!result || result.runId !== runId)
       throw new DataViewerError("QueryStale", "SQL result is unavailable.");
     return result;
+  };
+  const resultView = (runId: string, resultId: string, viewId: string) => {
+    snapshot(runId, resultId);
+    const view = views.get(viewId);
+    if (view?.status.sessionId !== resultId)
+      throw new DataViewerError("QueryStale", "SQL result view is unavailable.");
+    return view;
+  };
+  const rowIndexes = (runId: string, resultId: string, viewId?: string) => {
+    const result = snapshot(runId, resultId);
+    if (viewId === undefined) return Array.from({ length: result.rowCount ?? 0 }, (_, row) => row);
+    const view = resultView(runId, resultId, viewId);
+    if (view.status.state !== "complete")
+      throw new DataViewerError("QueryStale", "SQL result view is unavailable.");
+    return view.rows;
+  };
+  const matchesFilter = (row: number, filter: QueryFilter) => {
+    const cell = value(row, filter.columnId);
+    const input = filter.values[0];
+    const actual = cell.display ?? "";
+    const lhs = filter.scalarType === "text" ? actual : Number(actual);
+    const rhs = filter.scalarType === "text" ? input : Number(input);
+    switch (filter.operator) {
+      case "equals":
+        return lhs === rhs;
+      case "notEquals":
+        return lhs !== rhs;
+      case "oneOf":
+        return filter.values.includes(actual);
+      case "contains":
+        return actual.includes(input);
+      case "startsWith":
+        return actual.startsWith(input);
+      case "endsWith":
+        return actual.endsWith(input);
+      case "greaterThan":
+        return lhs > rhs;
+      case "greaterThanOrEqual":
+        return lhs >= rhs;
+      case "lessThan":
+        return lhs < rhs;
+      case "lessThanOrEqual":
+        return lhs <= rhs;
+      case "between":
+        return Number(lhs) >= Number(rhs) && Number(lhs) <= Number(filter.values[1]);
+      case "isNull":
+        return cell.state === "null";
+      case "isNotNull":
+        return cell.state !== "null";
+      case "isInvalid":
+        return cell.state === "invalid";
+      case "isNotInvalid":
+        return cell.state !== "invalid";
+      case "isTrue":
+        return actual === "true";
+      case "isFalse":
+        return actual === "false";
+    }
+  };
+  const matchesSearch = (row: number, column: string, search: QuerySearch) => {
+    const normalize = (text: string) => (search.caseSensitive ? text : text.toLowerCase());
+    const actual = normalize(value(row, column).display ?? "");
+    const needle = normalize(search.text);
+    return search.exact ? actual === needle : actual.includes(needle);
   };
   const readStatus = (runId: string) => {
     const item = tasks.get(runId);
@@ -254,6 +330,95 @@ export function createSqlWorkspaceMock(
     return structuredClone(item.status);
   };
   return {
+    resultView: {
+      async start(runId, resultId, viewId, plan) {
+        const result = snapshot(runId, resultId);
+        if (views.has(viewId))
+          throw new DataViewerError("InvalidRequest", "Duplicate SQL result view.");
+        const columns = result.columns.map((column) => column.id);
+        const search = plan.search;
+        const targets = search?.targetColumnIds.length ? search.targetColumnIds : columns;
+        const indexes = rowIndexes(runId, resultId);
+        const rows = indexes
+          .filter(
+            (row) =>
+              plan.filters.every((filter) => matchesFilter(row, filter)) &&
+              (search?.mode !== "filter" ||
+                targets.some((column) => matchesSearch(row, column, search))),
+          )
+          .sort((a, b) => {
+            for (const sort of plan.sort) {
+              const left = value(a, sort.columnId).display ?? "";
+              const right = value(b, sort.columnId).display ?? "";
+              const order =
+                sort.columnId === "r1" ? left.localeCompare(right) : Number(left) - Number(right);
+              if (order) return sort.direction === "descending" ? -order : order;
+            }
+            return a - b;
+          });
+        const matches =
+          search?.mode === "find"
+            ? rows.flatMap((row, rowOffset) =>
+                targets
+                  .filter((column) => matchesSearch(row, column, search))
+                  .map((columnId) => ({ rowOffset, columnId })),
+              )
+            : [];
+        const status: QueryStatusResponse = {
+          documentId: "sql-workspace",
+          sessionId: resultId,
+          queryId: viewId,
+          taskId: viewId,
+          state: "queued",
+          progress: { rowsScanned: 0, totalRows: indexes.length, resultRows: 0 },
+          columns,
+          elapsedMs: 0,
+          findMatchCount: search?.mode === "find" ? matches.length : null,
+          error: null,
+        };
+        views.set(viewId, { status, rows, matches });
+        return structuredClone(status);
+      },
+      async status(runId, resultId, viewId) {
+        const view = resultView(runId, resultId, viewId);
+        if (view.status.state === "queued") {
+          view.status.state = "complete";
+          view.status.progress.rowsScanned = view.status.progress.totalRows ?? 0;
+          view.status.progress.resultRows = view.rows.length;
+        }
+        return structuredClone(view.status);
+      },
+      async cancel(runId, resultId, viewId) {
+        const view = resultView(runId, resultId, viewId);
+        if (view.status.state === "queued") view.status.state = "cancelled";
+        return structuredClone(view.status);
+      },
+      async release(runId, resultId, viewId) {
+        resultView(runId, resultId, viewId);
+        views.delete(viewId);
+      },
+      async find(runId, resultId, viewId, request) {
+        const { matches, status } = resultView(runId, resultId, viewId);
+        const { documentId, sessionId, queryId } = status;
+        const next = request.direction === "next";
+        const ordered = matches.map((item, matchIndex) => ({ ...item, matchIndex }));
+        if (!next) ordered.reverse();
+        const found = ordered.find((item) => {
+          const delta =
+            request.fromMatchIndex == null
+              ? item.rowOffset - request.fromResultOffset
+              : item.matchIndex - request.fromMatchIndex;
+          return next ? delta > 0 : delta < 0;
+        });
+        const match = found ?? (request.wrap ? ordered[0] : undefined);
+        return {
+          documentId,
+          sessionId,
+          queryId,
+          match: match ? { ...match, totalMatches: matches.length, wrapped: !found } : null,
+        };
+      },
+    },
     async describeTables(sources: SqlSourceIdentity[]) {
       return sources.map((source) => {
         const entry = registered.get(source.sessionId);
@@ -320,46 +485,51 @@ export function createSqlWorkspaceMock(
       const result = snapshot(request.runId, request.resultId);
       if (request.columns.some((id) => !result.columns.some((c) => c.id === id)))
         throw new DataViewerError("InvalidRequest", "Unknown SQL result column.");
-      const rows = Array.from(
-        { length: Math.max(0, Math.min(request.limit, 4 - request.offset)) },
-        (_, i) => request.columns.map((id) => value(request.offset + i, id)),
-      );
+      const indexes = rowIndexes(request.runId, request.resultId, request.viewId);
+      const rows = indexes
+        .slice(request.offset, request.offset + request.limit)
+        .map((row) => request.columns.map((id) => value(row, id)));
       return {
         sessionId: request.resultId,
         offset: request.offset,
         limit: request.limit,
-        totalRows: 4,
-        hasMore: request.offset + rows.length < 4,
+        totalRows: indexes.length,
+        hasMore: request.offset + rows.length < indexes.length,
         columns: request.columns,
         rows,
       };
     },
-    async readCell(runId, resultId, row, columnId) {
+    async readCell(runId, resultId, row, columnId, viewId) {
       const result = snapshot(runId, resultId);
-      if (row >= 4 || !result.columns.some((c) => c.id === columnId))
+      const sourceRow = rowIndexes(runId, resultId, viewId)[row];
+      if (sourceRow === undefined || !result.columns.some((c) => c.id === columnId))
         throw new DataViewerError("InvalidRequest", "Unknown SQL cell.");
-      return value(row, columnId);
+      return value(sourceRow, columnId);
     },
     async releaseResult(runId, resultId) {
       snapshot(runId, resultId);
       results.delete(resultId);
+      for (const [id, view] of views) if (view.status.sessionId === resultId) views.delete(id);
     },
-    async exportResult({ runId, resultId }) {
-      snapshot(runId, resultId);
+    async exportResult({ runId, resultId, viewId }) {
+      rowIndexes(runId, resultId, viewId);
       return false;
     },
-    async startCopy(runId, resultId, request) {
+    async startCopy(runId, resultId, request, viewId) {
       const result = snapshot(runId, resultId),
         selection = request.selection;
       if (
         request.documentId !== "sql-workspace" ||
         request.sessionId !== resultId ||
-        request.queryId !== runId
+        request.queryId !== (viewId ?? runId)
       )
         throw new DataViewerError("QueryStale", "Copy belongs to another SQL result.");
-      const rows = Array.from({ length: selection.rowEndExclusive - selection.rowStart }, (_, i) =>
-        selection.columnIds.map((id) => value(selection.rowStart + i, id)),
-      );
+      const indexes = rowIndexes(runId, resultId, viewId);
+      if (selection.rowEndExclusive > indexes.length)
+        throw new DataViewerError("InvalidRequest", "Copy selection is outside the result.");
+      const rows = indexes
+        .slice(selection.rowStart, selection.rowEndExclusive)
+        .map((row) => selection.columnIds.map((id) => value(row, id)));
       const headers = selection.columnIds.map(
         (id) => result.columns.find((c) => c.id === id)?.name ?? id,
       );

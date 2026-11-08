@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_QUERY_PLAN } from "../query/model";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import {
@@ -59,6 +60,52 @@ describe("SQL DTO boundaries and transport", () => {
     const page = await createSqlWorkspaceTransport().readPage(pageRequest);
     expect(page).toEqual({ ...wire, sessionId: "result-1" });
     expect(invokeMock).toHaveBeenLastCalledWith("read_sql_query_page", { request: pageRequest });
+  });
+  it("binds view status, pages and find results to the selected SQL result", async () => {
+    const api = createSqlWorkspaceTransport();
+    const viewId = "view-1";
+    const ids = { runId: "sql-run", resultId: "result-1", viewId };
+    const identity = { documentId: "sql-workspace", sessionId: "result-1", queryId: viewId };
+    const wireStatus = {
+      ...identity,
+      taskId: viewId,
+      state: "complete",
+      progress: { rowsScanned: 3, totalRows: 3, resultRows: 3 },
+      columns: ["r0"],
+      elapsedMs: 1,
+      findMatchCount: 1,
+      error: null,
+    };
+    invokeMock.mockResolvedValueOnce(wireStatus);
+    await expect(
+      api.resultView!.start(ids.runId, ids.resultId, viewId, EMPTY_QUERY_PLAN),
+    ).resolves.toEqual(wireStatus);
+    expect(invokeMock).toHaveBeenLastCalledWith("start_sql_result_view", {
+      ...ids,
+      plan: EMPTY_QUERY_PLAN,
+    });
+    invokeMock.mockResolvedValueOnce({ ...wireStatus, taskId: "wrong" });
+    await expect(api.resultView!.status(ids.runId, ids.resultId, viewId)).rejects.toThrow(
+      /task identity/,
+    );
+
+    invokeMock.mockResolvedValueOnce(nativePage());
+    await api.readPage({ ...pageRequest, viewId });
+    expect(invokeMock).toHaveBeenLastCalledWith("read_sql_query_page", {
+      request: pageRequest,
+      viewId,
+    });
+
+    const findRequest = {
+      ...identity,
+      fromResultOffset: 0,
+      direction: "next" as const,
+      wrap: true,
+    };
+    invokeMock.mockResolvedValueOnce({ ...identity, queryId: "other", match: null });
+    await expect(
+      api.resultView!.find(ids.runId, ids.resultId, viewId, findRequest),
+    ).rejects.toThrow(/view identity/);
   });
   it.each([
     { offset: 1 },

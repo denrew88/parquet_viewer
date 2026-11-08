@@ -274,12 +274,12 @@ const operatorLabels: Record<QueryFilter["operator"], string> = {
   isNotInvalid: "is not invalid",
 };
 
-function summarizeFilter(filter: QueryFilter): string {
+function summarizeFilter(filter: QueryFilter, columnLabel: string): string {
   const values =
     filter.values.length > 2
       ? `${filter.values.slice(0, 2).join(", ")}...`
       : filter.values.join(" - ");
-  return [filter.columnId, operatorLabels[filter.operator], values].filter(Boolean).join(" ");
+  return [columnLabel, operatorLabels[filter.operator], values].filter(Boolean).join(" ");
 }
 
 const emptySearch: QuerySearch = {
@@ -562,6 +562,7 @@ export function QueryToolbar({
     window.requestAnimationFrame(() => filterTriggerRef.current?.focus());
   }, [filterMenuOpen, plan.filters.length]);
 
+  const columnLabel = (id: string) => columns.find((column) => column.id === id)?.label ?? id;
   const activeTargetCount = draft.targetColumnIds.filter((id) =>
     columns.some((column) => column.id === id && column.searchable),
   ).length;
@@ -958,10 +959,14 @@ export function QueryToolbar({
       )}
       <div aria-label="Active filters" className="query-filter-chips">
         {plan.filters.slice(0, 3).map((filter) => (
-          <span className="query-filter-chip" key={filter.id} title={summarizeFilter(filter)}>
-            <span>{summarizeFilter(filter)}</span>
+          <span
+            className="query-filter-chip"
+            key={filter.id}
+            title={summarizeFilter(filter, columnLabel(filter.columnId))}
+          >
+            <span>{summarizeFilter(filter, columnLabel(filter.columnId))}</span>
             <button
-              aria-label={`Remove filter ${filter.columnId}`}
+              aria-label={`Remove filter ${columnLabel(filter.columnId)}`}
               onClick={() => onRemoveFilter(filter.id)}
               type="button"
             >
@@ -994,14 +999,14 @@ export function QueryToolbar({
               >
                 {plan.filters.slice(3).map((filter) => (
                   <button
-                    aria-label={`Remove filter ${filter.columnId}`}
+                    aria-label={`Remove filter ${columnLabel(filter.columnId)}`}
                     key={filter.id}
                     onClick={() => onRemoveFilter(filter.id)}
                     role="menuitem"
-                    title={summarizeFilter(filter)}
+                    title={summarizeFilter(filter, columnLabel(filter.columnId))}
                     type="button"
                   >
-                    <span>{summarizeFilter(filter)}</span>
+                    <span>{summarizeFilter(filter, columnLabel(filter.columnId))}</span>
                     <X aria-hidden="true" />
                   </button>
                 ))}

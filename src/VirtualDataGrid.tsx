@@ -162,6 +162,10 @@ function copyValuePreview(value: DataValue, options: CopyOptions): string {
   }
 }
 
+export interface ResultClipboardHandle {
+  copyAll(selection?: { rowCount: number; queryId: string }): Promise<void>;
+}
+
 export interface VirtualDataGridProps {
   columnLabels?: Readonly<Record<string, string>>;
   columnValuesBackend?: ColumnValuesBackend;
@@ -171,7 +175,7 @@ export interface VirtualDataGridProps {
   copyLimits?: CopyLimits;
   copyPresetError?: string | null;
   copyPresetSaving?: boolean;
-  resultClipboardRef?: Ref<{ copyAll(): Promise<void> }>;
+  resultClipboardRef?: Ref<ResultClipboardHandle>;
   distinctValuesForColumn?(columnId: string): DistinctValuesState | undefined;
   documentId: string;
   findDataBoundary?(request: FindBoundaryRequest): Promise<FindBoundaryResponse>;
@@ -1821,10 +1825,11 @@ export function VirtualDataGrid({
   }
 
   useImperativeHandle(resultClipboardRef, () => ({
-    async copyAll() {
+    async copyAll(selection) {
       if (copyIsActive(copyStatus) || logicalColumnNames.length === 0) return;
       const options = copyOptionsSnapshot(COPY_PRESETS.tsv, true, "rawCanonical");
-      if (rowCount === 0) {
+      const rows = selection?.rowCount ?? rowCount;
+      if (rows === 0) {
         try {
           const headers = logicalColumnNames.map((name) => columnLabels?.[name] ?? name);
           const text = serializeCopyRows([], { ...options, preset: "tsv" }, headers);
@@ -1842,10 +1847,10 @@ export function VirtualDataGrid({
       await startCopySnapshot({
         documentId,
         sessionId: summary.sessionId,
-        queryId: queryId ?? null,
+        queryId: selection?.queryId ?? queryId ?? null,
         selection: {
           rowStart: 0,
-          rowEndExclusive: rowCount,
+          rowEndExclusive: rows,
           columnIds: [...logicalColumnNames],
         },
         options,
@@ -2274,11 +2279,22 @@ export function VirtualDataGrid({
   );
   const mountedCellCount = virtualRows.length * columnVirtualItems.length;
   const visibleColumnIdSet = new Set(visibleColumns.map((column) => column.id));
+  const labelCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const label of Object.values(columnLabels ?? {})) {
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return counts;
+  }, [columnLabels]);
+  const queryColumnLabel = (columnId: string) => {
+    const label = columnLabels?.[columnId] ?? columnId;
+    return (labelCounts.get(label) ?? 0) > 1 ? `${label} (${columnId})` : label;
+  };
   const querySearchColumns: QuerySearchColumn[] = sourceLogicalColumnNames.map((columnId) => {
     const scalarType = queryScalarTypes?.[columnId] ?? inferQueryScalarType(summary, columnId);
     return {
       id: columnId,
-      label: columnId,
+      label: queryColumnLabel(columnId),
       hidden: !visibleColumnIdSet.has(columnId),
       searchable: scalarType !== "other",
       disabledReason:
@@ -2293,7 +2309,14 @@ export function VirtualDataGrid({
   return (
     <div
       className="virtual-grid-shell"
-      style={queryEnabled ? { gridTemplateRows: "38px 38px minmax(0, 1fr) 40px" } : undefined}
+      style={
+        queryEnabled
+          ? {
+              gridTemplateRows:
+                "var(--grid-query-toolbar-height, 38px) var(--grid-column-toolbar-height, 38px) minmax(0, 1fr) var(--grid-paging-height, 40px)",
+            }
+          : undefined
+      }
     >
       {queryEnabled && queryPlan && (
         <QueryToolbar
@@ -2724,6 +2747,7 @@ export function VirtualDataGrid({
               {columnVirtualItems.map((virtualColumn) => {
                 const column = visibleColumns[virtualColumn.index];
                 const logicalColumn = visibleColumnIndexes[virtualColumn.index];
+                const controlLabel = queryColumnLabel(column.id);
                 const columnFilter = queryPlan?.filters.find(
                   (filter) => filter.columnId === column.id,
                 );
@@ -2807,7 +2831,7 @@ export function VirtualDataGrid({
                           </button>
                         )}
                         <button
-                          aria-label={`Filter ${column.id}`}
+                          aria-label={`Filter ${controlLabel}`}
                           aria-pressed={Boolean(columnFilter)}
                           className={columnFilter ? "is-active" : undefined}
                           onClick={(event) => {
@@ -2829,13 +2853,13 @@ export function VirtualDataGrid({
                               ? filterTriggerRef
                               : undefined
                           }
-                          title={`Filter ${column.id}`}
+                          title={`Filter ${controlLabel}`}
                           type="button"
                         >
                           <Filter aria-hidden="true" />
                         </button>
                         <button
-                          aria-label={`Sort ${column.id}: ${
+                          aria-label={`Sort ${controlLabel}: ${
                             columnSort
                               ? `${columnSort.direction}, priority ${(sortIndex ?? 0) + 1}`
                               : "not sorted"
@@ -2846,7 +2870,7 @@ export function VirtualDataGrid({
                             event.stopPropagation();
                             onQueryPlanChange(toggleSort(queryPlan, column.id, false));
                           }}
-                          title={`Sort ${column.id}${columnSort ? ` (${columnSort.direction})` : ""}`}
+                          title={`Sort ${controlLabel}${columnSort ? ` (${columnSort.direction})` : ""}`}
                           type="button"
                         >
                           {columnSort?.direction === "ascending" ? (
@@ -3369,7 +3393,7 @@ export function VirtualDataGrid({
               return (
                 <ColumnFilterPopover
                   columnId={filterPopover.columnId}
-                  columnLabel={filterPopover.columnId}
+                  columnLabel={queryColumnLabel(filterPopover.columnId)}
                   durationUnit={durationUnitForColumn(summary, filterPopover.columnId)}
                   distinct={distinctValuesForColumn?.(filterPopover.columnId)}
                   initialFilter={initialFilter}

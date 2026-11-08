@@ -1,0 +1,418 @@
+[
+  {
+    "changePercent": -0.5278532759289023,
+    "format": "parquet",
+    "legacyMedianMs": 554.8701,
+    "narrowMedianMs": 551.9412,
+    "order": "source-order",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 5144481,
+        "legacyMs": 674.6945,
+        "narrowBytes": 5144481,
+        "narrowMs": 778.6468,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 5144481,
+        "legacyMs": 787.1327,
+        "narrowBytes": 5144481,
+        "narrowMs": 556.5608,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 5144481,
+        "legacyMs": 554.3981,
+        "narrowBytes": 5144481,
+        "narrowMs": 547.5226,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 5144481,
+        "legacyMs": 554.8701,
+        "narrowBytes": 5144481,
+        "narrowMs": 551.9412,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "narrow",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": -0.20100674975517263,
+    "format": "csv",
+    "legacyMedianMs": 769.2279,
+    "narrowMedianMs": 767.6817,
+    "order": "source-order",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 14749213,
+        "legacyMs": 770.1668000000001,
+        "narrowBytes": 14749213,
+        "narrowMs": 766.5363,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 14749213,
+        "legacyMs": 878.1972999999999,
+        "narrowBytes": 14749213,
+        "narrowMs": 767.8528,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 14749213,
+        "legacyMs": 760.3906000000001,
+        "narrowBytes": 14749213,
+        "narrowMs": 767.6817,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 14749213,
+        "legacyMs": 769.2279,
+        "narrowBytes": 14749213,
+        "narrowMs": 765.1383000000001,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "narrow",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": -0.05157058696738659,
+    "format": "parquet",
+    "legacyMedianMs": 548.3746000000001,
+    "narrowMedianMs": 548.0918,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 6194933,
+        "legacyMs": 547.7615999999999,
+        "narrowBytes": 6194933,
+        "narrowMs": 548.2358,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 6194933,
+        "legacyMs": 559.3787,
+        "narrowBytes": 6194933,
+        "narrowMs": 548.0918,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 6194933,
+        "legacyMs": 547.2502999999999,
+        "narrowBytes": 6194933,
+        "narrowMs": 547.7712,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 6194933,
+        "legacyMs": 548.3746000000001,
+        "narrowBytes": 6194933,
+        "narrowMs": 651.0713000000001,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "narrow",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": 0.6493454473390559,
+    "format": "csv",
+    "legacyMedianMs": 761.4436999999999,
+    "narrowMedianMs": 766.3881,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 14749213,
+        "legacyMs": 760.2547,
+        "narrowBytes": 14749213,
+        "narrowMs": 773.632,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 14749213,
+        "legacyMs": 761.5,
+        "narrowBytes": 14749213,
+        "narrowMs": 768.3951999999999,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 14749213,
+        "legacyMs": 761.1778,
+        "narrowBytes": 14749213,
+        "narrowMs": 754.4052,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 14749213,
+        "legacyMs": 761.4436999999999,
+        "narrowBytes": 14749213,
+        "narrowMs": 766.3881,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "narrow",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": 0.19553541524732765,
+    "format": "parquet",
+    "legacyMedianMs": 865.5721,
+    "narrowMedianMs": 867.2646000000001,
+    "order": "source-order",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 9558455,
+        "legacyMs": 876.8411000000001,
+        "narrowBytes": 9558455,
+        "narrowMs": 866.4672,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 9558455,
+        "legacyMs": 763.2512,
+        "narrowBytes": 9558455,
+        "narrowMs": 867.2646000000001,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 9558455,
+        "legacyMs": 865.5721,
+        "narrowBytes": 9558455,
+        "narrowMs": 859.5731,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 9558455,
+        "legacyMs": 872.8888000000001,
+        "narrowBytes": 9558455,
+        "narrowMs": 867.9212,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": -7.976625024369987,
+    "format": "csv",
+    "legacyMedianMs": 1147.4151,
+    "narrowMedianMs": 1055.8901,
+    "order": "source-order",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 104749213,
+        "legacyMs": 1046.0503999999999,
+        "narrowBytes": 104749213,
+        "narrowMs": 1061.2138,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 104749213,
+        "legacyMs": 1323.1425,
+        "narrowBytes": 104749213,
+        "narrowMs": 1172.6893,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 104749213,
+        "legacyMs": 1147.4151,
+        "narrowBytes": 104749213,
+        "narrowMs": 1055.8901,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 104749213,
+        "legacyMs": 1038.5182,
+        "narrowBytes": 104749213,
+        "narrowMs": 1040.0517,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": -1.6603551292717844,
+    "format": "parquet",
+    "legacyMedianMs": 879.6853,
+    "narrowMedianMs": 865.0794000000001,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 10790962,
+        "legacyMs": 871.6095,
+        "narrowBytes": 10790962,
+        "narrowMs": 975.7541,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 10790962,
+        "legacyMs": 883.3335,
+        "narrowBytes": 10790962,
+        "narrowMs": 865.0794000000001,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 10790962,
+        "legacyMs": 879.6853,
+        "narrowBytes": 10790962,
+        "narrowMs": 862.8107,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 10790962,
+        "legacyMs": 875.5971999999999,
+        "narrowBytes": 10790962,
+        "narrowMs": 869.2795,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text",
+    "snapshotRows": 240000
+  },
+  {
+    "changePercent": 1.017614780392817,
+    "format": "csv",
+    "legacyMedianMs": 1032.2865000000002,
+    "narrowMedianMs": 1042.7912,
+    "order": "shuffled",
+    "pairs": [
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 104749213,
+        "legacyMs": 1026.8702,
+        "narrowBytes": 104749213,
+        "narrowMs": 1040.7713999999999,
+        "round": 0,
+        "warmup": true
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 104749213,
+        "legacyMs": 1032.2865000000002,
+        "narrowBytes": 104749213,
+        "narrowMs": 1049.5538,
+        "round": 1,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "legacy",
+        "legacyBytes": 104749213,
+        "legacyMs": 1026.3689,
+        "narrowBytes": 104749213,
+        "narrowMs": 1042.7912,
+        "round": 2,
+        "warmup": false
+      },
+      {
+        "equal": true,
+        "first": "narrow",
+        "legacyBytes": 104749213,
+        "legacyMs": 1033.0389,
+        "narrowBytes": 104749213,
+        "narrowMs": 1033.1042,
+        "round": 3,
+        "warmup": false
+      }
+    ],
+    "rows": 180000,
+    "shape": "wide-text",
+    "snapshotRows": 240000
+  }
+]

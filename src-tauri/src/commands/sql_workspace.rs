@@ -2,8 +2,8 @@
 use super::*;
 use crate::data::QuerySourceSpec;
 use crate::domain::{
-    validate_sql_identity, SqlExportFormat, SqlExportRequest, SqlPageRequest, SqlSourceIdentity,
-    SqlStatus, SqlTableDescriptor, StartSqlRequest,
+    validate_sql_identity, QueryPlan, SqlExportFormat, SqlExportRequest, SqlPageRequest,
+    SqlSourceIdentity, SqlStatus, SqlTableDescriptor, StartSqlRequest,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -105,12 +105,16 @@ pub fn cancel_sql_query(
 #[tauri::command]
 pub async fn read_sql_query_page(
     request: SqlPageRequest,
+    view_id: Option<String>,
     app: AppHandle,
 ) -> Result<DataPage, DataError> {
     let service = app.state::<AppState>().query_service(&app)?;
-    tauri::async_runtime::spawn_blocking(move || service.read_sql_page(&request))
-        .await
-        .map_err(|_| DataError::query_failed("SQL result page could not be read."))?
+    tauri::async_runtime::spawn_blocking(move || match view_id {
+        Some(view_id) => service.read_sql_result_view_page(&request, &view_id),
+        None => service.read_sql_page(&request),
+    })
+    .await
+    .map_err(|_| DataError::query_failed("SQL result page could not be read."))?
 }
 
 #[tauri::command]
@@ -119,11 +123,15 @@ pub async fn read_sql_query_cell(
     result_id: String,
     row: u64,
     column_id: String,
+    view_id: Option<String>,
     app: AppHandle,
 ) -> Result<DataValue, DataError> {
     let service = app.state::<AppState>().query_service(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        service.read_sql_cell(&run_id, &result_id, row, &column_id)
+    tauri::async_runtime::spawn_blocking(move || match view_id {
+        Some(view_id) => {
+            service.read_sql_result_view_cell(&run_id, &result_id, &view_id, row, &column_id)
+        }
+        None => service.read_sql_cell(&run_id, &result_id, row, &column_id),
     })
     .await
     .map_err(|_| DataError::query_failed("SQL result value could not be read."))?
@@ -157,6 +165,9 @@ pub async fn export_sql_result(
     tauri::async_runtime::spawn_blocking(move || {
         validate_sql_identity(&request.run_id)?;
         validate_sql_identity(&request.result_id)?;
+        if let Some(view_id) = &request.view_id {
+            validate_sql_identity(view_id)?;
+        }
         let (label, extension) = match request.format {
             SqlExportFormat::Csv => ("CSV", "csv"),
             SqlExportFormat::Tsv => ("TSV", "tsv"),
@@ -178,12 +189,37 @@ pub async fn export_sql_result(
             .map_err(|_| DataError::invalid_request("Choose a local file for the SQL export."))?;
         let state = app.state::<AppState>();
         let _admission = state.cache_migration.enter()?;
-        state.query_service(&app)?.export_sql_result(
-            &request.run_id,
-            &request.result_id,
-            request.format,
-            &path,
-        )?;
+        match std::fs::canonicalize(&path) {
+            Ok(target) => {
+                if state
+                    .documents
+                    .has_open_or_reserved_path(&canonical_path_key(&target))
+                    .map_err(document_error)?
+                {
+                    return Err(DataError::invalid_request(
+                        "An open source file cannot be replaced by a SQL export.",
+                    ));
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(DataError::io(&path, err)),
+        }
+        let service = state.query_service(&app)?;
+        match request.view_id {
+            Some(view_id) => service.export_sql_result_view(
+                &request.run_id,
+                &request.result_id,
+                &view_id,
+                request.format,
+                &path,
+            ),
+            None => service.export_sql_result(
+                &request.run_id,
+                &request.result_id,
+                request.format,
+                &path,
+            ),
+        }?;
         Ok(true)
     })
     .await
@@ -195,13 +231,14 @@ pub async fn start_sql_copy(
     run_id: String,
     result_id: String,
     request: StartCopyRequest,
+    view_id: Option<String>,
     app: AppHandle,
 ) -> Result<CopyOperationStatus, DataError> {
     tauri::async_runtime::spawn_blocking(move || {
         request.validate()?;
         if request.document_id != "sql-workspace"
             || request.session_id != result_id
-            || request.query_id.as_deref() != Some(run_id.as_str())
+            || request.query_id.as_deref() != Some(view_id.as_deref().unwrap_or(&run_id))
         {
             return Err(DataError::invalid_request(
                 "SQL copy result identity does not match.",
@@ -218,12 +255,21 @@ pub async fn start_sql_copy(
             ));
         }
         let service = state.query_service(&app)?;
-        let (reader, staging_directory) = service.sql_copy_context(
-            &run_id,
-            &result_id,
-            &request.operation_id,
-            request.max_bytes,
-        )?;
+        let (reader, staging_directory) = match view_id {
+            Some(view_id) => service.sql_result_view_copy_context(
+                &run_id,
+                &result_id,
+                &view_id,
+                &request.operation_id,
+                request.max_bytes,
+            ),
+            None => service.sql_copy_context(
+                &run_id,
+                &result_id,
+                &request.operation_id,
+                request.max_bytes,
+            ),
+        }?;
         state.copy_manager.start_with_display_formats(
             request,
             reader,
@@ -234,4 +280,80 @@ pub async fn start_sql_copy(
     })
     .await
     .map_err(|_| DataError::query_failed("SQL result copy could not be started."))?
+}
+
+#[tauri::command]
+pub async fn start_sql_result_view(
+    run_id: String,
+    result_id: String,
+    view_id: String,
+    plan: QueryPlan,
+    app: AppHandle,
+) -> Result<QueryStatus, DataError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _admission = state.cache_migration.enter()?;
+        state
+            .query_service(&app)?
+            .start_sql_result_view(&run_id, &result_id, &view_id, plan)
+    })
+    .await
+    .map_err(|_| DataError::query_failed("SQL result view could not be started."))?
+}
+
+#[tauri::command]
+pub fn get_sql_result_view_status(
+    run_id: String,
+    result_id: String,
+    view_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<QueryStatus, DataError> {
+    state
+        .query_service(&app)?
+        .sql_result_view_status(&run_id, &result_id, &view_id)
+}
+
+#[tauri::command]
+pub fn cancel_sql_result_view(
+    run_id: String,
+    result_id: String,
+    view_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<QueryStatus, DataError> {
+    state
+        .query_service(&app)?
+        .cancel_sql_result_view(&run_id, &result_id, &view_id)
+}
+
+#[tauri::command]
+pub async fn release_sql_result_view(
+    run_id: String,
+    result_id: String,
+    view_id: String,
+    app: AppHandle,
+) -> Result<(), DataError> {
+    let service = app.state::<AppState>().query_service(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        service.release_sql_result_view(&run_id, &result_id, &view_id)
+    })
+    .await
+    .map_err(|_| DataError::query_failed("SQL result view could not be released."))?
+}
+
+#[tauri::command]
+pub async fn find_sql_result_view_match(
+    run_id: String,
+    result_id: String,
+    view_id: String,
+    request: FindQueryMatchRequest,
+    app: AppHandle,
+) -> Result<FindQueryMatchResponse, DataError> {
+    let service = app.state::<AppState>().query_service(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        service.find_sql_result_view_match(&run_id, &result_id, &view_id, request)
+    })
+    .await
+    .map_err(|_| DataError::query_failed("SQL result search could not be read."))?
 }

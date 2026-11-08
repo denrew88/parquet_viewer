@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "startedAt": "2026-11-08T11:17:40.633Z",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-export-overwrite\\data-viewer.exe",
+  "identifier": "com.denrew88.data-viewer-phase23-acceptance",
+  "checks": [
+    {
+      "name": "Overwrite CSV, TSV and Parquet through the native Save dialog",
+      "status": "PASS",
+      "elapsedMs": 16641,
+      "saved": {
+        "csv": {
+          "rows": 230,
+          "sha256": "0e11e2104256555a5604ece0c6c857c496bcde44c651216aa6718b539442dcd9"
+        },
+        "tsv": {
+          "rows": 230,
+          "sha256": "06ef0064dafc64a2c297637250efc279a2e9384668f3d93b1800db234353facf"
+        },
+        "fresh": {
+          "rows": 460,
+          "sha256": "1bf552f1ece38901acfbd410a453827136e36d2f99fd14fdfa67265fc2a333e1"
+        },
+        "whole": {
+          "rows": 460,
+          "sha256": "1bf552f1ece38901acfbd410a453827136e36d2f99fd14fdfa67265fc2a333e1"
+        },
+        "parquet": {
+          "rows": 230,
+          "sha256": "0f84d099a746241d7cc9ba6f304425ad018b7857abdd372927f0f09b06248b74"
+        }
+      },
+      "cancelled": true
+    },
+    {
+      "name": "Reject replacing an open or referenced source",
+      "status": "PASS",
+      "elapsedMs": 3359,
+      "protectedOpenAndClosedSource": true,
+      "sourceSha256": "b1d267f2d8616eb143acd79d4f44358548387411858e707f73cc92360396497e"
+    }
+  ],
+  "sha256": "5870120258b685db78e6871dacc921e18a6873ee2d99e439866477337b6b98e4",
+  "process": {
+    "pid": 16044,
+    "path": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-23-export-overwrite\\data-viewer.exe",
+    "ticks": "639297658610620377"
+  },
+  "health": {
+    "status": "ok",
+    "appVersion": "0.23.0"
+  },
+  "finishedAt": "2026-11-08T11:18:02.765Z"
+}

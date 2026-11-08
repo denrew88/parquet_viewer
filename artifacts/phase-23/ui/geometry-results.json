@@ -1,0 +1,134 @@
+[
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "controls": [
+      {
+        "label": "Search",
+        "bounds": {
+          "x": 520,
+          "y": 515,
+          "width": 50.890625,
+          "height": 29,
+          "top": 515,
+          "right": 570.890625,
+          "bottom": 544,
+          "left": 520
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "label": "Clear",
+        "bounds": {
+          "x": 991.75,
+          "y": 515.5,
+          "width": 43.1875,
+          "height": 28,
+          "top": 515.5,
+          "right": 1034.9375,
+          "bottom": 543.5,
+          "left": 991.75
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "controls": [
+      {
+        "label": "Search",
+        "bounds": {
+          "x": 404.109375,
+          "y": 463,
+          "width": 43.890625,
+          "height": 29,
+          "top": 463,
+          "right": 448,
+          "bottom": 492,
+          "left": 404.109375
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "label": "Clear",
+        "bounds": {
+          "x": 853.46875,
+          "y": 463.5,
+          "width": 36.90625,
+          "height": 28,
+          "top": 463.5,
+          "right": 890.375,
+          "bottom": 491.5,
+          "left": 853.46875
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": {
+      "width": 800,
+      "height": 600
+    },
+    "controls": [
+      {
+        "label": "Search",
+        "bounds": {
+          "x": 320.390625,
+          "y": 367,
+          "width": 43.890625,
+          "height": 29,
+          "top": 367,
+          "right": 364.28125,
+          "bottom": 396,
+          "left": 320.390625
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "label": "Clear",
+        "bounds": {
+          "x": 696.90625,
+          "y": 367.5,
+          "width": 36.90625,
+          "height": 28,
+          "top": 367.5,
+          "right": 733.8125,
+          "bottom": 395.5,
+          "left": 696.90625
+        },
+        "hits": [
+          true,
+          true,
+          true
+        ]
+      }
+    ]
+  }
+]
