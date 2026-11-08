@@ -1,10 +1,13 @@
 # Data Viewer
 
-Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, React로 구성되며 큰 파일을 전체 메모리에 올리지 않고 페이지와 가상화 grid로 탐색한다.
+Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. 큰 파일을 전체 메모리에 올리지 않고 페이지와 가상화 그리드로 탐색하며, DuckDB SQL로 열린 파일을 조회할 수 있다. Tauri 2, Rust, React를 사용한다.
+
+**v0.23.0**에서 SQL 결과의 정렬·필터·검색, 현재 보기 내보내기, 저장 대화상자에서 승인한 파일의 덮어쓰기를 지원한다. [GitHub 릴리스에서 Windows EXE 다운로드](https://github.com/denrew88/parquet_viewer/releases/latest)
 
 ## 주요 기능
 
 - 네이티브 파일 대화상자, OS drag and drop, 시작 인자, 파일 연결로 CSV·Parquet 열기
+- 한 창에서 여러 파일 탭 열기
 - Data, Schema, Metadata 화면
 - Parquet row group/projection 페이지 조회와 정밀도 보존 값 표시
 - CSV UTF-8/BOM, quoted field, background row count/checkpoint, header mode
@@ -13,6 +16,15 @@ Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, Rea
 - Excel 방식 셀·행·열 선택과 키보드 이동
 - Excel/TSV/CSV/Custom preset으로 선택 범위를 시스템 clipboard에 복사
 - 전체 파일 대상 typed filter, find/search, distinct 값과 nulls-last stable multi-sort
+- 컬럼 값 목록의 검색·빈도·복사와 CSV 준비 캐시 재사용
+
+## SQL 작업 공간
+
+CSV 또는 Parquet를 열고 **SQL workspace**에서 파일을 테이블로 등록한다. 읽기 전용 `SELECT`와 CTE, JOIN, 집계, 윈도 함수, 실행 계획 분석을 지원한다. SQL은 파일 뷰어에 적용한 정렬이나 필터와 독립적으로 전체 입력을 조회한다.
+
+- **Results**에서 타입별 필터, 다중 정렬, Find를 사용할 수 있다. 타임스탬프 필터는 타입이 지원하는 소수초 정밀도를 보존한다.
+- **Export results**에서 전체 결과나 필터·정렬을 적용한 현재 보기를 CSV, TSV, Parquet 또는 클립보드로 내보낸다.
+- 기존 출력 파일은 저장 대화상자에서 승인하면 교체한다. 열린 원본과 해당 쿼리에 사용된 원본은 보호한다.
 
 ## 선택과 복사
 
@@ -31,7 +43,8 @@ Windows용 읽기 전용 CSV·Parquet 데스크톱 뷰어다. Tauri 2, Rust, Rea
 - CSV: comma delimiter, UTF-8/UTF-8 BOM, 최대 4,096열, logical record 최대 8MiB
 - Parquet: primitive, decimal, date, timestamp, binary, list, struct, map 표시
 - 페이지: 최대 200행
-- 읽기 전용이며 편집, 저장, SQL, HDF5는 지원하지 않는다.
+- HDF5는 OEF H5 v3 구조의 `.h5`, `.hdf5` 파일을 읽을 수 있다. SQL 입력은 CSV·Parquet로 제한한다.
+- 원본 파일은 읽기 전용이며, 내보내기는 SQL 결과를 별도 파일에 저장한다.
 - UTF-16과 다른 legacy encoding은 변환하지 않고 오류로 표시한다.
 
 ## 개발 환경
@@ -72,7 +85,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Phase 9 제품 10M query 결과와 최종 판정은 다음 문서에 있다.
+현재 릴리스의 SQL Results 및 Windows 내보내기 검증은 [Phase 23 통합 기록](artifacts/phase-23/50-integration.md)에 있다.
+
+Phase 9 제품의 1,000만 행 쿼리 결과는 다음 문서에 있다.
 
 - `artifacts/phase-9/product-large-test.md`
 - `artifacts/phase-9/50-integration.md`
@@ -88,7 +103,7 @@ python scripts/audit_phase7_security.py
 
 결과는 `artifacts/phase-7/`에 저장된다.
 
-## 배포
+## 로컬 Release 빌드
 
 실행 파일만 빌드:
 
@@ -130,20 +145,15 @@ node scripts/hdf5_release_build.mjs --print-plan tauri build
 자동 발견 실패 시 경고를 출력하고 원래 환경으로 빌드하므로, 최적화 적용 여부는 출력된 계획과
 실제 native compile flags로 확인한다.
 
-HDF5 Release 수정의 동일 조건 EXE 비교는 141.13→114.88MiB(-18.6%)이며, H5 읽기 성능은
-5회 A/B에서 유지됐다. [크기·성능·실제 Tauri 검증 결과](artifacts/optimizations/hdf5-msvc-release/50-results.md).
-
-추가로 Rust Release에 `lto = "thin"`, `codegen-units = 1`을 적용했다. 동일 조건 EXE는
-114.88→103.67MiB(-9.76%), 최종 Tauri 패키징 EXE는 103.71MiB다. CSV·HDF5 각각 5회
-A/B에서 데이터 정합성과 측정 성능을 유지했고, Rust 305개 테스트와 실제 CSV·Parquet·HDF5
-앱 검증을 통과했다. [최종 측정과 검증 기록](artifacts/optimizations/rust-thin-lto/50-results.md).
+이전 빌드의 크기·성능 비교는 [HDF5 MSVC 최적화 기록](artifacts/optimizations/hdf5-msvc-release/50-results.md)과
+[Rust ThinLTO 최적화 기록](artifacts/optimizations/rust-thin-lto/50-results.md)에 있다.
 
 설치본은 CSV·Parquet file association을 등록한다. clean VM 설치·제거, Explorer 더블클릭, 실제 Excel paste는 배포 전 별도 native gate로 확인해야 한다.
 
 ## 프로젝트 문서
 
 - `docs/PROJECT_SPEC.md`: 제품·데이터·보안 계약
-- `docs/DEVELOPMENT_PLAN.md`: Phase 0~9 개발 및 테스트 계획
+- [개발 계획](docs/DEVELOPMENT_PLAN.md)에서 현재 Phase와 테스트 이력을 확인할 수 있다.
 - `docs/UI_VALIDATION.md`: Browser/native UI 검증 계약
 - `docs/PLAYWRIGHT.md`: Playwright 설치, 실행, 테스트 작성 규칙
 - `artifacts/`: 단계별 scope, test plan, 통합 및 review 기록
