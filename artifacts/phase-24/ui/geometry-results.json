@@ -1,0 +1,254 @@
+{
+  "desktop": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "workspace": {
+      "x": 0,
+      "y": 94,
+      "width": 1440,
+      "height": 776,
+      "right": 1440,
+      "bottom": 870,
+      "clientWidth": 1440,
+      "scrollWidth": 1440
+    },
+    "sheet": [
+      {
+        "x": 0,
+        "y": 140,
+        "width": 1185,
+        "height": 730,
+        "right": 1185,
+        "bottom": 870,
+        "clientWidth": 1170,
+        "scrollWidth": 1170
+      }
+    ],
+    "inspector": [
+      {
+        "x": 1185,
+        "y": 140,
+        "width": 255,
+        "height": 730,
+        "right": 1440,
+        "bottom": 870,
+        "clientWidth": 239,
+        "scrollWidth": 239
+      }
+    ],
+    "cards": [
+      {
+        "x": 12,
+        "y": 204,
+        "width": 568,
+        "height": 295,
+        "right": 580,
+        "bottom": 499,
+        "clientWidth": 566,
+        "scrollWidth": 566
+      },
+      {
+        "x": 590,
+        "y": 204,
+        "width": 568,
+        "height": 295,
+        "right": 1158,
+        "bottom": 499,
+        "clientWidth": 566,
+        "scrollWidth": 566
+      }
+    ],
+    "plots": [
+      {
+        "x": 13,
+        "y": 251,
+        "width": 566,
+        "height": 220,
+        "right": 579,
+        "bottom": 471,
+        "clientWidth": 566,
+        "scrollWidth": 566
+      },
+      {
+        "x": 591,
+        "y": 251,
+        "width": 566,
+        "height": 220,
+        "right": 1157,
+        "bottom": 471,
+        "clientWidth": 566,
+        "scrollWidth": 566
+      }
+    ]
+  },
+  "compact": {
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "workspace": {
+      "x": 0,
+      "y": 94,
+      "width": 1024,
+      "height": 644,
+      "right": 1024,
+      "bottom": 738,
+      "clientWidth": 1024,
+      "scrollWidth": 1024
+    },
+    "sheet": [
+      {
+        "x": 0,
+        "y": 140,
+        "width": 788.484375,
+        "height": 598,
+        "right": 788.484375,
+        "bottom": 738,
+        "clientWidth": 773,
+        "scrollWidth": 773
+      }
+    ],
+    "inspector": [
+      {
+        "x": 788.484375,
+        "y": 140,
+        "width": 235.515625,
+        "height": 598,
+        "right": 1024,
+        "bottom": 738,
+        "clientWidth": 220,
+        "scrollWidth": 220
+      }
+    ],
+    "cards": [
+      {
+        "x": 12,
+        "y": 204,
+        "width": 369.734375,
+        "height": 295,
+        "right": 381.734375,
+        "bottom": 499,
+        "clientWidth": 368,
+        "scrollWidth": 368
+      },
+      {
+        "x": 391.734375,
+        "y": 204,
+        "width": 369.75,
+        "height": 295,
+        "right": 761.484375,
+        "bottom": 499,
+        "clientWidth": 368,
+        "scrollWidth": 368
+      }
+    ],
+    "plots": [
+      {
+        "x": 13,
+        "y": 251,
+        "width": 367.734375,
+        "height": 220,
+        "right": 380.734375,
+        "bottom": 471,
+        "clientWidth": 368,
+        "scrollWidth": 368
+      },
+      {
+        "x": 392.734375,
+        "y": 251,
+        "width": 367.75,
+        "height": 220,
+        "right": 760.484375,
+        "bottom": 471,
+        "clientWidth": 368,
+        "scrollWidth": 368
+      }
+    ]
+  },
+  "minimum": {
+    "viewport": {
+      "width": 800,
+      "height": 600
+    },
+    "workspace": {
+      "x": 0,
+      "y": 94,
+      "width": 800,
+      "height": 476,
+      "right": 800,
+      "bottom": 570,
+      "clientWidth": 800,
+      "scrollWidth": 800
+    },
+    "sheet": [
+      {
+        "x": 0,
+        "y": 140,
+        "width": 594,
+        "height": 430,
+        "right": 594,
+        "bottom": 570,
+        "clientWidth": 579,
+        "scrollWidth": 579
+      }
+    ],
+    "inspector": [
+      {
+        "x": 594,
+        "y": 140,
+        "width": 206,
+        "height": 430,
+        "right": 800,
+        "bottom": 570,
+        "clientWidth": 190,
+        "scrollWidth": 190
+      }
+    ],
+    "cards": [
+      {
+        "x": 12,
+        "y": 204,
+        "width": 555,
+        "height": 295,
+        "right": 567,
+        "bottom": 499,
+        "clientWidth": 553,
+        "scrollWidth": 553
+      },
+      {
+        "x": 12,
+        "y": 509,
+        "width": 555,
+        "height": 295,
+        "right": 567,
+        "bottom": 804,
+        "clientWidth": 553,
+        "scrollWidth": 553
+      }
+    ],
+    "plots": [
+      {
+        "x": 13,
+        "y": 251,
+        "width": 553,
+        "height": 220,
+        "right": 566,
+        "bottom": 471,
+        "clientWidth": 553,
+        "scrollWidth": 553
+      },
+      {
+        "x": 13,
+        "y": 556,
+        "width": 553,
+        "height": 220,
+        "right": 566,
+        "bottom": 776,
+        "clientWidth": 553,
+        "scrollWidth": 553
+      }
+    ]
+  }
+}

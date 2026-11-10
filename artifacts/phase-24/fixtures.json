@@ -1,0 +1,81 @@
+{
+  "files": {
+    "orders.parquet": {
+      "rows": 640,
+      "sha256": "addd7ecd233a76c86eb7184fcfef20a48fccf4ef707417172ea240706447f0a6"
+    },
+    "precision.parquet": {
+      "rows": 6,
+      "sha256": "8d18706d2f9478b1917b323088abb252f2b59ab27fb498c98731b97d23fbca16"
+    },
+    "scale-10000.parquet": {
+      "rows": 10000,
+      "sha256": "25e4101170eb4129debe3a411689cc48643577faf1d0e4512a9e67636b8f815c"
+    },
+    "scale-100000.parquet": {
+      "rows": 100000,
+      "sha256": "49155100e8f8f4cf4dc3b9bb999fef54c6b7499dc4fa4966809add5ecc71601a"
+    },
+    "scale-1000000.parquet": {
+      "rows": 1000000,
+      "sha256": "3da335825f932b6c7ea31b4e62252c11abb6c169c64c5a1fe3b4597e17dd3c3c"
+    }
+  },
+  "orders": {
+    "monthRows": 320,
+    "dailyRows": 28,
+    "minCents": 1000,
+    "maxCents": 9336,
+    "groups": {
+      "Fitness": {
+        "count": 160,
+        "sumCents": 589760
+      },
+      "Outdoor": {
+        "count": 160,
+        "sumCents": 645760
+      },
+      "Running": {
+        "count": 160,
+        "sumCents": 701760
+      },
+      "Yoga": {
+        "count": 160,
+        "sumCents": 757760
+      }
+    }
+  },
+  "sqlSelection": {
+    "month": "2026-01",
+    "minOrdinal": 30,
+    "filteredRows": 290,
+    "firstOrdinal": 319,
+    "lastOrdinal": 109,
+    "selectedRows": 211,
+    "groups": {
+      "Fitness": {
+        "count": 52,
+        "medianCents": 3354.0
+      },
+      "Outdoor": {
+        "count": 53,
+        "medianCents": 3676
+      },
+      "Running": {
+        "count": 53,
+        "medianCents": 4020
+      },
+      "Yoga": {
+        "count": 53,
+        "medianCents": 4364
+      }
+    }
+  },
+  "precision": {
+    "rows": 6,
+    "finiteMeasures": 3,
+    "sequenceOrigin": "9007199254740992",
+    "decimalOrigin": "9007199254.740992",
+    "timestampOriginNs": "1767225600000000000"
+  }
+}

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { BookOpen, Pencil, Play, Square, X } from "lucide-react";
 import type { BackendAdapter, DataPage, FileSummary } from "../backend";
+import type { ChartColumn, ChartSelection, ChartSqlSource } from "../chart-workspace/contract";
 import type { AppSettings } from "../settings/model";
 import {
   SQL_MAX_BYTES,
@@ -27,6 +29,7 @@ import "./SqlWorkspace.css";
 import { SqlEditor, type SqlEditorHandle } from "./SqlEditor";
 import { SqlPlan } from "./SqlPlan";
 import { SqlResults } from "./SqlResults";
+import type { SqlRunQueue } from "./runQueue";
 import { clampSourcePane, SOURCE_SEPARATOR_PX } from "./sourcePaneState";
 import { clampQueryPane, QUERY_SEPARATOR_PX, useVerticalSplitter } from "./useVerticalSplitter";
 import {
@@ -39,11 +42,20 @@ import {
 
 interface Props {
   active: boolean;
+  workspaceId?: string;
+  runQueue?: SqlRunQueue;
   backend: BackendAdapter;
   sources: SqlSourceIdentity[];
   settings: AppSettings;
   onOpenCopySettings(): void;
   onOpenSource(source: SqlSourceIdentity): void;
+  onResultChange?(result: SqlStatus | null): void;
+  onSendChart?(): void;
+  onChartSelection?(
+    source: ChartSqlSource,
+    selection: ChartSelection,
+    columns: ChartColumn[],
+  ): void;
 }
 interface Result {
   execution: SqlExecutionSnapshot;
@@ -58,6 +70,16 @@ interface PendingResult {
 const busyStatus = (status: SqlStatus | null) =>
   status?.state === "queued" || status?.state === "running";
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+function tablePathPosition(button: HTMLButtonElement) {
+  const rect = button.getBoundingClientRect();
+  const left = Math.min(rect.right + 8, Math.max(8, window.innerWidth - 248));
+  return {
+    left,
+    top: Math.max(8, Math.min(rect.top, window.innerHeight - 96)),
+    maxWidth: Math.min(460, window.innerWidth - left - 8),
+  };
+}
+
 function resultSummary(status: SqlStatus): FileSummary {
   return {
     sessionId: status.resultId!,
@@ -89,12 +111,18 @@ function resultSummary(status: SqlStatus): FileSummary {
 }
 export function SqlWorkspace({
   active,
+  workspaceId,
+  runQueue,
   backend,
   sources,
   settings,
   onOpenCopySettings,
   onOpenSource,
+  onResultChange,
+  onSendChart,
+  onChartSelection,
 }: Props) {
+  const paneId = (name: string) => (workspaceId ? `${workspaceId}-${name}` : name);
   const api = backend.sqlWorkspace;
   const [tables, setTables] = useState<SqlTable[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -105,6 +133,14 @@ export function SqlWorkspace({
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   const [aliasEdit, setAliasEdit] = useState<{ key: string; value: string } | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
+  const [pathHint, setPathHint] = useState<{
+    key: string;
+    path: string;
+    button: HTMLButtonElement;
+    left: number;
+    top: number;
+    maxWidth: number;
+  } | null>(null);
   const [sql, setSql] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,9 +169,13 @@ export function SqlWorkspace({
     sequence = useRef(0);
   const resultRef = useRef<Result | null>(null),
     pendingResultRef = useRef<PendingResult | null>(null);
-  const currentRun = useRef<{ runId: string; started: boolean; cancelRequested: boolean } | null>(
-    null,
-  );
+  const currentRun = useRef<{
+    runId: string;
+    started: boolean;
+    cancelRequested: boolean;
+    queueAbort: AbortController;
+    disposal?: Promise<void>;
+  } | null>(null);
   const latestTables = useRef(tables);
   latestTables.current = tables;
   const activeRef = useRef(active);
@@ -143,6 +183,43 @@ export function SqlWorkspace({
   const sourcesKey = JSON.stringify(sources);
   const busy = busyStatus(status);
   const selected = tables.find((table) => sourceKey(table) === selectedKey) ?? tables[0];
+  const visiblePathHint =
+    active && pathHint && tables.some((table) => sourceKey(table) === pathHint.key)
+      ? pathHint
+      : null;
+  const pathHintButton = visiblePathHint?.button;
+
+  useEffect(() => {
+    if (!pathHintButton) return;
+    const reposition = () => {
+      const position = pathHintButton.matches(":focus-visible")
+        ? tablePathPosition(pathHintButton)
+        : null;
+      setPathHint((current) => {
+        if (current?.button !== pathHintButton) return current;
+        return position ? { ...current, ...position } : null;
+      });
+    };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [pathHintButton]);
+
+  function showTablePath(table: SqlTable, button: HTMLButtonElement) {
+    setPathHint({
+      key: sourceKey(table),
+      path: table.path,
+      button,
+      ...tablePathPosition(button),
+    });
+  }
+
+  function hideTablePath(key: string) {
+    setPathHint((current) => (current?.key === key ? null : current));
+  }
   const selectedCol =
     selected?.columns.find((column) => column.id === selectedColumn) ?? selected?.columns[0];
   const columns = useMemo(
@@ -192,18 +269,44 @@ export function SqlWorkspace({
       });
   }, [active, api, sourcesKey, sources.length, sourceRetry]);
 
+  const disposeUnpublishedRun = useCallback(
+    async (run: NonNullable<typeof currentRun.current>) => {
+      if (
+        !api ||
+        !run.started ||
+        resultRef.current?.status.runId === run.runId ||
+        pendingResultRef.current?.status.runId === run.runId
+      )
+        return;
+      run.disposal ??= (async () => {
+        let status = await api.cancelQuery(run.runId);
+        while (busyStatus(status)) {
+          await new Promise((resolve) => window.setTimeout(resolve, 150));
+          status = await api.getStatus(run.runId);
+        }
+        if (status.resultId) await api.releaseResult(status.runId, status.resultId);
+      })().catch(() => {});
+      await run.disposal;
+    },
+    [api],
+  );
+
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       const run = currentRun.current;
-      if (run) void api?.cancelQuery(run.runId).catch(() => {});
+      if (run) {
+        run.cancelRequested = true;
+        run.queueAbort.abort();
+        void disposeUnpublishedRun(run);
+      }
       const snapshots = [resultRef.current?.status, pendingResultRef.current?.status].filter(
         (s): s is SqlStatus => Boolean(s?.resultId),
       );
       snapshots.forEach((s) => void api?.releaseResult(s.runId, s.resultId!).catch(() => {}));
     };
-  }, [api]);
+  }, [api, disposeUnpublishedRun]);
 
   function selectTable(table: SqlTable) {
     setSelectedKey(sourceKey(table));
@@ -268,6 +371,7 @@ export function SqlWorkspace({
     const value = { status: next, page, summary: resultSummary(next), execution };
     resultRef.current = value;
     setResult(value);
+    onResultChange?.(next);
     setPendingResult(null);
     pendingResultRef.current = null;
     setOutput("result");
@@ -283,7 +387,7 @@ export function SqlWorkspace({
       setOutput("messages");
       return;
     }
-    const runId = `sql-${Date.now()}-${++sequence.current}`;
+    const runId = `sql-${workspaceId ?? "standalone"}-${Date.now()}-${++sequence.current}`;
     const request = { runId, sql: statement, action, tables: tableBindings(latestTables.current) };
     const execution = captureSqlExecution(request, draft);
     try {
@@ -302,7 +406,12 @@ export function SqlWorkspace({
       pendingResultRef.current = null;
       setPendingResult(null);
     }
-    const run = { runId, started: false, cancelRequested: false };
+    const run = {
+      runId,
+      started: false,
+      cancelRequested: false,
+      queueAbort: new AbortController(),
+    };
     currentRun.current = run;
     setError(null);
     setPageError(null);
@@ -310,7 +419,7 @@ export function SqlWorkspace({
     setStatus({
       runId,
       state: "queued",
-      phase: "starting",
+      phase: runQueue?.busy ? "waitingForSqlWorker" : "starting",
       elapsedMs: 0,
       rowsProduced: 0,
       resultId: null,
@@ -321,9 +430,17 @@ export function SqlWorkspace({
       warnings: [],
       error: null,
     });
+    let finish: (() => void) | undefined;
     try {
+      if (runQueue) finish = await runQueue.enter(run.queueAbort.signal);
+      if (run.queueAbort.signal.aborted || !mounted.current || currentRun.current !== run) return;
+      setStatus((old) => (old?.runId === runId ? { ...old, phase: "starting" } : old));
       let next = await api.startQuery(request);
       run.started = true;
+      if (!mounted.current || currentRun.current !== run) {
+        await disposeUnpublishedRun(run);
+        return;
+      }
       if (run.cancelRequested && busyStatus(next)) next = await api.cancelQuery(runId);
       while (mounted.current && currentRun.current === run) {
         setStatus(next);
@@ -357,6 +474,7 @@ export function SqlWorkspace({
         );
     } catch (cause) {
       if (mounted.current && currentRun.current === run) {
+        if (run.queueAbort.signal.aborted) return;
         setError(errorMessage(cause));
         setOutput("messages");
         setStatus((old) =>
@@ -370,12 +488,23 @@ export function SqlWorkspace({
             : old,
         );
       }
+    } finally {
+      if (!mounted.current || currentRun.current !== run) await disposeUnpublishedRun(run);
+      finish?.();
     }
   }
   async function cancel() {
     const run = currentRun.current;
     if (!api || !run) return;
     run.cancelRequested = true;
+    if (!run.started && status?.phase === "waitingForSqlWorker") {
+      run.queueAbort.abort();
+      setStatus((old) =>
+        old?.runId === run.runId ? { ...old, state: "cancelled", phase: "cancelled" } : old,
+      );
+      setNotice("Queued SQL execution cancelled. The previous successful result is unchanged.");
+      return;
+    }
     setNotice("Cancelling SQL execution…");
     if (run.started)
       await api
@@ -394,6 +523,7 @@ export function SqlWorkspace({
       await api.releaseResult(old.status.runId, old.status.resultId);
       resultRef.current = null;
       setResult(null);
+      onResultChange?.(null);
       setPageError(null);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -498,6 +628,20 @@ export function SqlWorkspace({
                     aria-label={table.alias}
                     aria-description={`${table.path}. ${table.columnMode === "name" ? "Names only" : "c-numbers only"}`}
                     aria-pressed={selected === table}
+                    onPointerEnter={(event) => {
+                      if (event.pointerType === "mouse") showTablePath(table, event.currentTarget);
+                    }}
+                    onPointerLeave={(event) => {
+                      if (!event.currentTarget.matches(":focus-visible")) hideTablePath(key);
+                    }}
+                    onFocus={(event) => {
+                      if (event.currentTarget.matches(":focus-visible"))
+                        showTablePath(table, event.currentTarget);
+                    }}
+                    onBlur={() => hideTablePath(key)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") hideTablePath(key);
+                    }}
                     onClick={(event) => {
                       selectTable(table);
                       event.currentTarget.scrollIntoView?.({ block: "nearest" });
@@ -507,9 +651,6 @@ export function SqlWorkspace({
                     {aliasEdit?.key !== key && (
                       <span className="sql-table__alias">{table.alias}</span>
                     )}
-                    <span className="sql-table__path" title={table.path}>
-                      {table.path}
-                    </span>
                     <span className="sql-table__mode">
                       {table.columnMode === "name" ? "Names only" : "c-numbers only"}
                     </span>
@@ -669,7 +810,7 @@ export function SqlWorkspace({
           }
         >
           <div
-            id="sql-query-editor-pane"
+            id={paneId("sql-query-editor-pane")}
             className={`sql-editing${helpOpen ? "" : " sql-editing--help-closed"}`}
           >
             <div className="sql-editor-area">
@@ -733,8 +874,8 @@ export function SqlWorkspace({
                 <div role="tablist" aria-label="SQL help">
                   <button
                     role="tab"
-                    id="sql-help-examples"
-                    aria-controls="sql-examples-panel"
+                    id={paneId("sql-help-examples")}
+                    aria-controls={paneId("sql-examples-panel")}
                     aria-selected={helpTab === "examples"}
                     type="button"
                     onClick={() => setHelpTab("examples")}
@@ -743,8 +884,8 @@ export function SqlWorkspace({
                   </button>
                   <button
                     role="tab"
-                    id="sql-help-guide"
-                    aria-controls="sql-guide-panel"
+                    id={paneId("sql-help-guide")}
+                    aria-controls={paneId("sql-guide-panel")}
                     aria-selected={helpTab === "guide"}
                     type="button"
                     onClick={() => setHelpTab("guide")}
@@ -754,8 +895,8 @@ export function SqlWorkspace({
                 </div>
                 <div
                   role="tabpanel"
-                  id="sql-examples-panel"
-                  aria-labelledby="sql-help-examples"
+                  id={paneId("sql-examples-panel")}
+                  aria-labelledby={paneId("sql-help-examples")}
                   hidden={helpTab !== "examples"}
                 >
                   <div className="sql-example-options">
@@ -796,8 +937,8 @@ export function SqlWorkspace({
                 </div>
                 <div
                   role="tabpanel"
-                  id="sql-guide-panel"
-                  aria-labelledby="sql-help-guide"
+                  id={paneId("sql-guide-panel")}
+                  aria-labelledby={paneId("sql-help-guide")}
                   hidden={helpTab !== "guide"}
                 >
                   <h3>Editor shortcuts</h3>
@@ -854,10 +995,10 @@ export function SqlWorkspace({
           <div
             {...querySplit.separator}
             aria-label="Resize query and output"
-            aria-controls="sql-query-editor-pane sql-output-pane"
+            aria-controls={`${paneId("sql-query-editor-pane")} ${paneId("sql-output-pane")}`}
             className="sql-source-separator sql-query-separator"
           />
-          <div className="sql-output" id="sql-output-pane">
+          <div className="sql-output" id={paneId("sql-output-pane")}>
             {!api && (
               <div className="sql-error-banner" role="alert">
                 SQL execution is unavailable in this backend.
@@ -881,8 +1022,8 @@ export function SqlWorkspace({
                   type="button"
                   role="tab"
                   key={name}
-                  id={`sql-output-${name}`}
-                  aria-controls={`sql-${name}-panel`}
+                  id={paneId(`sql-output-${name}`)}
+                  aria-controls={paneId(`sql-${name}-panel`)}
                   aria-selected={output === name}
                   onClick={() => setOutput(name)}
                 >
@@ -898,8 +1039,8 @@ export function SqlWorkspace({
             <section
               className="sql-result-panel"
               role="tabpanel"
-              id="sql-result-panel"
-              aria-labelledby="sql-output-result"
+              id={paneId("sql-result-panel")}
+              aria-labelledby={paneId("sql-output-result")}
               hidden={output !== "result"}
             >
               {pendingResult && pageError && (
@@ -937,6 +1078,8 @@ export function SqlWorkspace({
                   page={result.page}
                   settings={settings}
                   context={resultContext}
+                  onSendChart={onSendChart}
+                  onChartSelection={onChartSelection}
                   onClear={() => void clearResult()}
                   onExportBusyChange={onExportBusyChange}
                   onOpenCopySettings={onOpenCopySettings}
@@ -956,8 +1099,8 @@ export function SqlWorkspace({
             <section
               className="sql-plan-panel"
               role="tabpanel"
-              id="sql-plan-panel"
-              aria-labelledby="sql-output-plan"
+              id={paneId("sql-plan-panel")}
+              aria-labelledby={paneId("sql-output-plan")}
               hidden={output !== "plan"}
             >
               {planContext && (
@@ -977,8 +1120,8 @@ export function SqlWorkspace({
             <section
               className="sql-messages-panel"
               role="tabpanel"
-              id="sql-messages-panel"
-              aria-labelledby="sql-output-messages"
+              id={paneId("sql-messages-panel")}
+              aria-labelledby={paneId("sql-output-messages")}
               hidden={output !== "messages"}
             >
               {error && (
@@ -1027,6 +1170,21 @@ export function SqlWorkspace({
           </div>
         </div>
       </div>
+      {visiblePathHint &&
+        createPortal(
+          <div
+            className="sql-table-path-tooltip"
+            role="tooltip"
+            style={{
+              left: visiblePathHint.left,
+              top: visiblePathHint.top,
+              maxWidth: visiblePathHint.maxWidth,
+            }}
+          >
+            {visiblePathHint.path}
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }

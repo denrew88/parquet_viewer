@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-11-09T20:21:30+09:00",
+  "state": "promoted",
+  "identifier": "com.denrew88.data-viewer",
+  "executable": {
+    "path": "src-tauri/target/release/data-viewer.exe",
+    "bytes": 61614592,
+    "sha256": "f60aa62353f51e97ecdb75c96177a222f694321a2d269fb89381a78336dfcf76",
+    "fileVersion": "0.24.0",
+    "productVersion": "0.24.0"
+  },
+  "previousProduct": {
+    "backup": ".tmp/phase24-exe-promotion/data-viewer-0.23.0-20261109-202051.exe",
+    "bytes": 60978176,
+    "sha256": "5f37809f196ff1640649d2db7d66c4d5fd6ba8caf37cc8f94de6c8d5d19ca2f2",
+    "productVersion": "0.23.0"
+  },
+  "buildLog": "artifacts/dev-check/2026-11-09T06-56-18-996Z-phase24-chart-analysis-build.log",
+  "candidateSmoke": {
+    "path": "src-tauri/target/release/candidates/phase-24-chart-analysis/data-viewer.exe",
+    "checksPassed": 5,
+    "log": "artifacts/dev-check/2026-11-09T07-04-04-152Z-phase24-chart-analysis.log"
+  },
+  "releasePathSmoke": {
+    "state": "pass",
+    "checksPassed": 13,
+    "log": "artifacts/dev-check/2026-11-09T11-20-56-390Z-phase24-release-smoke.log"
+  }
+}

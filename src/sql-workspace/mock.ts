@@ -4,15 +4,18 @@ import {
   type DataPage,
   type DataValue,
   type FileSummary,
+  type FindBoundaryRequest,
   type OpenedDataFile,
   type QueryStatusResponse,
   type FindQueryMatchResponse,
 } from "../backend";
+import { ctrlArrowTarget } from "../gridSelection";
 import { serializeCopyRows } from "../copy/serializer";
 import type { CopyOptions } from "../copy/model";
 import type { QueryFilter, QuerySearch } from "../query/model";
 import {
   parseSqlStatus,
+  validateSqlBoundary,
   validateSqlPage,
   validateSqlRequest,
   type SqlSourceIdentity,
@@ -176,14 +179,32 @@ export function sqlMockSourcePage(
     rows,
   };
 }
+function boundaryPayload(row: number): string | null {
+  if (row < 5) return ["alpha", " ", "omega", null, ""][row];
+  if (row < 150) return "next";
+  if (row < 220) return row % 2 === 0 ? null : "";
+  return row < 259 ? "tail" : null;
+}
+
 export function createSqlWorkspaceMock(
   registerCopy: (status: CopyOperationStatus) => void,
+  waitForBoundary: (request: FindBoundaryRequest) => Promise<void>,
 ): SqlWorkspaceBackend {
+  type MockResult = SqlStatus & { boundary: boolean };
   const tasks = new Map<
     string,
-    { status: SqlStatus; started: number; delay: number; fail: boolean; action: string }
+    {
+      status: SqlStatus;
+      started: number;
+      delay: number;
+      fail: boolean;
+      action: string;
+      boundary: boolean;
+    }
   >();
-  const results = new Map<string, SqlStatus>();
+  const results = new Map<string, MockResult>();
+  const chartPins = new Map<string, number>();
+  const releasedTabs = new Set<string>();
   type Match = NonNullable<FindQueryMatchResponse["match"]>;
   const views = new Map<
     string,
@@ -193,7 +214,27 @@ export function createSqlWorkspaceMock(
       matches: Omit<Match, "wrapped" | "matchIndex" | "totalMatches">[];
     }
   >();
-  const value = (row: number, column: string): DataValue => {
+  const value = (result: MockResult, row: number, column: string): DataValue => {
+    if (result.boundary) {
+      const text =
+        column === "r1"
+          ? boundaryPayload(row)
+          : column === "r3"
+            ? row < 4
+              ? ["  ", null, "", ""][row]
+              : "flag"
+            : column === "r4"
+              ? row === 0
+                ? ""
+                : row === 2
+                  ? null
+                  : "note"
+              : undefined;
+      if (text === null || (column === "r2" && row === 0))
+        return { kind: "null", display: null, state: "null" };
+      if (text !== undefined)
+        return { kind: "string", display: text, state: text === "" ? "empty" : "valid" };
+    }
     if (column === "r0")
       return {
         kind: "int",
@@ -235,8 +276,8 @@ export function createSqlWorkspaceMock(
       throw new DataViewerError("QueryStale", "SQL result view is unavailable.");
     return view.rows;
   };
-  const matchesFilter = (row: number, filter: QueryFilter) => {
-    const cell = value(row, filter.columnId);
+  const matchesFilter = (result: MockResult, row: number, filter: QueryFilter) => {
+    const cell = value(result, row, filter.columnId);
     const input = filter.values[0];
     const actual = cell.display ?? "";
     const lhs = filter.scalarType === "text" ? actual : Number(actual);
@@ -278,9 +319,9 @@ export function createSqlWorkspaceMock(
         return actual === "false";
     }
   };
-  const matchesSearch = (row: number, column: string, search: QuerySearch) => {
+  const matchesSearch = (result: MockResult, row: number, column: string, search: QuerySearch) => {
     const normalize = (text: string) => (search.caseSensitive ? text : text.toLowerCase());
-    const actual = normalize(value(row, column).display ?? "");
+    const actual = normalize(value(result, row, column).display ?? "");
     const needle = normalize(search.text);
     return search.exact ? actual === needle : actual.includes(needle);
   };
@@ -301,14 +342,27 @@ export function createSqlWorkspaceMock(
         item.status.phase = "complete";
         if (item.action === "execute") {
           item.status.resultId = `sql-result-${runId}`;
-          item.status.rowCount = 4;
-          item.status.rowsProduced = 4;
+          item.status.rowCount = item.boundary ? 260 : 4;
+          item.status.rowsProduced = item.status.rowCount;
           item.status.columns = [
             { id: "r0", name: "value", logicalType: "BIGINT", nullable: false },
             { id: "r1", name: "value", logicalType: "VARCHAR", nullable: false },
             { id: "r2", name: "amount", logicalType: "DECIMAL(18,2)", nullable: false },
           ];
-          results.set(item.status.resultId, structuredClone(item.status));
+          if (item.boundary) {
+            item.status.columns[0].name = "row_id";
+            item.status.columns[1].name = "payload";
+            item.status.columns[1].nullable = true;
+            item.status.columns[2].nullable = true;
+            item.status.columns.push(
+              { id: "r3", name: "flag", logicalType: "VARCHAR", nullable: true },
+              { id: "r4", name: "detail", logicalType: "VARCHAR", nullable: true },
+            );
+          }
+          results.set(item.status.resultId, {
+            ...structuredClone(item.status),
+            boundary: item.boundary,
+          });
         } else {
           item.status.planText = "HASH_JOIN\n  conditions: a.c1 = b.c1\n  SCAN registered inputs";
           item.status.planJson = {
@@ -336,22 +390,28 @@ export function createSqlWorkspaceMock(
         if (views.has(viewId))
           throw new DataViewerError("InvalidRequest", "Duplicate SQL result view.");
         const columns = result.columns.map((column) => column.id);
+        const textColumns = new Set(
+          result.columns
+            .filter((column) => column.logicalType === "VARCHAR")
+            .map((column) => column.id),
+        );
         const search = plan.search;
         const targets = search?.targetColumnIds.length ? search.targetColumnIds : columns;
         const indexes = rowIndexes(runId, resultId);
         const rows = indexes
           .filter(
             (row) =>
-              plan.filters.every((filter) => matchesFilter(row, filter)) &&
+              plan.filters.every((filter) => matchesFilter(result, row, filter)) &&
               (search?.mode !== "filter" ||
-                targets.some((column) => matchesSearch(row, column, search))),
+                targets.some((column) => matchesSearch(result, row, column, search))),
           )
           .sort((a, b) => {
             for (const sort of plan.sort) {
-              const left = value(a, sort.columnId).display ?? "";
-              const right = value(b, sort.columnId).display ?? "";
-              const order =
-                sort.columnId === "r1" ? left.localeCompare(right) : Number(left) - Number(right);
+              const left = value(result, a, sort.columnId).display ?? "";
+              const right = value(result, b, sort.columnId).display ?? "";
+              const order = textColumns.has(sort.columnId)
+                ? left.localeCompare(right)
+                : Number(left) - Number(right);
               if (order) return sort.direction === "descending" ? -order : order;
             }
             return a - b;
@@ -360,7 +420,7 @@ export function createSqlWorkspaceMock(
           search?.mode === "find"
             ? rows.flatMap((row, rowOffset) =>
                 targets
-                  .filter((column) => matchesSearch(row, column, search))
+                  .filter((column) => matchesSearch(result, row, column, search))
                   .map((columnId) => ({ rowOffset, columnId })),
               )
             : [];
@@ -460,6 +520,7 @@ export function createSqlWorkspaceMock(
         started: performance.now(),
         delay: /\/\*\s*slow\s*\*\//i.test(request.sql) ? 30_000 : 300,
         fail: /\/\*\s*fail\s*\*\//i.test(request.sql),
+        boundary: /\/\*\s*boundary\s*\*\//i.test(request.sql),
         action: request.action,
       });
       if (tasks.size > 16) {
@@ -488,7 +549,7 @@ export function createSqlWorkspaceMock(
       const indexes = rowIndexes(request.runId, request.resultId, request.viewId);
       const rows = indexes
         .slice(request.offset, request.offset + request.limit)
-        .map((row) => request.columns.map((id) => value(row, id)));
+        .map((row) => request.columns.map((id) => value(result, row, id)));
       return {
         sessionId: request.resultId,
         offset: request.offset,
@@ -504,12 +565,68 @@ export function createSqlWorkspaceMock(
       const sourceRow = rowIndexes(runId, resultId, viewId)[row];
       if (sourceRow === undefined || !result.columns.some((c) => c.id === columnId))
         throw new DataViewerError("InvalidRequest", "Unknown SQL cell.");
-      return value(sourceRow, columnId);
+      return value(result, sourceRow, columnId);
+    },
+    async findBoundary(runId, resultId, request, viewId) {
+      const checked = validateSqlBoundary(runId, resultId, request, viewId);
+      await waitForBoundary(checked);
+      const result = snapshot(runId, resultId);
+      const indexes = rowIndexes(runId, resultId, viewId);
+      const column = checked.visibleColumnIds.indexOf(checked.columnId);
+      const known = new Set(result.columns.map(({ id }) => id));
+      if (
+        checked.row >= indexes.length ||
+        column < 0 ||
+        checked.visibleColumnIds.some((id) => !known.has(id))
+      ) {
+        throw new DataViewerError("InvalidRequest", "The boundary starts outside the SQL result.");
+      }
+      const start = { row: checked.row, column };
+      const bounds = {
+        rowCount: indexes.length,
+        columnCount: checked.visibleColumnIds.length,
+        pageStep: 1,
+      };
+      const rowDelta = checked.direction === "up" ? -1 : checked.direction === "down" ? 1 : 0;
+      const columnDelta = checked.direction === "left" ? -1 : checked.direction === "right" ? 1 : 0;
+      const target =
+        checked.mode === "tableBoundary"
+          ? {
+              row: rowDelta < 0 ? 0 : rowDelta > 0 ? bounds.rowCount - 1 : start.row,
+              column: columnDelta < 0 ? 0 : columnDelta > 0 ? bounds.columnCount - 1 : start.column,
+            }
+          : ctrlArrowTarget(start, rowDelta, columnDelta, bounds, ({ row, column }) => {
+              const state = value(result, indexes[row], checked.visibleColumnIds[column]).state;
+              return state === "null" || state === "empty";
+            });
+      return {
+        navigationId: checked.navigationId,
+        documentId: checked.documentId,
+        sessionId: checked.sessionId,
+        queryId: checked.queryId,
+        targetRow: target.row,
+        targetColumnId: checked.visibleColumnIds[target.column],
+        resolvedRowCount: indexes.length,
+      };
     },
     async releaseResult(runId, resultId) {
       snapshot(runId, resultId);
-      results.delete(resultId);
+      if (chartPins.has(resultId)) releasedTabs.add(resultId);
+      else results.delete(resultId);
       for (const [id, view] of views) if (view.status.sessionId === resultId) views.delete(id);
+    },
+    async retainMockChartResult(runId, resultId) {
+      snapshot(runId, resultId);
+      chartPins.set(resultId, (chartPins.get(resultId) ?? 0) + 1);
+    },
+    async releaseMockChartResult(runId, resultId) {
+      snapshot(runId, resultId);
+      const remaining = (chartPins.get(resultId) ?? 1) - 1;
+      if (remaining > 0) chartPins.set(resultId, remaining);
+      else {
+        chartPins.delete(resultId);
+        if (releasedTabs.delete(resultId)) results.delete(resultId);
+      }
     },
     async exportResult({ runId, resultId, viewId }) {
       rowIndexes(runId, resultId, viewId);
@@ -529,7 +646,7 @@ export function createSqlWorkspaceMock(
         throw new DataViewerError("InvalidRequest", "Copy selection is outside the result.");
       const rows = indexes
         .slice(selection.rowStart, selection.rowEndExclusive)
-        .map((row) => selection.columnIds.map((id) => value(row, id)));
+        .map((row) => selection.columnIds.map((id) => value(result, row, id)));
       const headers = selection.columnIds.map(
         (id) => result.columns.find((c) => c.id === id)?.name ?? id,
       );

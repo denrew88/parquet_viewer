@@ -121,6 +121,37 @@ test("T-P22-INT-002/005/007 automatic table and forward alias completion respect
   expect((await counts(page)).startQuery).toBe(0);
 });
 
+test("T-P22-CTE-001 CTE completion inserts relation and output names without backend calls", async ({
+  page,
+}, info) => {
+  const workspace = await setup(page);
+  const before = await counts(page);
+  const withClause =
+    'WITH yoga_items AS (SELECT o."주문 번호" AS order_id, 1 AS "표시 가격" FROM orders o)';
+  await doc(page, workspace, `${withClause} SELECT * FROM`);
+  await page.keyboard.type(" yoga");
+  await expect(option(page, "yoga_items")).toContainText("CTE");
+  await input(workspace).press("Tab");
+  await expect.poll(() => text(workspace)).toBe(`${withClause} SELECT * FROM yoga_items`);
+
+  await doc(page, workspace, `${withClause}\nSELECT y| FROM yoga_items AS y`);
+  await page.keyboard.type(".");
+  await expect(option(page, "order_id")).toBeVisible();
+  await expect(option(page, "표시 가격")).toBeVisible();
+  await expect(option(page, "주문 번호")).toHaveCount(0);
+  await expectInsideViewport(popup(page));
+  await expectNoHorizontalPageOverflow(page);
+  await info.attach("CTE output suggestions", {
+    body: await workspace.screenshot({ path: info.outputPath("cte-output-suggestions.png") }),
+    contentType: "image/png",
+  });
+  await option(page, "표시 가격").click();
+  await expect
+    .poll(() => text(workspace))
+    .toBe(`${withClause}\nSELECT y."표시 가격" FROM yoga_items AS y`);
+  expect(await counts(page)).toEqual(before);
+});
+
 test("T-P22-FLOW-001/002 HAVING offers scoped columns and Enter accepts once", async ({ page }) => {
   const workspace = await setup(page);
   const grouped = 'SELECT o."주문 번호" FROM orders AS o GROUP BY o."주문 번호" HAVING';
@@ -255,7 +286,7 @@ test("T-P22-INT-003/004/006/010/011 lexical scope, function hints and local-only
     "SELECT 'o.|' FROM orders o",
     "SELECT 1 -- o.|",
     "SELECT /* o.| */ 1 FROM orders o",
-    "WITH /* comment */ orders AS (SELECT 1 AS hidden) SELECT orders.| FROM orders",
+    "WITH /* comment */ orders AS (SELECT * FROM missing) SELECT orders.| FROM orders",
     "SELECT o.| FROM (SELECT 1 AS hidden) o",
   ]) {
     await doc(page, workspace, source);

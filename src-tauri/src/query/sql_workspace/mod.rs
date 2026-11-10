@@ -17,6 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod boundary;
 mod export;
 mod result_view;
 pub(super) use result_view::{sql_view_temp_cap, VIEW_DOCUMENT};
@@ -25,7 +26,8 @@ mod worker;
 pub use worker::try_run_sql_worker_from_args;
 
 const MAX_STATUSES: usize = 16;
-const MAX_RESULTS: usize = 2;
+const MAX_RESULTS: usize = 17;
+const MAX_PINNED_CHART_RESULTS: usize = 8;
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
 const PAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BATCH_BYTES: usize = 16 * 1024 * 1024;
@@ -52,6 +54,8 @@ struct SqlResult {
     chunks: Vec<ResultChunk>,
     rows: u64,
     alive: AtomicBool,
+    tab_owned: AtomicBool,
+    chart_owners: std::sync::atomic::AtomicUsize,
     views: Mutex<HashMap<String, Arc<result_view::SqlResultView>>>,
     _lease: Arc<QueryTempLease>,
 }
@@ -647,6 +651,8 @@ impl QueryService {
                 chunks: output.chunks,
                 rows: output.rows,
                 alive: AtomicBool::new(true),
+                tab_owned: AtomicBool::new(true),
+                chart_owners: std::sync::atomic::AtomicUsize::new(0),
                 views: Mutex::new(HashMap::new()),
                 _lease: Arc::clone(&lease),
             });
@@ -825,13 +831,72 @@ impl QueryService {
     }
     pub fn release_sql_result(&self, run: &str, id: &str) -> Result<(), DataError> {
         let result = self.sql_result(run, id)?;
-        result.alive.store(false, Ordering::Release);
-        self.sql_workspace
+        {
+            let mut results = self
+                .sql_workspace
+                .results
+                .lock()
+                .map_err(|_| registry_error())?;
+            if !result.tab_owned.swap(false, Ordering::AcqRel) {
+                return Ok(());
+            }
+            if result.chart_owners.load(Ordering::Acquire) == 0 {
+                result.alive.store(false, Ordering::Release);
+                results.remove(id);
+            }
+        }
+        self.close_sql_result_views(&result)
+    }
+
+    pub(crate) fn retain_chart_sql_result(&self, run: &str, id: &str) -> Result<(), DataError> {
+        validate_sql_identity(run)?;
+        validate_sql_identity(id)?;
+        let results = self
+            .sql_workspace
             .results
             .lock()
-            .map_err(|_| registry_error())?
-            .remove(id);
-        self.close_sql_result_views(&result)
+            .map_err(|_| registry_error())?;
+        let result = results
+            .get(id)
+            .filter(|result| result.run_id == run)
+            .ok_or_else(|| invalid("SQL result is no longer available."))?;
+        let owners = result.chart_owners.load(Ordering::Relaxed);
+        if owners >= 128
+            || (owners == 0
+                && results
+                    .values()
+                    .filter(|item| item.chart_owners.load(Ordering::Relaxed) != 0)
+                    .count()
+                    >= MAX_PINNED_CHART_RESULTS)
+        {
+            return Err(invalid(
+                "Chart result retention is full. Release a pinned result and retry.",
+            ));
+        }
+        result.chart_owners.fetch_add(1, Ordering::Release);
+        Ok(())
+    }
+
+    pub(crate) fn release_chart_sql_result(&self, run: &str, id: &str) -> Result<(), DataError> {
+        validate_sql_identity(run)?;
+        validate_sql_identity(id)?;
+        let mut results = self
+            .sql_workspace
+            .results
+            .lock()
+            .map_err(|_| registry_error())?;
+        let Some(result) = results.get(id).filter(|result| result.run_id == run) else {
+            return Ok(());
+        };
+        let owners = result.chart_owners.load(Ordering::Relaxed);
+        if owners > 0 {
+            result.chart_owners.store(owners - 1, Ordering::Release);
+            if owners == 1 && !result.tab_owned.load(Ordering::Acquire) {
+                result.alive.store(false, Ordering::Release);
+                results.remove(id);
+            }
+        }
+        Ok(())
     }
     pub fn sql_copy_context(
         self: &Arc<Self>,

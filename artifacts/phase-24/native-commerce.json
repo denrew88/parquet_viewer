@@ -1,0 +1,36 @@
+{
+  "state": "pass",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-24-native\\data-viewer.exe",
+  "version": "0.24.0",
+  "checks": [
+    {
+      "testId": "T-P24-008 commerce JOIN",
+      "state": "pass",
+      "elapsedMs": 6157,
+      "validRows": 249045,
+      "payloadBytes": 2688,
+      "groups": 2,
+      "sampled": true
+    },
+    {
+      "testId": "T-P24-007 WebView2 diagnostics",
+      "state": "pass",
+      "viewport": {
+        "width": 1180,
+        "height": 760,
+        "scale": 1
+      },
+      "elapsedMs": 36
+    }
+  ],
+  "consoleErrors": [],
+  "identifier": "com.denrew88.data-viewer-phase24-acceptance",
+  "windowsVersion": {
+    "FileVersion": "0.23.0",
+    "ProductVersion": "0.23.0"
+  },
+  "executable": {
+    "bytes": 61457920,
+    "sha256": "b49a4d639a54560b4690b4ef61e61095186db1cfa46cd536f6e3713ab9a17338"
+  }
+}

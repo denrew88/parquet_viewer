@@ -175,6 +175,35 @@ test("T-P22-002/003/019 raw header eligibility and one independent mode per tabl
   await expectNoHorizontalPageOverflow(page);
 });
 
+test("Phase 24 SQL table path is shown only on hover or keyboard focus", async ({ page }, info) => {
+  const workspace = await openSql(page);
+  const primary = workspace.getByRole("button", { name: "orders", exact: true });
+  const archive = workspace.getByRole("button", { name: "orders_2", exact: true });
+  const tooltip = page.getByRole("tooltip");
+  const archivePath = "D:\\archive\\orders.csv";
+  await expect(workspace.getByText(archivePath, { exact: true })).toHaveCount(0);
+  await expect(tooltip).toHaveCount(0);
+  await archive.scrollIntoViewIfNeeded();
+  const original = await archive.boundingBox();
+  await archive.hover();
+  await expect(tooltip).toHaveText(archivePath);
+  await expectInsideViewport(tooltip);
+  expect(await archive.boundingBox()).toEqual(original);
+  await page.screenshot({ path: info.outputPath("sql-table-path-tooltip.png") });
+  await workspace.getByRole("heading", { name: /^Tables/ }).hover();
+  await expect(tooltip).toHaveCount(0);
+
+  await primary.click();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(archive).toBeFocused();
+  await expect(tooltip).toHaveText(archivePath);
+  await archive.press("Escape");
+  await expect(tooltip).toHaveCount(0);
+  await expect(archive).toBeFocused();
+  await expectNoHorizontalPageOverflow(page);
+});
+
 test("T-P22-001/004/019 alias editing and examples preserve SQL until explicit insertion", async ({
   page,
 }) => {

@@ -1,0 +1,308 @@
+{
+  "state": "fail",
+  "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-24-native\\data-viewer.exe",
+  "version": "0.24.0",
+  "checks": [
+    {
+      "testId": "T-P24-001",
+      "state": "pass",
+      "query1Rows": 320,
+      "query2Rows": 28,
+      "elapsedMs": 880
+    },
+    {
+      "testId": "T-P24-003/007 canvas",
+      "state": "pass",
+      "firstId": "sql-result-1",
+      "dailyId": "sql-result-2",
+      "elapsedMs": 1363
+    },
+    {
+      "testId": "T-P24-004 cross-page SQL selection",
+      "state": "pass",
+      "month": "2026-01",
+      "minOrdinal": 30,
+      "filteredRows": 290,
+      "firstOrdinal": 319,
+      "lastOrdinal": 109,
+      "selectedRows": 211,
+      "groups": {
+        "Fitness": {
+          "count": 52,
+          "medianCents": 3354
+        },
+        "Outdoor": {
+          "count": 53,
+          "medianCents": 3676
+        },
+        "Running": {
+          "count": 53,
+          "medianCents": 4020
+        },
+        "Yoga": {
+          "count": 53,
+          "medianCents": 4364
+        }
+      },
+      "elapsedMs": 3432
+    },
+    {
+      "testId": "T-P24-007 update isolation",
+      "state": "pass",
+      "refreshedId": "sql-result-6",
+      "dailyId": "sql-result-2",
+      "previousBlockPreserved": true,
+      "elapsedMs": 2543
+    },
+    {
+      "testId": "T-P24-002 incompatible schema preserves the old chart",
+      "state": "pass",
+      "previous": "sql-result-6",
+      "blocked": true,
+      "elapsedMs": 730
+    },
+    {
+      "testId": "T-P24-002/004 pin, exact groups, cleanup",
+      "state": "pass",
+      "groups": [
+        {
+          "label": "Fitness",
+          "count": 52,
+          "summary": [
+            22.32,
+            27.93,
+            33.54,
+            39.15,
+            44.76
+          ]
+        },
+        {
+          "label": "Outdoor",
+          "count": 53,
+          "summary": [
+            25.32,
+            31.04,
+            36.76,
+            42.48,
+            48.2
+          ]
+        },
+        {
+          "label": "Running",
+          "count": 53,
+          "summary": [
+            28.76,
+            34.48,
+            40.2,
+            45.92,
+            51.64
+          ]
+        },
+        {
+          "label": "Yoga",
+          "count": 53,
+          "summary": [
+            32.2,
+            37.92,
+            43.64,
+            49.36,
+            55.08
+          ]
+        }
+      ],
+      "selectedRows": 211,
+      "released": true,
+      "retainedSqlRows": 320,
+      "elapsedMs": 1771
+    },
+    {
+      "testId": "T-P24-004 exact filtered file block",
+      "state": "pass",
+      "selectedRows": 211,
+      "first": [
+        319,
+        55.08
+      ],
+      "last": [
+        109,
+        25.32
+      ],
+      "elapsedMs": 603
+    },
+    {
+      "testId": "T-P24-005 typed precision",
+      "state": "pass",
+      "integer": {
+        "totalRows": 6,
+        "validRows": 6,
+        "excludedRows": 0,
+        "filteredRows": 0,
+        "sampled": false,
+        "groupsTruncated": false,
+        "xOrigin": "9007199254740992",
+        "yOrigin": "9007199254.740992",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0.000001
+          ],
+          [
+            2,
+            0.000002
+          ],
+          [
+            3,
+            0.000003
+          ],
+          [
+            4,
+            0.000004
+          ],
+          [
+            5,
+            0.0000049999999999999996
+          ]
+        ]
+      },
+      "nanos": {
+        "totalRows": 6,
+        "validRows": 3,
+        "excludedRows": 3,
+        "filteredRows": 0,
+        "sampled": false,
+        "groupsTruncated": false,
+        "xOrigin": "2026-01-01 00:00:00.000000000",
+        "xUnit": "ns",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            -1
+          ]
+        ]
+      },
+      "elapsedMs": 23
+    },
+    {
+      "testId": "T-P24-005 histogram and bar totals",
+      "state": "pass",
+      "histogramBins": 26,
+      "groups": [
+        {
+          "label": "Fitness",
+          "count": 160,
+          "value": 5897.6
+        },
+        {
+          "label": "Outdoor",
+          "count": 160,
+          "value": 6457.6
+        },
+        {
+          "label": "Running",
+          "count": 160,
+          "value": 7017.6
+        },
+        {
+          "label": "Yoga",
+          "count": 160,
+          "value": 7577.6
+        }
+      ],
+      "elapsedMs": 239
+    },
+    {
+      "testId": "T-P24-008 10000 rows",
+      "state": "pass",
+      "rows": 10000,
+      "configureToCanvasMs": 478,
+      "ipcComputeMs": 525,
+      "before": {
+        "workingSet": 48074752,
+        "privateBytes": 14245888,
+        "handles": 333
+      },
+      "after": {
+        "workingSet": 48041984,
+        "privateBytes": 14028800,
+        "handles": 333
+      },
+      "status": "Scale 10000\n\nFile · scale-10000.parquet\n\n10,000 valid rows · 0 excluded",
+      "points": 10000,
+      "sampled": false,
+      "payloadBytes": 111623,
+      "elapsedMs": 1899
+    },
+    {
+      "testId": "T-P24-008 100000 rows",
+      "state": "pass",
+      "rows": 100000,
+      "configureToCanvasMs": 528,
+      "ipcComputeMs": 1056,
+      "before": {
+        "workingSet": 48250880,
+        "privateBytes": 14475264,
+        "handles": 333
+      },
+      "after": {
+        "workingSet": 47566848,
+        "privateBytes": 13299712,
+        "handles": 333
+      },
+      "status": "Scale 100000\n\nFile · scale-100000.parquet\n\n100,000 valid rows · 0 excluded · Sampled",
+      "points": 20000,
+      "sampled": true,
+      "payloadBytes": 223082,
+      "elapsedMs": 2518
+    },
+    {
+      "testId": "T-P24-008 1000000 rows",
+      "state": "pass",
+      "rows": 1000000,
+      "configureToCanvasMs": 5621,
+      "ipcComputeMs": 3479,
+      "before": {
+        "workingSet": 48046080,
+        "privateBytes": 13811712,
+        "handles": 333
+      },
+      "after": {
+        "workingSet": 47845376,
+        "privateBytes": 13606912,
+        "handles": 333
+      },
+      "status": "Scale 1000000\n\nFile · scale-1000000.parquet\n\n1,000,000 valid rows · 0 excluded · Sampled",
+      "points": 20000,
+      "sampled": true,
+      "payloadBytes": 223073,
+      "cancelledMs": 61,
+      "elapsedMs": 10213
+    },
+    {
+      "testId": "T-P24-008 commerce JOIN",
+      "state": "fail",
+      "error": "AssertionError [ERR_ASSERTION]: {\"runId\":\"p24-sql-8ec916f6-392d-4730-8ec3-76a3cb78c604\",\"state\":\"failed\",\"phase\":\"failed\",\"elapsedMs\":7,\"rowsProduced\":0,\"resultId\":null,\"columns\":[],\"rowCount\":null,\"planText\":null,\"planJson\":null,\"warnings\":[],\"error\":{\"code\":\"InvalidRequest\",\"message\":\"Wait for CSV preparation to finish before executing SQL.\"}}\n+ actual - expected\n\n+ 'failed'\n- 'complete'\n\n    at runIpc (file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:328:10)\n    at async commerceJoin (file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:473:18)\n    at async record (file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:111:27)\n    at async file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:545:5",
+      "elapsedMs": 1168
+    }
+  ],
+  "consoleErrors": [
+    "Minified React error #185; visit https://react.dev/errors/185 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+  ],
+  "identifier": "com.denrew88.data-viewer-phase24-acceptance",
+  "executable": {
+    "bytes": 61457920,
+    "sha256": "b49a4d639a54560b4690b4ef61e61095186db1cfa46cd536f6e3713ab9a17338"
+  },
+  "error": "Error: Failed T-P24-008 commerce JOIN\n    at record (file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:119:38)\n    at async file:///C:/Users/denrew/Documents/Study/Codex/parquet_viewer/scripts/phase24_native_smoke.mjs:545:5"
+}

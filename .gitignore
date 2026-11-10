@@ -42,6 +42,8 @@ fixtures/*
 !fixtures/phase-22/**
 !fixtures/phase-23/
 !fixtures/phase-23/**
+!fixtures/phase-24/
+!fixtures/phase-24/**
 # Large synthetic benchmark inputs stay local; hashes and profiles are retained.
 fixtures/phase-20/performance/*/source.csv
 fixtures/phase-20/performance/main-high/high-5850000x15.csv

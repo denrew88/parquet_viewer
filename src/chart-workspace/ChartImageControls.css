@@ -1,0 +1,59 @@
+.chart-image-dialog {
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--chart-line);
+  border-radius: 6px;
+  background: var(--chart-paper);
+  color: inherit;
+}
+
+.chart-image-dialog::backdrop {
+  background: #22343b55;
+}
+
+.chart-image-dialog h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.chart-image-dialog fieldset {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--chart-line);
+  border-radius: 4px;
+}
+
+.chart-image-dialog label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.chart-image-dialog p {
+  margin: 4px 0 0;
+  color: var(--chart-muted);
+  font-size: 11px;
+}
+
+.chart-image-actions,
+.chart-image-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chart-image-feedback {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.chart-image-feedback progress {
+  width: min(100%, 100px);
+}

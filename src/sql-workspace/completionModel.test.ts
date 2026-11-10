@@ -119,10 +119,9 @@ describe("bounded SQL completion model", () => {
     "SELECT o.| FROM missing o",
     "SELECT orders.| FROM orders o",
     "SELECT o.| FROM orders o JOIN orders o ON true",
-    "WITH orders AS (SELECT 1 AS fake) SELECT orders.| FROM orders",
-    "WITH orders(x) AS (SELECT 1) SELECT o.| FROM orders o",
     "WITH RECURSIVE orders AS (SELECT 1) SELECT o.| FROM orders o",
-    "WITH /* note */ orders AS (SELECT 1 AS private_col) SELECT orders.| FROM orders",
+    "WITH orders AS (SELECT * FROM missing) SELECT o.| FROM orders o",
+    "WITH orders AS (SELECT id AS duplicate, id AS duplicate FROM orders) SELECT orders.| FROM orders",
     "WITH orders /* note */ AS (SELECT 1) SELECT o.| FROM orders o",
     "WITH orders AS /* note */ (SELECT 1), /* next */ customers AS (SELECT 2) SELECT o.| FROM orders o",
     "SELECT o.| FROM (SELECT id FROM orders) o",
@@ -132,6 +131,64 @@ describe("bounded SQL completion model", () => {
   ])("suppresses unknown, shadowed, derived or ambiguous scope: %s", (sql) =>
     expect(complete(sql)).toBeNull(),
   );
+  it.each([
+    "WITH items AS (SELECT id FROM orders) SELECT * FROM it|",
+    "WITH items AS (SELECT id FROM orders) SELECT * FROM orders JOIN it|",
+    "WITH items AS (SELECT id FROM orders), chosen AS (SELECT * FROM it|) SELECT * FROM chosen",
+  ])("offers visible CTE names at relation positions: %s", (sql) => {
+    expect(complete(sql)?.options).toEqual([
+      expect.objectContaining({ label: "items", type: "table", detail: "CTE" }),
+    ]);
+  });
+  it.each([
+    ["WITH orders AS (SELECT 1 AS fake) SELECT orders.| FROM orders", ["fake"]],
+    ["WITH orders(x) AS (SELECT 1, 2 AS remaining) SELECT o.| FROM orders o", ["x", "remaining"]],
+    [
+      "WITH /* note */ orders AS NOT MATERIALIZED (SELECT id AS renamed FROM orders) SELECT o.| FROM orders AS o",
+      ["renamed"],
+    ],
+    [
+      "WITH a AS (SELECT o.id, 'x' AS \"품목 이름\" FROM orders o), b AS (SELECT a.* FROM a) SELECT x.| FROM b AS x",
+      ["id", '"품목 이름"'],
+    ],
+    [
+      "WITH a AS (SELECT DISTINCT id, SUM(id) AS total FROM orders GROUP BY id) SELECT a.| FROM a",
+      ["id", "total"],
+    ],
+    [
+      "WITH RECURSIVE nums(n) AS (SELECT 1 UNION ALL SELECT nums.| FROM nums) SELECT * FROM nums",
+      ["n"],
+    ],
+    [
+      "WITH a AS (WITH b AS (SELECT 1 AS inner_name) SELECT * FROM b) SELECT a.| FROM a",
+      ["inner_name"],
+    ],
+    [
+      "WITH a AS (SELECT 1 AS outer_col) SELECT (WITH a AS (SELECT 2 AS inner_col) SELECT a.| FROM a)",
+      ["inner_col"],
+    ],
+    ["WITH a AS (SELECT id FROM orders) SELECT t.| FROM a AS t(renamed)", ["renamed"]],
+  ])("uses local CTE output names: %s", (sql, expected) => {
+    expect(complete(sql)?.options.map((option) => option.insertText)).toEqual(expected);
+  });
+  it("expands a known file projection in its active column mode", () => {
+    const sql = "WITH a AS (SELECT * FROM orders) SELECT a.| FROM a";
+    expect(complete(sql)?.options.map((option) => option.insertText)).toEqual([
+      "id",
+      '"결제 ""금액"""',
+    ]);
+    expect(
+      complete(sql, [table("orders", "ordinal")])?.options.map((option) => option.insertText),
+    ).toEqual(["c1", "c3"]);
+  });
+  it.each([
+    "WITH first AS (SELECT * FROM fut|), future AS (SELECT 1) SELECT * FROM first",
+    "WITH items AS (SELECT * FROM it|) SELECT * FROM items",
+    "WITH items AS (SELECT 1) SELECT * FROM items; SELECT * FROM it|",
+    "SELECT (WITH items AS (SELECT 1) SELECT * FROM items) FROM it|",
+  ])("does not offer CTEs outside their visibility: %s", (sql) => {
+    expect(complete(sql)?.options.some((option) => option.type === "table")).not.toBe(true);
+  });
   it("can complete a known table before a FROM clause exists, without leaking it into a nested scope", () => {
     expect(complete("SELECT orders.| ")?.options).toHaveLength(2);
     expect(complete("SELECT (SELECT orders.|)")).toBeNull();

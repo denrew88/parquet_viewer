@@ -22,6 +22,7 @@ pub(crate) use phase2_tests::type_fixture as phase2_type_fixture;
 mod phase3_tests;
 
 pub(crate) use boundary::find_boundary as resolve_boundary;
+pub(crate) use boundary::find_boundary_batched as resolve_boundary_batched;
 pub(crate) use boundary::validate_request as validate_boundary_request;
 pub(crate) use duration::{
     duration_unit_from_logical_type, duration_unit_name, parse_csv_duration, parse_query_duration,

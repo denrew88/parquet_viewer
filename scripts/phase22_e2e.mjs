@@ -22,7 +22,7 @@ async function snapshot(directory) {
     }
   }
 }
-for (let phase = 0; phase <= 22; phase++) await snapshot(path.join(root, `artifacts/phase-${phase}/ui`));
+for (let phase = 0; phase <= 23; phase++) await snapshot(path.join(root, `artifacts/phase-${phase}/ui`));
 let exitCode = 1;
 try {
   exitCode = await new Promise((resolve, reject) => {
@@ -40,8 +40,23 @@ try {
   for (const item of saved) {
     // Buffer writes avoid transient Windows copyfile(-4094) failures seen
     // after a successful suite; still verify the original snapshot SHA.
-    await fs.writeFile(item.original, await fs.readFile(item.copy));
-    await fs.utimes(item.original, item.atime, item.mtime);
+    const before = await fs.readFile(item.copy);
+    const current = await fs.readFile(item.original).catch((error) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!current?.equals(before)) {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await fs.writeFile(item.original, before);
+          break;
+        } catch (error) {
+          if (attempt >= 4 || !['UNKNOWN', 'EBUSY', 'EPERM'].includes(error.code)) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+        }
+      }
+      await fs.utimes(item.original, item.atime, item.mtime);
+    }
     const restored = createHash('sha256').update(await fs.readFile(item.original)).digest('hex');
     if (restored !== item.sha256) throw new Error(`Historical evidence restore failed: ${item.original}`);
   }

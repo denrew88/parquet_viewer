@@ -24,7 +24,7 @@ pub(super) struct SqlResultView {
 }
 
 impl SqlResult {
-    fn view(&self, id: &str) -> Result<Arc<SqlResultView>, DataError> {
+    pub(super) fn view(&self, id: &str) -> Result<Arc<SqlResultView>, DataError> {
         validate_sql_identity(id)?;
         self.views
             .lock()
@@ -53,7 +53,7 @@ impl SqlResult {
             .map_or("schema.parquet", |chunk| &chunk.file)
     }
 
-    fn view_columns(&self) -> Vec<ColumnSchema> {
+    pub(super) fn view_columns(&self) -> Vec<ColumnSchema> {
         self.columns
             .iter()
             .map(|column| ColumnSchema {
@@ -210,7 +210,10 @@ impl QueryService {
         outcome
     }
 
-    fn sql_view_result(&self, view: &SqlResultView) -> Result<Arc<QueryResult>, DataError> {
+    pub(super) fn sql_view_result(
+        &self,
+        view: &SqlResultView,
+    ) -> Result<Arc<QueryResult>, DataError> {
         self.result(VIEW_DOCUMENT, &view.session, &view.session)
     }
 
@@ -310,6 +313,24 @@ impl QueryService {
             }),
             path,
         ))
+    }
+
+    pub(crate) fn sql_chart_reader(
+        &self,
+        run: &str,
+        id: &str,
+        view_id: Option<&str>,
+    ) -> Result<Arc<dyn CopyRowReader>, DataError> {
+        let result = self.sql_result(run, id)?;
+        let indexed = view_id
+            .map(|view_id| {
+                let view = result.view(view_id)?;
+                let indexed = self.sql_view_result(&view)?;
+                check_view_current(&result, &view)?;
+                Ok::<_, DataError>((view, indexed))
+            })
+            .transpose()?;
+        Ok(Arc::new(SqlChartReader { result, indexed }))
     }
 
     pub fn export_sql_result_view(
@@ -458,7 +479,10 @@ impl Drop for ViewSpillReservation<'_> {
     }
 }
 
-fn check_view_current(result: &SqlResult, view: &SqlResultView) -> Result<(), DataError> {
+pub(super) fn check_view_current(
+    result: &SqlResult,
+    view: &SqlResultView,
+) -> Result<(), DataError> {
     if !result.alive.load(Ordering::Acquire) || !view.alive.load(Ordering::Acquire) {
         return Err(DataError::task_cancelled());
     }
@@ -469,6 +493,37 @@ struct SqlViewCopyReader {
     reader: SqlCopyReader,
     view: Arc<SqlResultView>,
     indexed: Arc<QueryResult>,
+}
+
+struct SqlChartReader {
+    result: Arc<SqlResult>,
+    indexed: Option<(Arc<SqlResultView>, Arc<QueryResult>)>,
+}
+
+impl CopyRowReader for SqlChartReader {
+    fn read_rows(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        self.validate_current()?;
+        match &self.indexed {
+            Some((_, index)) => index.read_copy_projected(offset, limit.min(4096), columns),
+            None => self.result.read(offset, limit.min(4096), columns, true),
+        }
+    }
+
+    fn validate_current(&self) -> Result<(), DataError> {
+        if let Some((view, _)) = &self.indexed {
+            return check_view_current(&self.result, view);
+        }
+        if self.result.alive.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(DataError::task_cancelled())
+        }
+    }
 }
 
 impl CopyRowReader for SqlViewCopyReader {
@@ -561,6 +616,10 @@ impl QueryInputProvider for SqlSnapshotProvider {
         columns: &[String],
     ) -> Result<QueryExactValues, DataError> {
         self.read_rows(ids, columns, false)
+    }
+
+    fn occupancy_states(&self, ids: &[u64], column: &str) -> Result<Vec<bool>, DataError> {
+        self.result.boundary_occupancy(ids, column)
     }
     fn copy_query_values(
         &self,
@@ -737,6 +796,147 @@ mod tests {
             sort: vec![],
             projection: vec![],
         }
+    }
+
+    #[test]
+    fn p24_boundary_uses_sql_snapshot_states_and_committed_view_order() {
+        let directory = tempfile::tempdir().unwrap();
+        let service =
+            Arc::new(QueryService::open(directory.path(), DEFAULT_SQL_TEMP_LIMIT_BYTES).unwrap());
+        let id = start_snapshot(
+            &service,
+            "run",
+            "
+            SELECT * FROM (VALUES
+              (0, 'a', NULL), (1, ' ', 'head'), (2, '', ''), (3, NULL, 'tail'),
+              (4, 'z', 'pad'), (5, 'w', NULL)
+            ) v(seq, label, note) ORDER BY seq",
+        );
+        let cancel = AtomicBool::new(false);
+        let mut request = BoundarySearchRequest {
+            row: 0,
+            column_id: "r1".to_owned(),
+            visible_column_ids: vec!["r2".to_owned(), "r0".to_owned(), "r1".to_owned()],
+            direction: DataBoundaryDirection::Down,
+            mode: DataBoundaryMode::DataBoundary,
+        };
+        let find = |view, request: &BoundarySearchRequest| {
+            service.find_sql_result_boundary("run", &id, view, request, &cancel)
+        };
+        assert_eq!(find(None, &request).unwrap().target_row, 1);
+        request.row = 1;
+        assert_eq!(find(None, &request).unwrap().target_row, 4);
+        request.row = 4;
+        request.direction = DataBoundaryDirection::Up;
+        assert_eq!(find(None, &request).unwrap().target_row, 1);
+        request.row = 2;
+        request.direction = DataBoundaryDirection::Left;
+        assert_eq!(find(None, &request).unwrap().target_column_id, "r0");
+        request.row = 1;
+        request.column_id = "r2".to_owned();
+        request.direction = DataBoundaryDirection::Right;
+        assert_eq!(find(None, &request).unwrap().target_column_id, "r1");
+
+        let mut plan = empty_plan();
+        plan.filters.push(QueryFilter {
+            id: "under-five".to_owned(),
+            column_id: "r0".to_owned(),
+            scalar_type: QueryScalarType::Number,
+            operator: FilterOperator::LessThan,
+            values: vec!["5".to_owned()],
+        });
+        plan.sort.push(QuerySort {
+            column_id: "r0".to_owned(),
+            direction: QuerySortDirection::Descending,
+            nulls_last: true,
+        });
+        service
+            .start_sql_result_view("run", &id, "view", plan)
+            .unwrap();
+        wait_for_view(&service, &id, "view");
+        request.row = 1;
+        assert_eq!(find(Some("view"), &request).unwrap().target_column_id, "r0");
+        request.row = 0;
+        request.column_id = "r1".to_owned();
+        request.direction = DataBoundaryDirection::Down;
+        assert_eq!(find(Some("view"), &request).unwrap().target_row, 3);
+        request.mode = DataBoundaryMode::TableBoundary;
+        let target = find(Some("view"), &request).unwrap();
+        assert_eq!((target.target_row, target.resolved_row_count), (4, Some(5)));
+        let target = find(None, &request).unwrap();
+        assert_eq!((target.target_row, target.resolved_row_count), (5, Some(6)));
+
+        let mut invalid = request.clone();
+        invalid.visible_column_ids.push("r1".to_owned());
+        assert_eq!(
+            find(None, &invalid).unwrap_err().code,
+            DataErrorCode::InvalidRequest
+        );
+        cancel.store(true, Ordering::Release);
+        assert_eq!(
+            find(Some("view"), &request).unwrap_err().code,
+            DataErrorCode::TaskCancelled
+        );
+        cancel.store(false, Ordering::Release);
+        service.release_sql_result_view("run", &id, "view").unwrap();
+        assert_eq!(
+            find(Some("view"), &request).unwrap_err().code,
+            DataErrorCode::QueryNotFound
+        );
+        service.retain_chart_sql_result("run", &id).unwrap();
+        service.release_sql_result("run", &id).unwrap();
+        assert_eq!(
+            find(None, &request).unwrap_err().code,
+            DataErrorCode::TaskCancelled
+        );
+        service.release_chart_sql_result("run", &id).unwrap();
+    }
+
+    #[test]
+    fn p24_boundary_reads_the_end_of_wide_reverse_blocks_in_base_and_sorted_views() {
+        let directory = tempfile::tempdir().unwrap();
+        let service =
+            Arc::new(QueryService::open(directory.path(), DEFAULT_SQL_TEMP_LIMIT_BYTES).unwrap());
+        let id = start_snapshot(
+            &service,
+            "run",
+            &format!(
+                "SELECT i, CASE WHEN i = 4997 THEN '' ELSE '{}' END AS label FROM range(5000) t(i) ORDER BY i",
+                "x".repeat(5000),
+            ),
+        );
+        let mut plan = empty_plan();
+        plan.sort.push(QuerySort {
+            column_id: "r0".to_owned(),
+            direction: QuerySortDirection::Descending,
+            nulls_last: true,
+        });
+        service
+            .start_sql_result_view("run", &id, "view", plan)
+            .unwrap();
+        wait_for_view(&service, &id, "view");
+        let mut request = BoundarySearchRequest {
+            row: 4999,
+            column_id: "r1".to_owned(),
+            visible_column_ids: vec!["r0".to_owned(), "r1".to_owned()],
+            direction: DataBoundaryDirection::Up,
+            mode: DataBoundaryMode::DataBoundary,
+        };
+        let cancel = AtomicBool::new(false);
+        let target = service
+            .find_sql_result_boundary("run", &id, None, &request, &cancel)
+            .unwrap();
+        assert_eq!(target.target_row, 4998);
+        let target = service
+            .find_sql_result_boundary("run", &id, Some("view"), &request, &cancel)
+            .unwrap();
+        assert_eq!(target.target_row, 3);
+        request.row = 0;
+        request.direction = DataBoundaryDirection::Down;
+        let target = service
+            .find_sql_result_boundary("run", &id, None, &request, &cancel)
+            .unwrap();
+        assert_eq!(target.target_row, 4996);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_QUERY_PLAN } from "../query/model";
+import type { FindBoundaryRequest } from "../backend";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import {
@@ -107,6 +108,54 @@ describe("SQL DTO boundaries and transport", () => {
       api.resultView!.find(ids.runId, ids.resultId, viewId, findRequest),
     ).rejects.toThrow(/view identity/);
   });
+  it.each([undefined, "view-1"])(
+    "binds grid navigation to the base result or view %s",
+    async (viewId) => {
+      const api = createSqlWorkspaceTransport();
+      const navigation: FindBoundaryRequest = {
+        navigationId: "nav-1",
+        documentId: "sql-workspace",
+        sessionId: pageRequest.resultId,
+        queryId: viewId ?? pageRequest.runId,
+        row: 0,
+        columnId: "r0",
+        visibleColumnIds: ["r0", "r1"],
+        direction: "down",
+        mode: "dataBoundary",
+      };
+      const { runId, resultId } = pageRequest;
+      const response = {
+        navigationId: navigation.navigationId,
+        documentId: navigation.documentId,
+        sessionId: navigation.sessionId,
+        queryId: navigation.queryId,
+        targetRow: 2,
+        targetColumnId: "r0",
+        resolvedRowCount: 3,
+      };
+      invokeMock.mockResolvedValueOnce(response);
+      await expect(api.findBoundary(runId, resultId, navigation, viewId)).resolves.toEqual(
+        response,
+      );
+      expect(invokeMock).toHaveBeenLastCalledWith("find_sql_result_boundary", {
+        runId,
+        resultId,
+        ...(viewId ? { viewId } : {}),
+        request: navigation,
+      });
+
+      invokeMock.mockResolvedValueOnce({ ...response, navigationId: "other" });
+      await expect(api.findBoundary(runId, resultId, navigation, viewId)).rejects.toMatchObject({
+        code: "InvalidResponse",
+      });
+
+      const callCount = invokeMock.mock.calls.length;
+      await expect(
+        api.findBoundary(runId, resultId, { ...navigation, queryId: "another-view" }, viewId),
+      ).rejects.toMatchObject({ code: "InvalidRequest" });
+      expect(invokeMock).toHaveBeenCalledTimes(callCount);
+    },
+  );
   it.each([
     { offset: 1 },
     { limit: 99 },

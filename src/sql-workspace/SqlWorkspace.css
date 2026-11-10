@@ -11,6 +11,80 @@
 .sql-workspace[hidden] {
   display: none;
 }
+.sql-tabs {
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.sql-tabs[hidden],
+.sql-tabs__panel[hidden] {
+  display: none;
+}
+.sql-tabs__bar,
+.sql-tabs__list,
+.sql-tabs__item,
+.sql-tabs__bar form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.sql-tabs__bar {
+  padding: 0 8px;
+  border-bottom: 1px solid #cbd7db;
+  background: #f1f5f6;
+}
+.sql-tabs__list {
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+.sql-tabs__item {
+  flex: none;
+  gap: 0;
+}
+.sql-tabs__bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #cbd7db;
+  border-radius: 4px;
+  background: #fff;
+  color: #29434b;
+  min-height: 27px;
+  padding: 3px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sql-tabs__bar button[role="tab"] {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 164px;
+}
+.sql-tabs__bar button[aria-selected="true"] {
+  color: #076d68;
+  background: #e4f3f1;
+  border-color: #78aaa4;
+}
+.sql-tabs__bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sql-tabs__bar svg {
+  width: 13px;
+  height: 13px;
+}
+.sql-tabs__bar input {
+  min-width: 0;
+  width: 120px;
+}
+.sql-tabs__panel {
+  min-width: 0;
+  min-height: 0;
+}
 .sql-workspace button:not(:where(.query-column-actions button)) {
   display: inline-flex;
   align-items: center;
@@ -134,10 +208,19 @@
   background: transparent;
   flex-shrink: 0;
 }
-.sql-table__path {
-  color: #526c75;
-  font-size: 10px;
+.sql-table-path-tooltip {
+  position: fixed;
+  z-index: 40;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #cbd7db;
+  border-radius: 4px;
+  background: #fff;
+  color: #23353b;
+  box-shadow: 0 2px 8px #23353b26;
+  font-size: 11px;
   overflow-wrap: anywhere;
+  pointer-events: none;
 }
 .sql-table__mode {
   color: #06736e;
@@ -675,6 +758,9 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+.document-workspace-actions {
+  display: flex;
 }
 .document-tabs__sql[aria-pressed="true"] {
   color: #087f78;

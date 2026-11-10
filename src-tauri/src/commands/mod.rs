@@ -1,4 +1,6 @@
 pub(crate) mod cache_migration;
+pub(crate) mod chart;
+pub(crate) mod chart_image;
 pub(crate) mod column_values;
 pub(crate) mod sql_workspace;
 
@@ -40,6 +42,7 @@ const COMPLETED_REQUEST_CAPACITY: usize = 256;
 const MAX_CONCURRENT_SOURCE_PREPARES: usize = 4;
 const MAX_CSV_VALIDATION_TASKS: usize = 64;
 const TEST_DATA_ROOT_ENV: &str = "DATA_VIEWER_TEST_DATA_ROOT";
+const SQL_WORKSPACE_DOCUMENT_ID: &str = "sql-workspace";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ApplicationDirectoryKind {
@@ -372,11 +375,13 @@ pub struct AppState {
     cache_migration: Arc<cache_migration::CacheMigrationControl>,
     applied_csv_cache_limit: AtomicU64,
     copy_manager: Arc<CopyManager>,
+    charts: crate::query::chart::ChartStore,
 }
 
 impl Drop for AppState {
     fn drop(&mut self) {
         self.copy_manager.cancel_all();
+        self.charts.cancel_all();
         if let Ok(service) = self.query_service.get_mut() {
             if let Some(service) = service.take() {
                 service.shutdown();
@@ -445,9 +450,17 @@ impl AppState {
             &request.session_id,
             request.query_id.as_deref(),
         )?;
-        self.documents
-            .with_source(&request.document_id, &request.session_id, |_| ())
-            .map_err(document_error)?;
+        if request.document_id == SQL_WORKSPACE_DOCUMENT_ID {
+            let query_id = request.query_id.as_deref().ok_or_else(|| {
+                DataError::invalid_request("SQL boundary cancellation requires a query ID.")
+            })?;
+            crate::domain::validate_sql_identity(&request.session_id)?;
+            crate::domain::validate_sql_identity(query_id)?;
+        } else {
+            self.documents
+                .with_source(&request.document_id, &request.session_id, |_| ())
+                .map_err(document_error)?;
+        }
         let tasks = self
             .boundary_navigation_tasks
             .lock()

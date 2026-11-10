@@ -5,12 +5,16 @@ import {
   parseDataPage,
   parseDataValue,
   parseFindQueryMatchResponse,
+  parseRequestedBoundaryResponse,
   parseQueryPlan,
   parseQueryStatus,
+  validatedFindBoundaryRequest,
   validatedFindQueryMatchRequest,
   type CopyOperationStatus,
   type DataPage,
   type DataValue,
+  type FindBoundaryRequest,
+  type FindBoundaryResponse,
   type StartCopyRequest,
   type FindQueryMatchRequest,
   type FindQueryMatchResponse,
@@ -102,6 +106,8 @@ export interface SqlResultViewBackend {
 }
 export interface SqlWorkspaceBackend {
   resultView?: SqlResultViewBackend;
+  retainMockChartResult?(runId: string, resultId: string): Promise<void>;
+  releaseMockChartResult?(runId: string, resultId: string): Promise<void>;
   describeTables(sources: SqlSourceIdentity[]): Promise<SqlTableDescriptor[]>;
   startQuery(request: StartSqlRequest): Promise<SqlStatus>;
   getStatus(runId: string): Promise<SqlStatus>;
@@ -114,6 +120,12 @@ export interface SqlWorkspaceBackend {
     columnId: string,
     viewId?: string,
   ): Promise<DataValue>;
+  findBoundary(
+    runId: string,
+    resultId: string,
+    request: FindBoundaryRequest,
+    viewId?: string,
+  ): Promise<FindBoundaryResponse>;
   releaseResult(runId: string, resultId: string): Promise<void>;
   exportResult(request: SqlExportRequest): Promise<boolean>;
   startCopy(
@@ -328,6 +340,24 @@ function verifyViewIdentity(
   )
     fail("SQL result view identity does not match.");
 }
+export function validateSqlBoundary(
+  runId: string,
+  resultId: string,
+  request: FindBoundaryRequest,
+  viewId?: string,
+): FindBoundaryRequest {
+  identity(runId);
+  identity(resultId);
+  if (viewId !== undefined) identity(viewId);
+  const validated = validatedFindBoundaryRequest(request);
+  if (
+    validated.documentId !== "sql-workspace" ||
+    validated.sessionId !== resultId ||
+    validated.queryId !== (viewId ?? runId)
+  )
+    throw new DataViewerError("InvalidRequest", "The navigation belongs to another SQL result.");
+  return validated;
+}
 function viewStatus(value: unknown, resultId: string, viewId: string) {
   const status = parseQueryStatus(value);
   verifyViewIdentity(status, resultId, viewId);
@@ -463,6 +493,14 @@ export function createSqlWorkspaceTransport(): SqlWorkspaceBackend {
         "read_sql_query_cell",
         { runId, resultId, row, columnId, ...(viewId && { viewId }) },
         (v) => parseDataValue(v) ?? fail(),
+      );
+    },
+    async findBoundary(runId, resultId, request, viewId) {
+      const validated = validateSqlBoundary(runId, resultId, request, viewId);
+      return call(
+        "find_sql_result_boundary",
+        { runId, resultId, ...(viewId !== undefined && { viewId }), request: validated },
+        (value) => parseRequestedBoundaryResponse(value, validated),
       );
     },
     releaseResult(runId, resultId) {

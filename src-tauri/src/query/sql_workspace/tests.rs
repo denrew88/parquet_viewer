@@ -79,6 +79,61 @@ fn sql_workspace_abandon_discards_only_undisclosed_completed_result() {
 }
 
 #[test]
+fn sql_chart_pins_keep_one_snapshot_after_its_tab_releases_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let service =
+        Arc::new(QueryService::open(directory.path(), DEFAULT_SQL_TEMP_LIMIT_BYTES).unwrap());
+    let run = "chart-pin-source";
+    service
+        .start_sql(
+            lifecycle_request(run, "SELECT 42 AS answer"),
+            vec![],
+            DEFAULT_SQL_TEMP_LIMIT_BYTES,
+        )
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let result = loop {
+        let status = service.sql_status(run).unwrap();
+        if terminal(status.state) {
+            assert_eq!(status.state, SqlState::Complete, "{:?}", status.error);
+            break status.result_id.unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let path = service
+        .sql_result(run, &result)
+        .unwrap()
+        ._lease
+        .path()
+        .to_path_buf();
+    assert!(service
+        .retain_chart_sql_result("wrong-run", &result)
+        .is_err());
+    service.retain_chart_sql_result(run, &result).unwrap();
+    service.retain_chart_sql_result(run, &result).unwrap();
+    service.release_sql_result(run, &result).unwrap();
+    service.release_sql_result(run, &result).unwrap();
+    service.release_chart_sql_result(run, &result).unwrap();
+    assert!(path.exists());
+    let reader = service.sql_chart_reader(run, &result, None).unwrap();
+    let page = reader.read_rows(0, 1, &["r0".to_owned()]).unwrap();
+    assert_eq!(page.rows[0][0].display.as_deref(), Some("42"));
+    service.release_chart_sql_result(run, &result).unwrap();
+    assert!(reader.validate_current().is_err());
+    assert!(service.sql_chart_reader(run, &result, None).is_err());
+    assert!(
+        path.exists(),
+        "A reader still owns the physical temp lease."
+    );
+    drop(reader);
+    assert!(
+        !path.exists(),
+        "The final reader releases the physical lease."
+    );
+}
+
+#[test]
 fn sql_workspace_abandon_before_worker_admission_prevents_publication() {
     let directory = tempfile::tempdir().unwrap();
     let service =

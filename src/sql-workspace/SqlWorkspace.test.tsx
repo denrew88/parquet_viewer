@@ -120,6 +120,7 @@ function setup(overrides: Partial<SqlWorkspaceBackend> = {}) {
     })),
     readPage: vi.fn(async (request) => page(request.resultId)),
     readCell: vi.fn(async () => ({ kind: "string" as const, display: "full" })),
+    findBoundary: vi.fn(),
     releaseResult: vi.fn(async () => {}),
     startCopy: vi.fn(),
     exportResult: vi.fn(),
@@ -434,19 +435,23 @@ describe("SQL workspace", () => {
     );
     expect(screen.getByRole("textbox", { name: "SQL editor" })).toBeInTheDocument();
   });
-  it("selects through the path, mode, card button, Enter and Space", async () => {
+  it("reveals the source path on hover and selects through the mode, button, Enter and Space", async () => {
     const user = userEvent.setup();
     setup();
     const first = await screen.findByRole("button", { name: "orders" });
     const second = screen.getByRole("button", { name: "orders_2" });
     const scrollSelectedIntoView = vi.fn();
     second.scrollIntoView = scrollSelectedIntoView;
-    const path = within(second).getByText("D:/orders.csv");
     const mode = within(second).getByText("c-numbers only");
-    expect(path.closest("button")).toBe(second);
+    expect(within(second).queryByText("D:/orders.csv")).not.toBeInTheDocument();
+    expect(second).toHaveAccessibleDescription(/D:\/orders\.csv/);
+    await user.hover(second);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("D:/orders.csv");
+    await user.unhover(second);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     expect(mode.closest("button")).toBe(second);
     expect(second.querySelector("button")).toBeNull();
-    await user.click(path);
+    await user.click(second);
     expect(scrollSelectedIntoView).toHaveBeenCalledWith({ block: "nearest" });
     expect(second).toHaveAttribute("aria-pressed", "true");
     await user.click(first);

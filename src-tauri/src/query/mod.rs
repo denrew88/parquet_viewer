@@ -1,5 +1,6 @@
 //! Bounded DuckDB query execution and result lifecycle.
 
+pub(crate) mod chart;
 mod engine;
 #[cfg(test)]
 mod phase13_large_tests;

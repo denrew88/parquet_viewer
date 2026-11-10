@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "data-viewer"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",

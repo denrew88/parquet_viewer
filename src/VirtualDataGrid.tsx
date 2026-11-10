@@ -188,6 +188,7 @@ export interface VirtualDataGridProps {
   onOpenDistinctValues?(columnId: string): void;
   onRetryQuery?(): void;
   onOpenCopySettings?(): void;
+  onChartSelection?(selection: import("./chart-workspace/contract").ChartSelection): void;
   onCopyPresetChange?(preset: CopyPreset): void;
   onPageChange(offset: number): void;
   onQueryPlanChange?(plan: QueryPlan): void;
@@ -356,6 +357,7 @@ export function VirtualDataGrid({
   onOpenDistinctValues,
   onRetryQuery,
   onOpenCopySettings,
+  onChartSelection,
   onCopyPresetChange,
   onPageChange,
   onQueryPlanChange,
@@ -699,7 +701,7 @@ export function VirtualDataGrid({
       top: Math.max(margin, Math.min(contextMenu.y, window.innerHeight - rect.height - margin)),
     });
     const first = contextMenuRef.current.querySelector<HTMLButtonElement>("button:not(:disabled)");
-    first?.focus();
+    first?.focus({ preventScroll: true });
   }, [contextMenu]);
 
   useEffect(() => {
@@ -1180,9 +1182,16 @@ export function VirtualDataGrid({
       target >= boundedSegmentStart + segmentRowCount
     )
       return;
-    grid.scrollTop = Math.max(0, target - boundedSegmentStart) * GRID_ROW_HEIGHT;
-    pendingLogicalScroll.current = null;
-    grid.dispatchEvent(new Event("scroll"));
+    // The new segment is rendered but the previous listeners may still be
+    // unwinding. Notify the virtualizer without treating the move as user input.
+    segmentRecentering.current = true;
+    try {
+      grid.scrollTop = Math.max(0, target - boundedSegmentStart) * GRID_ROW_HEIGHT;
+      pendingLogicalScroll.current = null;
+      grid.dispatchEvent(new Event("scroll"));
+    } finally {
+      segmentRecentering.current = false;
+    }
   }, [boundedSegmentStart, segmentRowCount]);
 
   const scrollToCoordinate = useCallback(
@@ -1260,12 +1269,14 @@ export function VirtualDataGrid({
           const visibleBottom = gridRect.top + grid.clientHeight - GRID_BOTTOM_CLEARANCE;
           const visibleLeft = gridRect.left + GRID_ROW_NUMBER_WIDTH;
           const visibleRight = gridRect.left + grid.clientWidth;
-          if (cellRect.top < visibleTop) {
-            grid.scrollTop -= visibleTop - cellRect.top;
-            adjusted = true;
-          } else if (cellRect.bottom > visibleBottom) {
-            grid.scrollTop += cellRect.bottom - visibleBottom;
-            adjusted = true;
+          const dy =
+            cellRect.height > visibleBottom - visibleTop || cellRect.top < visibleTop
+              ? cellRect.top - visibleTop
+              : Math.max(0, cellRect.bottom - visibleBottom);
+          if (Math.abs(dy) >= 1) {
+            const before = grid.scrollTop;
+            grid.scrollTop += dy;
+            adjusted = grid.scrollTop !== before;
           }
           if (cellRect.left < visibleLeft) {
             grid.scrollLeft -= visibleLeft - cellRect.left;
@@ -1406,7 +1417,7 @@ export function VirtualDataGrid({
   const desiredProjectionKey = JSON.stringify(desiredProjection);
   const activeProjectionSettled = sameProjectedColumns(activeProjection, desiredProjection);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const grid = scrollRef.current;
     if (!grid || rowCount <= GRID_MAX_SEGMENT_ROWS) return;
     const onScroll = () => {
@@ -1465,7 +1476,7 @@ export function VirtualDataGrid({
     return () => grid.removeEventListener("scroll", onScroll);
   }, [boundedSegmentStart, maxSegmentStart, rowCount, segmentRowCount]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const grid = scrollRef.current;
     if (!grid) return;
 
@@ -1793,14 +1804,8 @@ export function VirtualDataGrid({
     representation: CopyRepresentation = "display",
   ) {
     if (copyIsActive(copyStatus) || rowCount === 0 || logicalColumnNames.length === 0) return;
-    const { top, left, bottom, right } = latestSelection.current.rect;
-    const selectedColumns = visibleColumns
-      .map((column) => column.id)
-      .filter((columnId) => {
-        const logicalIndex = logicalColumnNames.indexOf(columnId);
-        return logicalIndex >= left && logicalIndex <= right;
-      });
-    if (selectedColumns.length === 0) {
+    const selection = captureSelection();
+    if (selection.columnIds.length === 0) {
       setCopyMessage("The selection contains no visible columns.");
       return;
     }
@@ -1808,11 +1813,7 @@ export function VirtualDataGrid({
       documentId,
       sessionId: summary.sessionId,
       queryId: queryId ?? null,
-      selection: {
-        rowStart: top,
-        rowEndExclusive: bottom + 1,
-        columnIds: [...selectedColumns],
-      },
+      selection,
       options: copyOptionsSnapshot(
         options,
         includeColumnHeaders ?? options.includeHeaders,
@@ -1822,6 +1823,17 @@ export function VirtualDataGrid({
       maxBytes: copyLimits.maxBytes,
     };
     await startCopySnapshot(snapshot);
+  }
+
+  function captureSelection() {
+    const { top, left, bottom, right } = latestSelection.current.rect;
+    const selectedColumns = visibleColumns
+      .map((column) => column.id)
+      .filter((columnId) => {
+        const logicalIndex = logicalColumnNames.indexOf(columnId);
+        return logicalIndex >= left && logicalIndex <= right;
+      });
+    return { rowStart: top, rowEndExclusive: bottom + 1, columnIds: selectedColumns };
   }
 
   useImperativeHandle(resultClipboardRef, () => ({
@@ -1894,8 +1906,7 @@ export function VirtualDataGrid({
 
   function openKeyboardContextMenu() {
     const coordinate = selection.active;
-    scrollToCoordinate(coordinate);
-    window.requestAnimationFrame(() => {
+    const open = () => {
       const cell = gridRef.current?.querySelector<HTMLElement>(
         `[data-grid-row="${coordinate.row}"][data-grid-column="${coordinate.column}"]`,
       );
@@ -1906,7 +1917,10 @@ export function VirtualDataGrid({
         x: Math.min(rect.right, window.innerWidth - 8),
         y: Math.min(rect.bottom, window.innerHeight - 8),
       });
-    });
+    };
+    scrollToCoordinate(coordinate);
+    // Let the anchor scroll settle before attaching the menu's scroll dismissal.
+    window.requestAnimationFrame(() => window.requestAnimationFrame(open));
   }
 
   async function copyContextCell(
@@ -3323,6 +3337,20 @@ export function VirtualDataGrid({
             >
               <span>Copy with column headers</span>
             </button>
+            {onChartSelection && (
+              <button
+                disabled={rowCount === 0}
+                onClick={() => {
+                  const snapshot = captureSelection();
+                  closeContextMenu();
+                  if (snapshot.columnIds.length) onChartSelection(snapshot);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                Create chart from selection
+              </button>
+            )}
             <div className="cell-context-menu__separator" role="separator" />
             <button
               disabled={!valueAt(contextMenu.coordinate.row, contextMenu.coordinate.column)}

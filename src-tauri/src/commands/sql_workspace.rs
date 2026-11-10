@@ -137,6 +137,80 @@ pub async fn read_sql_query_cell(
     .map_err(|_| DataError::query_failed("SQL result value could not be read."))?
 }
 
+fn validate_sql_boundary_request(
+    run_id: &str,
+    result_id: &str,
+    view_id: Option<&str>,
+    request: &FindBoundaryRequest,
+) -> Result<(), DataError> {
+    validate_boundary_request(request)?;
+    validate_sql_identity(run_id)?;
+    validate_sql_identity(result_id)?;
+    if let Some(view_id) = view_id {
+        validate_sql_identity(view_id)?;
+    }
+    if request.document_id != SQL_WORKSPACE_DOCUMENT_ID
+        || request.session_id != result_id
+        || request.query_id.as_deref() != Some(view_id.unwrap_or(run_id))
+    {
+        return Err(DataError::invalid_request(
+            "SQL boundary result identity does not match.",
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn find_sql_result_boundary(
+    run_id: String,
+    result_id: String,
+    view_id: Option<String>,
+    request: FindBoundaryRequest,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<FindBoundaryResponse, DataError> {
+    validate_sql_boundary_request(&run_id, &result_id, view_id.as_deref(), &request)?;
+    let cancel = state.begin_boundary_navigation(&request)?;
+    let search = BoundarySearchRequest {
+        row: request.row as u64,
+        column_id: request.column_id.clone(),
+        visible_column_ids: request.visible_column_ids.clone(),
+        direction: request.direction,
+        mode: request.mode,
+    };
+    let worker_cancel = Arc::clone(&cancel);
+    let resolved = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _admission = state.cache_migration.enter()?;
+        state.query_service(&app)?.find_sql_result_boundary(
+            &run_id,
+            &result_id,
+            view_id.as_deref(),
+            &search,
+            &worker_cancel,
+        )
+    })
+    .await
+    .map_err(|error| DataError {
+        code: DataErrorCode::Io,
+        message: format!("The SQL result boundary-navigation worker failed: {error}"),
+    });
+    state.finish_boundary_navigation(&request, &cancel);
+    let resolved = resolved??;
+    if cancel.load(Ordering::Acquire) {
+        return Err(DataError::task_cancelled());
+    }
+    Ok(FindBoundaryResponse {
+        navigation_id: request.navigation_id,
+        document_id: request.document_id,
+        session_id: request.session_id,
+        query_id: request.query_id,
+        target_row: resolved.target_row,
+        target_column_id: resolved.target_column_id,
+        resolved_row_count: resolved.resolved_row_count,
+    })
+}
+
 #[tauri::command]
 pub async fn release_sql_result(
     run_id: String,
@@ -147,7 +221,7 @@ pub async fn release_sql_result(
         let state = app.state::<AppState>();
         state
             .copy_manager
-            .cancel_session("sql-workspace", &result_id, true);
+            .cancel_session(SQL_WORKSPACE_DOCUMENT_ID, &result_id, true);
         state
             .query_service(&app)?
             .release_sql_result(&run_id, &result_id)
@@ -236,7 +310,7 @@ pub async fn start_sql_copy(
 ) -> Result<CopyOperationStatus, DataError> {
     tauri::async_runtime::spawn_blocking(move || {
         request.validate()?;
-        if request.document_id != "sql-workspace"
+        if request.document_id != SQL_WORKSPACE_DOCUMENT_ID
             || request.session_id != result_id
             || request.query_id.as_deref() != Some(view_id.as_deref().unwrap_or(&run_id))
         {
@@ -356,4 +430,59 @@ pub async fn find_sql_result_view_match(
     })
     .await
     .map_err(|_| DataError::query_failed("SQL result search could not be read."))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{DataBoundaryDirection, DataBoundaryMode};
+
+    fn request(query_id: &str) -> FindBoundaryRequest {
+        FindBoundaryRequest {
+            navigation_id: "boundary-1".to_owned(),
+            document_id: SQL_WORKSPACE_DOCUMENT_ID.to_owned(),
+            session_id: "result-1".to_owned(),
+            query_id: Some(query_id.to_owned()),
+            row: 0,
+            column_id: "result-column-1".to_owned(),
+            visible_column_ids: vec!["result-column-1".to_owned()],
+            direction: DataBoundaryDirection::Down,
+            mode: DataBoundaryMode::DataBoundary,
+        }
+    }
+
+    #[test]
+    fn boundary_request_requires_the_exact_result_and_view_identity() {
+        let mut base = request("run-1");
+        assert!(validate_sql_boundary_request("run-1", "result-1", None, &base).is_ok());
+        assert!(validate_sql_boundary_request("run-1", "result-2", None, &base).is_err());
+        assert!(validate_sql_boundary_request("run-2", "result-1", None, &base).is_err());
+        assert!(validate_sql_boundary_request("run-1", "result-1", Some("view-1"), &base).is_err());
+
+        let view = request("view-1");
+        assert!(validate_sql_boundary_request("run-1", "result-1", Some("view-1"), &view).is_ok());
+        assert!(validate_sql_boundary_request("run-1", "result-1", None, &view).is_err());
+        base.document_id = "document-1".to_owned();
+        assert!(validate_sql_boundary_request("run-1", "result-1", None, &base).is_err());
+    }
+
+    #[test]
+    fn shared_boundary_cancellation_cancels_only_the_matching_sql_view() {
+        let state = AppState::default();
+        let request = request("view-1");
+        let flag = state.begin_boundary_navigation(&request).unwrap();
+        let mut cancel = CancelDataBoundaryNavigationRequest {
+            navigation_id: request.navigation_id.clone(),
+            document_id: request.document_id.clone(),
+            session_id: request.session_id.clone(),
+            query_id: Some("view-2".to_owned()),
+        };
+        assert!(state.cancel_boundary_navigation(&cancel).is_err());
+        assert!(!flag.load(Ordering::Acquire));
+        cancel.query_id = request.query_id.clone();
+        state.cancel_boundary_navigation(&cancel).unwrap();
+        assert!(flag.load(Ordering::Acquire));
+        state.finish_boundary_navigation(&request, &flag);
+        assert!(state.begin_boundary_navigation(&request).is_ok());
+    }
 }

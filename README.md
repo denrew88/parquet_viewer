@@ -1,8 +1,8 @@
 # Data Viewer
 
-Data Viewer는 CSV와 Parquet 파일을 열어 볼 수 있는 Windows용 데스크톱 프로그램이다. 대용량 파일을 표 형태로 탐색하고, 필요한 셀이나 행을 선택해 Excel로 복사할 수 있다. 여러 파일을 SQL로 함께 조회하거나 쿼리 결과를 별도 파일로 저장할 수도 있다.
+Data Viewer는 CSV와 Parquet 파일을 탐색하고 분석하는 Windows용 데스크톱 프로그램이다. 대용량 파일을 표로 살펴보고, 필요한 셀이나 행을 Excel로 복사할 수 있다. 여러 파일을 SQL로 함께 조회하고, 파일·쿼리 결과·선택한 셀 범위를 차트로 비교할 수 있다.
 
-[**Windows용 Data Viewer 다운로드**](https://github.com/denrew88/parquet_viewer/releases/latest) · [**사용 설명서**](docs/USER_GUIDE.md) · [v0.23.0 변경 사항](#v0230에서-달라진-점)
+[**Windows용 Data Viewer 다운로드**](https://github.com/denrew88/parquet_viewer/releases/latest) · [**사용 설명서**](docs/USER_GUIDE.md) · [v0.24.0 변경 사항](#v0240에서-달라진-점)
 
 ## 시작하기
 
@@ -33,6 +33,14 @@ Data Viewer는 CSV와 Parquet 파일을 열어 볼 수 있는 Windows용 데스�
 
 ![SQL 결과 그리드와 현재 보기·전체 결과 내보내기 메뉴](artifacts/phase-23/ui/browser-desktop-export.png)
 
+## 파일과 SQL 결과를 차트로 비교하기
+
+이 절의 차트 기능은 v0.24.0부터 제공한다.
+
+**Charts**에서 여러 Sheet를 만들고 한 Sheet에 파일과 SQL 결과를 함께 배치할 수 있다. 산점도, 바이올린, 히스토그램, 박스 플롯, 시계열, 가로 막대를 지원한다.
+
+파일이나 SQL 결과에서 일부 범위만 그리려면 셀을 선택한 뒤 우클릭 메뉴에서 **Create chart from selection**을 선택한다. 선택 당시의 행과 열을 차트에 보존한다. SQL 결과 전체를 **Send to chart**로 보내면 해당 SQL 탭의 다음 성공 결과를 차트에서 이어서 볼 수 있다. [차트 사용 방법](docs/USER_GUIDE.md#여러-데이터-소스를-차트로-비교하기)
+
 ## 지원하는 파일
 
 | 형식 | 열어서 할 수 있는 일 |
@@ -43,11 +51,11 @@ Data Viewer는 CSV와 Parquet 파일을 열어 볼 수 있는 Windows용 데스�
 
 SQL 입력은 CSV와 Parquet를 지원한다. 원본 파일은 읽기 전용으로 열며, 기존 출력 파일은 Windows 저장 대화상자에서 덮어쓰기를 승인한 경우 교체한다. 열린 원본과 쿼리에 사용한 원본은 보호한다.
 
-## v0.23.0에서 달라진 점
+## v0.24.0에서 달라진 점
 
-- SQL 결과에 정렬, 타입별 필터, Find를 추가했다. 쿼리 편집기와 결과 영역 사이의 높이도 조절할 수 있다.
-- 현재 보기와 전체 결과를 따로 내보낼 수 있으며, 기존 출력 파일을 덮어쓸 수 있다.
-- 대용량 SQL 결과를 저장하는 임시 파일 수를 줄여 결과 표시 시간을 단축했다.
-- CSV와 SQL 결과의 시간 필터에서 나노초 단위의 경계를 정확히 비교한다.
+- 한 창에서 여러 SQL 탭을 열고 탭별 쿼리와 마지막 성공 결과를 유지한다.
+- 독립 Charts 작업 공간에서 여러 Sheet를 열고, 파일과 SQL 결과를 각각 연결한 차트를 배치할 수 있다.
+- SQL 탭의 최신 성공 결과를 따라가거나, 이전 실행 결과와 선택한 셀 범위를 고정할 수 있다.
+- 차트별 로그 척도, 히스토그램 구간 수와 폭, 바이올린 밀도 곡선의 대역폭을 조정할 수 있다.
 
-[릴리스 검증 및 측정 기록](artifacts/phase-23/50-integration.md)
+[릴리스 검증 및 측정 기록](artifacts/phase-24/50-integration.md)

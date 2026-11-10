@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackendAdapter, DataPage, FileSummary } from "../backend";
+import type { ChartColumn, ChartSelection, ChartSqlSource } from "../chart-workspace/contract";
 import { VirtualDataGrid, type ResultClipboardHandle } from "../VirtualDataGrid";
 import { activeCopyOptions, type AppSettings } from "../settings/model";
 import type { SqlExportRequest, SqlResultColumn, SqlWorkspaceBackend } from "./backend";
@@ -21,6 +22,12 @@ interface Props {
   onExportBusyChange(busy: boolean): void;
   onOpenCopySettings(): void;
   onReadError(cause: unknown): void;
+  onSendChart?(): void;
+  onChartSelection?(
+    source: ChartSqlSource,
+    selection: ChartSelection,
+    columns: ChartColumn[],
+  ): void;
 }
 
 const FORMATS = [
@@ -46,6 +53,8 @@ export function SqlResults({
   onExportBusyChange,
   onOpenCopySettings,
   onReadError,
+  onSendChart,
+  onChartSelection,
 }: Props) {
   const view = useSqlResultView(api, runId, resultId, page);
   const clipboard = useRef<ResultClipboardHandle>(null);
@@ -142,6 +151,11 @@ export function SqlResults({
           )}
         </div>
         <div className="sql-result-actions">
+          {onSendChart && (
+            <button type="button" onClick={onSendChart} disabled={busy || view.applying}>
+              Send to chart
+            </button>
+          )}
           <div className="sql-export">
             <button
               type="button"
@@ -191,6 +205,16 @@ export function SqlResults({
         queryActive={Boolean(view.viewId)}
         queryPlan={api.resultView ? view.plan : undefined}
         queryStatus={view.toolbar}
+        onChartSelection={
+          onChartSelection && !view.applying
+            ? (selection) =>
+                onChartSelection(
+                  { kind: "sql", runId, resultId, ...(view.viewId ? { viewId: view.viewId } : {}) },
+                  selection,
+                  columns,
+                )
+            : undefined
+        }
         findTarget={view.findTarget ?? undefined}
         onFindNext={() => void view.find("next")}
         onFindPrevious={() => void view.find("previous")}
@@ -228,6 +252,10 @@ export function SqlResults({
             ? api.readCell(runId, resultId, row, columnId, view.viewId)
             : api.readCell(runId, resultId, row, columnId)
         }
+        findDataBoundary={(request) =>
+          api.findBoundary(runId, resultId, request, view.viewId ?? undefined)
+        }
+        cancelDataBoundaryNavigation={backend.cancelDataBoundaryNavigation}
         startCopy={(request) =>
           request.queryId && request.queryId !== runId
             ? api.startCopy(runId, resultId, request, request.queryId)

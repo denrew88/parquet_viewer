@@ -2624,7 +2624,7 @@ function parseDocumentPageResponse(value: unknown, request: ReadPageRequest): Da
 const dataBoundaryDirections: readonly DataBoundaryDirection[] = ["up", "down", "left", "right"];
 const dataBoundaryModes: readonly DataBoundaryMode[] = ["dataBoundary", "tableBoundary"];
 
-function validatedFindBoundaryRequest(request: FindBoundaryRequest): FindBoundaryRequest {
+export function validatedFindBoundaryRequest(request: FindBoundaryRequest): FindBoundaryRequest {
   if (
     !isNonEmptyString(request.navigationId) ||
     !isNonEmptyString(request.documentId) ||
@@ -2673,16 +2673,23 @@ export function parseFindBoundaryResponse(value: unknown): FindBoundaryResponse 
   };
 }
 
-function sameBoundaryIdentity(
+export function parseRequestedBoundaryResponse(
+  value: unknown,
   request: FindBoundaryRequest,
-  response: FindBoundaryResponse,
-): boolean {
-  return (
-    response.navigationId === request.navigationId &&
-    response.documentId === request.documentId &&
-    response.sessionId === request.sessionId &&
-    response.queryId === request.queryId
-  );
+): FindBoundaryResponse {
+  const response = parseFindBoundaryResponse(value);
+  if (
+    response.navigationId !== request.navigationId ||
+    response.documentId !== request.documentId ||
+    response.sessionId !== request.sessionId ||
+    response.queryId !== request.queryId
+  ) {
+    throw new DataViewerError(
+      "InvalidResponse",
+      "The backend returned a data boundary for another navigation request.",
+    );
+  }
+  return response;
 }
 
 function validatedExecuteQueryRequest(request: ExecuteQueryRequest): ExecuteQueryRequest {
@@ -2924,16 +2931,9 @@ export const tauriBackend: BackendAdapter = {
   },
   async findDataBoundary(request) {
     const validated = validatedFindBoundaryRequest(request);
-    return validatedInvoke("find_data_boundary", { request: validated }, (value) => {
-      const response = parseFindBoundaryResponse(value);
-      if (!sameBoundaryIdentity(validated, response)) {
-        throw new DataViewerError(
-          "InvalidResponse",
-          "The backend returned a data boundary for another navigation request.",
-        );
-      }
-      return response;
-    });
+    return validatedInvoke("find_data_boundary", { request: validated }, (value) =>
+      parseRequestedBoundaryResponse(value, validated),
+    );
   },
   async cancelDataBoundaryNavigation(request) {
     if (
@@ -3777,6 +3777,12 @@ const browserQueryTasks = new Map<
 const browserCopyOperations = new Map<string, CopyOperationStatus>();
 const browserCancelledOpenRequests = new Set<string>();
 const browserCancelledBoundaryNavigations = new Set<string>();
+async function waitForBrowserBoundaryNavigation(request: FindBoundaryRequest): Promise<void> {
+  await wait(20);
+  if (browserCancelledBoundaryNavigations.delete(request.navigationId)) {
+    throw new DataViewerError("NavigationCancelled", "The data-boundary navigation was cancelled.");
+  }
+}
 const browserOpenRequestHandlers = new Set<OpenRequestHandler>();
 let browserSettings = defaultAppSettings();
 
@@ -3895,8 +3901,9 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
 }
 
 export const browserMockBackend: BackendAdapter = {
-  sqlWorkspace: createSqlWorkspaceMock((status) =>
-    browserCopyOperations.set(status.operationId, status),
+  sqlWorkspace: createSqlWorkspaceMock(
+    (status) => browserCopyOperations.set(status.operationId, status),
+    waitForBrowserBoundaryNavigation,
   ),
   ...createColumnValuesMock(
     async (request) => {
@@ -4191,13 +4198,7 @@ export const browserMockBackend: BackendAdapter = {
   },
   async findDataBoundary(request) {
     const validated = validatedFindBoundaryRequest(request);
-    await wait(20);
-    if (browserCancelledBoundaryNavigations.delete(validated.navigationId)) {
-      throw new DataViewerError(
-        "NavigationCancelled",
-        "The data-boundary navigation was cancelled.",
-      );
-    }
+    await waitForBrowserBoundaryNavigation(validated);
     const sourcePage = validated.sessionId.includes("csv-session")
       ? browserCsvPage({ ...validated, offset: 0, limit: 1, columns: [validated.columnId] })
       : validated.sessionId.includes("large-parquet-session")

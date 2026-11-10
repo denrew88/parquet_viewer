@@ -23,8 +23,48 @@ const psStep = (name, entry, args = []) => ({
   name, program: "powershell", args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", entry, ...args], env: {},
 });
 const phase23Rust = (stage) => psStep(`phase23-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "23", "-Stage", stage]);
+const phase24Rust = (stage) => psStep(`phase24-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "24", "-Stage", stage]);
 const frontendBuild = () => nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"]);
 const tasks = {
+  "phase24-format": () => [phase24Rust("format")],
+  "phase24-check": () => [phase24Rust("check")],
+  "phase24-clippy": () => [phase24Rust("clippy")],
+  "phase24-test": () => [phase24Rust("test")],
+  "phase24-chart-unit": () => [phase24Rust("chart-unit")],
+  "phase24-native-build": () => [frontendBuild(), phase24Rust("native-build")],
+  "phase24-chart-followup-build": () => [frontendBuild(), phase24Rust("chart-followup-build")],
+  "phase24-chart-options-build": () => [frontendBuild(), phase24Rust("chart-options-build")],
+  "phase24-chart-analysis-build": () => [frontendBuild(), phase24Rust("chart-analysis-build")],
+  "chart-image-export-build": () => [frontendBuild(), phase24Rust("chart-image-export-build")],
+  "chart-image-export-native": () => [nodeStep("chart-image-export-native", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_IMAGE_EXPORT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-image-export/data-viewer.exe") })],
+  "chart-image-release-build": () => [frontendBuild(), phase24Rust("chart-image-release-build"), phase24Rust("chart-image-release-bundle")],
+  "chart-image-release-native": () => [nodeStep("chart-image-release-native", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_IMAGE_EXPORT: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-image-release/data-viewer.exe") })],
+  "chart-image-direct-build": () => [frontendBuild(), phase24Rust("chart-image-direct-build")],
+  "chart-image-direct-native": () => [nodeStep("chart-image-direct-native", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_IMAGE_EXPORT: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/data-viewer.exe") })],
+  "chart-image-rebuild": () => [frontendBuild(), phase24Rust("chart-image-rebuild")],
+  "chart-image-rebuild-native": () => [nodeStep("chart-image-rebuild-native", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_IMAGE_EXPORT: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/chart-image-rebuild/release/data-viewer.exe") })],
+  "chart-image-rebuild-transaction": () => [nodeStep("chart-image-rebuild-transaction", "scripts/phase24_native_smoke.mjs", ["--chart-transaction-only"], { P24_CHART_IMAGE_EXPORT: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/chart-image-rebuild/release/data-viewer.exe") })],
+  "chart-image-baseline-launch": () => [nodeStep("chart-image-baseline-launch", "scripts/phase24_native_smoke.mjs", [], { P24_LAUNCH_ONLY: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-analysis/data-viewer.exe") })],
+  "sql-cte-native-build": () => [frontendBuild(), phase24Rust("cte-completion-build")],
+  "sql-cte-native": () => [nodeStep("sql-cte-native", "scripts/phase24_native_smoke.mjs", [], { P24_CTE_COMPLETION: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-cte-completion/data-viewer.exe") })],
+  "sql-grid-navigation-build": () => [frontendBuild(), phase24Rust("sql-grid-navigation-build")],
+  "sql-grid-navigation-native": () => [nodeStep("sql-grid-navigation-native", "scripts/phase24_native_smoke.mjs", [], { P24_SQL_GRID_NAVIGATION: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-sql-grid-navigation/data-viewer.exe") })],
+  "sql-editor-e2e": () => [nodeStep("sql-editor-e2e", "node_modules/@playwright/test/cli.js", ["test", "--config", "artifacts/phase-20/storage-decimal/playwright.config.ts", "--grep", "SQL tab naming|CTE completion", "--workers", "1", "--output", ".tmp/sql-editor-e2e", "--reporter", "list"], { PLAYWRIGHT_BROWSERS_PATH: path.join(root, ".tmp/playwright-browsers") })],
+  "phase24-build": () => [frontendBuild(), phase24Rust("build")],
+  "phase24-bundle": () => [phase24Rust("bundle")],
+  "phase24-native": () => [nodeStep("phase24-native", "scripts/phase24_native_smoke.mjs", [], { P24_SCALE: "1" })],
+  "phase24-chart-followup": () => [nodeStep("phase24-chart-followup", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_FOLLOWUP: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-followup/data-viewer.exe") })],
+  "phase24-chart-source": () => [nodeStep("phase24-chart-source", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_SOURCE_ONLY: "1" })],
+  "phase24-chart-options": () => [nodeStep("phase24-chart-options", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_OPTIONS: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-options/data-viewer.exe") })],
+  "phase24-chart-analysis": () => [nodeStep("phase24-chart-analysis", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_ANALYSIS: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-analysis/data-viewer.exe") })],
+  "phase24-native-commerce": () => [nodeStep("phase24-native-commerce", "scripts/phase24_native_smoke.mjs", [], { P24_COMMERCE_ONLY: "1" })],
+  "phase24-product-smoke": () => [nodeStep("phase24-product-smoke", "scripts/phase24_native_smoke.mjs", [], { P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24/data-viewer.exe") })],
+  "phase24-release-smoke": () => [nodeStep("phase24-release-smoke", "scripts/phase24_native_smoke.mjs", [], { P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/data-viewer.exe") })],
+  "phase24-fixtures": () => [{name: "phase24-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-24/generate.py", "--scale"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
+  "phase24-frontend-format": () => [nodeStep("phase24-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/App.tsx", "src/App.css", "src/VirtualDataGrid.tsx", "src/chartTransport.ts", "src/chart-workspace/**/*.{ts,tsx,css}", "src/sql-workspace/**/*.{ts,tsx,css}", "e2e/phase24-chart*.spec.ts"])],
+  "phase24-e2e": (filter) => [nodeStep("phase24-e2e", "scripts/phase22_e2e.mjs", [filter ?? "Phase 24"])],
+  "phase24-e2e-full": () => [nodeStep("phase24-e2e-full", "scripts/phase22_e2e.mjs")],
+  "phase24-frontend-test": () => [nodeStep("phase24-frontend-test", "node_modules/vitest/vitest.mjs", ["run", "--maxWorkers=2"])],
   "phase23-format": () => [phase23Rust("format")],
   "phase23-check": () => [phase23Rust("check")],
   "phase23-clippy": () => [phase23Rust("clippy")],
@@ -56,7 +96,7 @@ const tasks = {
   "phase21-frontend-format": () => [nodeStep("phase21-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/column-values/backend.ts", "src/column-values/backend.test.ts", "src/column-values/mock.ts", "src/column-values/mock.test.ts", "src/column-values/ColumnValuesPanel.tsx", "src/column-values/ColumnValuesPanel.test.tsx", "e2e/phase21.spec.ts"])],
   "frontend-test": (filter) => [nodeStep("frontend-test", "node_modules/vitest/vitest.mjs", ["run", ...(filter ? [filter] : [])])],
   "phase22-frontend-format": () => [nodeStep("phase22-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/sql-workspace/**/*.{ts,tsx,css}", "src/settings/**/*.{ts,tsx,css}", "src/App.tsx", "src/backend.ts", "src/backend.test.ts", "src/VirtualDataGrid.tsx", "src/VirtualDataGrid.test.tsx"])],
-  "phase22-e2e-format": () => [nodeStep("phase22-e2e-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "e2e/phase16.spec.ts", "e2e/phase22-sql.spec.ts", "e2e/phase22-sql-storage.spec.ts", "e2e/phase22-intellisense.spec.ts", "e2e/phase22-source-lifecycle.spec.ts", "e2e/phase22-join-completion.spec.ts", "e2e/phase22-editor-usability.spec.ts", "e2e/phase22-editor-layout.spec.ts"])],
+  "phase22-e2e-format": () => [nodeStep("phase22-e2e-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "e2e/phase16.spec.ts", "e2e/phase22-sql.spec.ts", "e2e/phase22-sql-storage.spec.ts", "e2e/phase22-intellisense.spec.ts", "e2e/phase22-source-lifecycle.spec.ts", "e2e/phase22-join-completion.spec.ts", "e2e/phase22-editor-usability.spec.ts", "e2e/phase22-editor-layout.spec.ts", "e2e/phase24-sql-grid-navigation.spec.ts"])],
   "phase22-types": () => [nodeStep("phase22-types", "node_modules/typescript/bin/tsc", ["--noEmit"])],
   "phase22-fixtures": () => [{name: "phase22-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-22/generate.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
   "phase22-commerce-fixtures": () => [{name: "phase22-commerce-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-22/commerce/generate.py"], env: {PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python")}}],
@@ -128,7 +168,7 @@ if (args.length === 1 && args[0] === "--list") {
 }
 const [task, filter] = args;
 if (!Object.hasOwn(tasks, task) || args.length > 2 ||
-    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase23-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
+    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase23-e2e", "phase24-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
   console.error("Usage: node scripts/dev-check.mjs [--dry-run] TASK [FILTER]\nUse --list for the fixed task list. Filters are supported only for frontend-test and e2e.");
   process.exit(2);
 }

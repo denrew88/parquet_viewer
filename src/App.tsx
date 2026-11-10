@@ -1,14 +1,18 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  ChartNoAxesCombined,
   CircleCheck,
   FileSpreadsheet,
   FileUp,
@@ -85,7 +89,25 @@ import type { QueryToolbarStatus } from "./query/QueryToolbar";
 import { moveId } from "./gridOrdering";
 import { isInternalPointerReorderActive, usePointerReorder } from "./components/usePointerReorder";
 import "./App.css";
-import { SqlWorkspace } from "./sql-workspace/SqlWorkspace";
+import { SqlTabs } from "./sql-workspace/SqlTabs";
+import { createChartTransport } from "./chartTransport";
+import { MAX_CHART_BLOCK_CELLS, MAX_CHART_BLOCK_COLUMNS } from "./chart-workspace/contract";
+import type {
+  ChartColumn,
+  ChartLiveSource,
+  ChartSeed,
+  ChartSelection,
+  ChartSourceOption,
+} from "./chart-workspace/contract";
+
+const ChartWorkspace = lazy(() => import("./chart-workspace/ChartWorkspace"));
+const fileChartId = (documentId: string) => `file:${documentId}`;
+const chartColumns = (summary: FileSummary): ChartColumn[] =>
+  summary.columns.map((column) => ({
+    id: column.name,
+    name: column.name,
+    logicalType: column.valueLogicalType || column.logicalType,
+  }));
 
 const defaultBackend = createDefaultBackend();
 const defaultDragDropAdapter = createDefaultDragDropAdapter();
@@ -341,6 +363,7 @@ interface DataViewProps {
   isCancelling: boolean;
   onCancel(): void;
   onOpenCopySettings(): void;
+  onChartSelection?(selection: ChartSelection): void;
   onCopyPresetChange(preset: CopyPreset): void;
   onPageChange(offset: number): void;
   onReadError(error: unknown, offset: number): void;
@@ -395,6 +418,7 @@ function DataView({
   isLoading,
   onCancel,
   onOpenCopySettings,
+  onChartSelection,
   onCopyPresetChange,
   onPageChange,
   onReadError,
@@ -646,6 +670,7 @@ function DataView({
             onRetryQuery={queryState ? onRetryQuery : undefined}
             onPageChange={onPageChange}
             onCopyPresetChange={onCopyPresetChange}
+            onChartSelection={onChartSelection}
             onOpenCopySettings={onOpenCopySettings}
             onQueryPlanChange={queryState ? onQueryPlanChange : undefined}
             onReadError={onReadError}
@@ -1216,7 +1241,20 @@ function normalizedSummaryResponse(
 }
 
 function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapter }: AppProps) {
-  const [sqlWorkspaceActive, setSqlWorkspaceActive] = useState(false);
+  const [surface, setSurface] = useState<"files" | "sql" | "charts">("files");
+  const sqlWorkspaceActive = surface === "sql";
+  const chartActive = surface === "charts";
+  const nonFileWorkspace = surface !== "files";
+  const [chartsOpened, setChartsOpened] = useState(false);
+  const [sqlChartSources, setSqlChartSources] = useState<ChartSourceOption[]>([]);
+  const [chartSeed, setChartSeed] = useState<ChartSeed | null>(null);
+  const [chartCaptureStatus, setChartCaptureStatus] = useState<{
+    busy: boolean;
+    message: string;
+  } | null>(null);
+  const capturingChart = useRef<{ id: string; cancelled: boolean } | null>(null);
+  const chartSequence = useRef(0);
+  const chartTransport = useMemo(() => createChartTransport(backend), [backend]);
   const [backendState, setBackendState] = useState<BackendState>({ kind: "checking" });
   const [formatCatalog, setFormatCatalog] = useState<FormatDescriptor[]>([]);
   const [emptyActiveTab, setEmptyActiveTab] = useState<WorkspaceTab>("data");
@@ -1290,6 +1328,29 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
   >(() => undefined);
 
   const activeDocument = documents.find((document) => document.id === activeDocumentId) ?? null;
+  const chartSources = useMemo(
+    () => [
+      ...documents.flatMap((document): ChartSourceOption[] =>
+        document.status === "ready" && document.documentId && document.sessionId && document.summary
+          ? [
+              {
+                id: fileChartId(document.documentId),
+                name: documentTabLabel(document, documents),
+                kind: "file",
+                source: {
+                  kind: "file",
+                  documentId: document.documentId,
+                  sessionId: document.sessionId,
+                },
+                columns: chartColumns(document.summary),
+              },
+            ]
+          : [],
+      ),
+      ...sqlChartSources,
+    ],
+    [documents, sqlChartSources],
+  );
   const summary = activeDocument?.summary ?? null;
   const page = activeDocument?.page ?? null;
   const activeTab = activeDocument?.activeTab ?? emptyActiveTab;
@@ -3343,7 +3404,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (sqlWorkspaceActive) return;
+      if (nonFileWorkspace) return;
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       if (event.key === "Tab") {
         event.preventDefault();
@@ -3355,7 +3416,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeDocumentId, closeDocument, switchDocument, sqlWorkspaceActive]);
+  }, [activeDocumentId, closeDocument, switchDocument, nonFileWorkspace]);
 
   useEffect(() => {
     document.title = summary ? `${summary.fileName} - Data Viewer` : "Data Viewer";
@@ -3541,8 +3602,100 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
     setCopySettingsOpen(true);
   }
 
+  function showCharts() {
+    setChartsOpened(true);
+    setSurface("charts");
+  }
+
+  function sendToCharts(sourceId: string) {
+    if (capturingChart.current) return;
+    if (chartSeed) {
+      showCharts();
+      return;
+    }
+    setChartSeed({ id: `chart-seed-${++chartSequence.current}`, sourceId });
+    showCharts();
+  }
+
+  async function captureChartSelection(
+    source: ChartLiveSource,
+    selection: ChartSelection,
+    columns: ChartColumn[],
+    label: string,
+    totalFileRows?: number | null,
+  ) {
+    if (capturingChart.current) return;
+    if (chartSeed) {
+      setChartCaptureStatus({ busy: false, message: "Finish the current chart selection first." });
+      return;
+    }
+    const selected = selection.columnIds.flatMap(
+      (id) => columns.find((column) => column.id === id) ?? [],
+    );
+    if (!selected.length || selected.length !== selection.columnIds.length) return;
+    const rowCount = selection.rowEndExclusive - selection.rowStart;
+    const cellCount = rowCount * selected.length;
+    if (cellCount > MAX_CHART_BLOCK_CELLS || selected.length > MAX_CHART_BLOCK_COLUMNS) {
+      if (
+        source.kind === "file" &&
+        !source.queryId &&
+        selection.rowStart === 0 &&
+        rowCount === totalFileRows &&
+        selected.length <= MAX_CHART_BLOCK_COLUMNS
+      ) {
+        setChartSeed({
+          id: `chart-seed-${++chartSequence.current}`,
+          sourceId: fileChartId(source.documentId),
+          fileSelection: {
+            sessionId: source.sessionId,
+            columnIds: selection.columnIds,
+            rowCount,
+          },
+        });
+        setChartCaptureStatus(null);
+        showCharts();
+        return;
+      }
+      setChartCaptureStatus({
+        busy: false,
+        message: `Selected ${cellCount.toLocaleString()} cells across ${selected.length.toLocaleString()} columns. A fixed chart selection supports up to ${MAX_CHART_BLOCK_CELLS.toLocaleString()} cells and ${MAX_CHART_BLOCK_COLUMNS} columns. Select a smaller range or send the entire source to Charts.`,
+      });
+      return;
+    }
+    const id = `chart-block-${++chartSequence.current}`;
+    const capture = { id, cancelled: false };
+    capturingChart.current = capture;
+    setChartCaptureStatus({ busy: true, message: "Capturing selected rows…" });
+    try {
+      await chartTransport.capture({ requestId: id, source, selection });
+      if (capture.cancelled) {
+        await chartTransport.releaseBlock(id);
+        return;
+      }
+      setChartSeed({
+        id,
+        block: {
+          blockId: id,
+          name: label,
+          columns: selected,
+          rowCount,
+        },
+      });
+      showCharts();
+      setChartCaptureStatus(null);
+    } catch (cause) {
+      if (!capture.cancelled)
+        setChartCaptureStatus({
+          busy: false,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+    } finally {
+      capturingChart.current = null;
+    }
+  }
+
   return (
-    <div className={`app-shell${sqlWorkspaceActive ? " app-shell--sql" : ""}`}>
+    <div className={`app-shell${nonFileWorkspace ? " app-shell--sql" : ""}`}>
       <header className="app-toolbar" data-testid="toolbar">
         <div className="app-brand">
           <FileSpreadsheet className="app-brand__icon" aria-hidden="true" />
@@ -3612,7 +3765,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                   id={`document-tab-${document.id}`}
                   onClick={() => {
                     if (!documentReorder.consumeSuppressedClick(document.id)) {
-                      setSqlWorkspaceActive(false);
+                      setSurface("files");
                       setActiveDocumentId(document.id);
                     }
                   }}
@@ -3640,17 +3793,28 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           })}
           {documents.length === 0 && <span className="document-tabs__empty">No files open</span>}
         </div>
-        {backend.sqlWorkspace && (
+        <div className="document-workspace-actions">
+          {backend.sqlWorkspace && (
+            <button
+              aria-label="SQL workspace"
+              aria-pressed={sqlWorkspaceActive}
+              className="document-tabs__sql"
+              onClick={() => setSurface("sql")}
+              type="button"
+            >
+              SQL
+            </button>
+          )}
           <button
-            aria-label="SQL workspace"
-            aria-pressed={sqlWorkspaceActive}
+            aria-label="Charts workspace"
+            aria-pressed={chartActive}
             className="document-tabs__sql"
-            onClick={() => setSqlWorkspaceActive(true)}
+            onClick={showCharts}
             type="button"
           >
-            SQL
+            Charts
           </button>
-        )}
+        </div>
         <button
           aria-label="Scroll file tabs right"
           className="document-tabs__scroll"
@@ -3698,6 +3862,18 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                 : `${summary.rowCount.toLocaleString()} rows`}
             </span>
             <span>{summary.columnCount.toLocaleString()} columns</span>
+            {activeTab === "data" && activeDocument?.documentId && (
+              <button
+                type="button"
+                className="workspace-chart-button"
+                aria-label="Send file to chart"
+                disabled={activeDataInteractionBlocked}
+                onClick={() => sendToCharts(fileChartId(activeDocument.documentId!))}
+              >
+                <ChartNoAxesCombined aria-hidden="true" />
+                Chart
+              </button>
+            )}
             {activeDocument && hasCapability(summary, "parsingProfile") && (
               <>
                 <span className="csv-profile-mode">
@@ -3742,8 +3918,14 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
       </nav>
 
       <main
-        aria-labelledby={sqlWorkspaceActive ? undefined : `tab-${activeTab}`}
-        aria-label={sqlWorkspaceActive ? "SQL workspace panel" : undefined}
+        aria-labelledby={nonFileWorkspace ? undefined : `tab-${activeTab}`}
+        aria-label={
+          sqlWorkspaceActive
+            ? "SQL workspace panel"
+            : chartActive
+              ? "Charts workspace panel"
+              : undefined
+        }
         aria-busy={
           openingCount > 0 ||
           activeDocument?.isPageLoading ||
@@ -3757,7 +3939,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
         tabIndex={0}
       >
         {backend.sqlWorkspace && (
-          <SqlWorkspace
+          <SqlTabs
             active={sqlWorkspaceActive}
             backend={backend}
             sources={documents.flatMap((document) =>
@@ -3771,14 +3953,48 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             )}
             settings={appSettings}
             onOpenCopySettings={openCopySettings}
+            onSourcesChange={setSqlChartSources}
+            onSendChart={sendToCharts}
+            onChartSelection={(source, selection, columns, label) =>
+              void captureChartSelection(source, selection, columns, label)
+            }
             onOpenSource={(source) => {
-              setSqlWorkspaceActive(false);
+              setSurface("files");
               const document = documents.find(
                 (d) => d.documentId === source.documentId && d.sessionId === source.sessionId,
               );
               if (document) setActiveDocumentId(document.id);
             }}
           />
+        )}
+        {chartsOpened && (
+          <Suspense fallback={chartActive && <p role="status">Loading charts…</p>}>
+            <ChartWorkspace
+              active={chartActive}
+              sources={chartSources}
+              seed={chartSeed}
+              backend={chartTransport}
+              onSeedHandled={() => setChartSeed(null)}
+            />
+          </Suspense>
+        )}
+        {chartCaptureStatus && (
+          <div className="chart-capture-banner" role={chartCaptureStatus.busy ? "status" : "alert"}>
+            <span>{chartCaptureStatus.message}</span>
+            <button
+              type="button"
+              onClick={() => {
+                const capture = capturingChart.current;
+                if (capture) {
+                  capture.cancelled = true;
+                  void chartTransport.cancel(capture.id).catch(() => {});
+                }
+                setChartCaptureStatus(null);
+              }}
+            >
+              {chartCaptureStatus.busy ? "Cancel capture" : "Dismiss"}
+            </button>
+          </div>
         )}
         {settingsWarning && (
           <div className="settings-warning" role="status">
@@ -3817,7 +4033,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
             </button>
           </div>
         )}
-        {documents.length === 0 && !sqlWorkspaceActive && (
+        {documents.length === 0 && !nonFileWorkspace && (
           <EmptyState formats={formatCatalog} tab={emptyActiveTab} />
         )}
         {openingCount > 0 && (
@@ -3829,7 +4045,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
           <section
             aria-labelledby={`document-tab-${document.id}`}
             className="document-panel"
-            hidden={sqlWorkspaceActive || activeDocumentId !== document.id}
+            hidden={nonFileWorkspace || activeDocumentId !== document.id}
             id={`document-panel-${document.id}`}
             key={document.id}
             role="tabpanel"
@@ -3886,7 +4102,7 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                   <DataView
                     columnValuesBackend={backend}
                     active={
-                      !sqlWorkspaceActive &&
+                      !nonFileWorkspace &&
                       activeDocumentId === document.id &&
                       document.activeTab === "data"
                     }
@@ -3922,6 +4138,21 @@ function App({ backend = defaultBackend, dragDropAdapter = defaultDragDropAdapte
                     onPageChange={(offset) => void loadPage(document, offset)}
                     onCopyPresetChange={selectCopyPreset}
                     onOpenCopySettings={openCopySettings}
+                    onChartSelection={(selection) => {
+                      const queryId = queryStates[document.id]?.queryId;
+                      void captureChartSelection(
+                        {
+                          kind: "file",
+                          documentId: document.documentId!,
+                          sessionId: document.sessionId!,
+                          ...(queryId ? { queryId } : {}),
+                        },
+                        selection,
+                        chartColumns(document.summary!),
+                        document.summary!.fileName,
+                        document.summary!.rowCount,
+                      );
+                    }}
                     onQueryPlanChange={(plan) => executeDocumentQuery(document, plan)}
                     onReadError={(error, offset) =>
                       updateDocument(document.id, (current) => ({

@@ -1,0 +1,46 @@
+{
+  "recordedAt": "2026-11-09T10:18:04+09:00",
+  "state": "blocked",
+  "identifier": "com.denrew88.data-viewer",
+  "candidate": {
+    "path": "src-tauri/target/release/candidates/phase-24/data-viewer.exe",
+    "bytes": 61490176,
+    "sha256": "f395ecc015204c3655d580f33e6055e813f274c7aa9c39fb0e7ddf95f6aadbbb",
+    "fileVersion": "0.24.0",
+    "productVersion": "0.24.0"
+  },
+  "installer": {
+    "path": "src-tauri/target/release/bundle/nsis/Data Viewer_0.24.0_x64-setup.exe",
+    "bytes": 14363078,
+    "sha256": "f47e334666d8ba5537143d81714eccda32d12fd494098a59bdf8ae2ea9479f87",
+    "fileVersion": "0.24.0",
+    "productVersion": "0.24.0"
+  },
+  "currentProduct": {
+    "path": "src-tauri/target/release/data-viewer.exe",
+    "bytes": 60978176,
+    "sha256": "5f37809f196ff1640649d2db7d66c4d5fd6ba8caf37cc8f94de6c8d5d19ca2f2",
+    "fileVersion": "0.23.0",
+    "productVersion": "0.23.0"
+  },
+  "deltaBytes": 512000,
+  "buildLog": "artifacts/dev-check/2026-11-09T01-04-26-515Z-phase24-build.log",
+  "installerLog": "artifacts/dev-check/2026-11-09T01-14-04-843Z-phase24-bundle.log",
+  "candidateSmoke": {
+    "state": "pass",
+    "checks": 13,
+    "log": "artifacts/dev-check/2026-11-09T01-16-10-414Z-phase24-product-smoke.log"
+  },
+  "rustTests": {
+    "state": "blocked",
+    "reason": "The Release test binary compiled, but Windows Application Control blocked its start (OS error 4551).",
+    "log": "artifacts/dev-check/2026-11-09T01-16-23-691Z-phase24-test.log"
+  },
+  "runtime": {
+    "state": "blocked",
+    "stage": "Start-Process",
+    "path": "src-tauri/target/release/data-viewer.exe",
+    "reason": "Windows Application Control blocked the verified product EXE at the release path. The previous v0.23.0 executable was restored and its SHA-256 was verified.",
+    "log": "artifacts/dev-check/2026-11-09T01-17-30-918Z-phase24-release-smoke.log"
+  }
+}

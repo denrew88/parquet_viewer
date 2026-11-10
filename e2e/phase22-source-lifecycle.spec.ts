@@ -95,12 +95,12 @@ async function retainedResult(workspace: Locator) {
   return { result, values };
 }
 
-test("T-P22-LIFE-006/008 card path, mode, padding and keyboard select; pencil remains separate", async ({
+test("T-P22-LIFE-006/008 card alias, mode, padding and keyboard select; pencil remains separate", async ({
   page,
 }, info) => {
   const workspace = await setup(page);
   await editor(workspace).fill("SELECT preserve_authored_sql;");
-  await table(workspace, "orders_2").locator(".sql-table__path").click();
+  await table(workspace, "orders_2").locator(".sql-table__alias").click();
   await expect(table(workspace, "orders_2")).toHaveAttribute("aria-pressed", "true");
   await expect(workspace.getByRole("heading", { name: "orders_2 columns" })).toBeVisible();
   await expect(workspace.getByRole("textbox", { name: "Table alias", exact: true })).toHaveCount(0);
@@ -149,9 +149,9 @@ test("T-P22-LIFE-006/008 card path, mode, padding and keyboard select; pencil re
       const button = card.querySelector(".sql-table__select"),
         pencil = card.querySelector(".sql-icon-button"),
         list = card.closest(".sql-table-list"),
-        path = button?.querySelector(".sql-table__path"),
+        alias = button?.querySelector(".sql-table__alias"),
         mode = button?.querySelector(".sql-table__mode");
-      if (!button || !pencil || !list || !path || !mode)
+      if (!button || !pencil || !list || !alias || !mode)
         throw new Error("Source card controls missing");
       return {
         label: button.getAttribute("aria-label"),
@@ -160,7 +160,7 @@ test("T-P22-LIFE-006/008 card path, mode, padding and keyboard select; pencil re
         button: rect(button),
         pencil: rect(pencil),
         list: rect(list),
-        path: rect(path),
+        alias: rect(alias),
         mode: rect(mode),
         nestedButtons: button.querySelectorAll("button").length,
       };
@@ -172,7 +172,7 @@ test("T-P22-LIFE-006/008 card path, mode, padding and keyboard select; pencil re
     expect(item.button.right).toBeLessThanOrEqual(item.card.right + 1);
     expect(item.button.width).toBeGreaterThanOrEqual(item.card.width - 3);
     if (item.selected) {
-      for (const bounds of [item.button, item.path, item.mode]) {
+      for (const bounds of [item.button, item.alias, item.mode]) {
         expect(bounds.top, `${item.label} selected content top`).toBeGreaterThanOrEqual(
           item.list.top - 1,
         );

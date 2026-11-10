@@ -1188,6 +1188,43 @@ button:focus-visible,
   height: 14px;
 }
 
+.workspace-chart-button,
+.chart-capture-banner button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid #cbd7db;
+  border-radius: 4px;
+  background: #fff;
+  color: #29434b;
+  font-size: 11px;
+  cursor: pointer;
+}
+.workspace-chart-button svg {
+  width: 13px;
+  height: 13px;
+}
+.workspace-chart-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chart-capture-banner {
+  position: absolute;
+  z-index: 12;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 6px 8px;
+  border: 1px solid #b7cdcf;
+  border-radius: 4px;
+  background: #f2f8f7;
+  color: #244852;
+  font-size: 12px;
+}
 .workspace {
   position: relative;
   min-width: 0;

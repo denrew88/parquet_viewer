@@ -1,6 +1,7 @@
 import { foldSqlIdentifier, SQL_MAX_BYTES, trimSqlWhitespace } from "./backend";
 import { sqlIdentifier, sqlColumnName, type SqlTable } from "./model";
 import { SQL_FUNCTIONS } from "./functionCatalog";
+import { bindingsFor, identifier, keyword, type Binding, type Token } from "./completionRelations";
 
 export const MAX_COMPLETION_OPTIONS = 200;
 const MAX_TOKENS = 8192;
@@ -72,41 +73,7 @@ export interface SqlFunctionHint {
   from: number;
   to: number;
 }
-interface Token {
-  value: string;
-  from: number;
-  to: number;
-  depth: number;
-  parent?: number;
-  kind: "word" | "quoted" | "string" | "comment" | "symbol";
-  closed: boolean;
-}
 const key = foldSqlIdentifier;
-const keyword = (t: Token | undefined, word: string) => t?.kind === "word" && key(t.value) === word;
-const identifier = (t: Token | undefined): t is Token & { kind: "word" | "quoted" } =>
-  t?.kind === "word" || t?.kind === "quoted";
-const boundaries = new Set([
-  "where",
-  "group",
-  "order",
-  "having",
-  "limit",
-  "offset",
-  "qualify",
-  "window",
-  "union",
-  "except",
-  "intersect",
-  "join",
-  "left",
-  "right",
-  "inner",
-  "outer",
-  "full",
-  "cross",
-  "on",
-  "using",
-]);
 
 function lex(doc: string, bounded = true) {
   if (
@@ -255,117 +222,6 @@ function scope(tokens: Token[], ends: Map<number, number>, pos: number, length: 
   if (next) end = Math.min(end, next.from);
   return { depth, parent, start: selected?.from ?? 0, end };
 }
-interface Binding {
-  alias: string;
-  table: SqlTable | null;
-  relationFrom: number;
-}
-function bindingsFor(
-  tokens: Token[],
-  ends: Map<number, number>,
-  context: ReturnType<typeof scope>,
-  tables: readonly SqlTable[],
-  pos: number,
-) {
-  tokens = tokens.filter((t) => t.kind !== "comment");
-  const catalogue = new Map<string, SqlTable | null>();
-  for (const table of tables.slice(0, 32)) {
-    const name = key(table.alias);
-    catalogue.set(name, catalogue.has(name) ? null : table);
-  }
-  const ctes = new Set<string>();
-  for (let i = 0; i < tokens.length; i++)
-    if (
-      keyword(tokens[i], "with") &&
-      tokens[i].from <= context.start &&
-      (tokens[i].parent === undefined ||
-        (tokens[i].parent! < pos && (ends.get(tokens[i].parent!) ?? Infinity) > pos))
-    ) {
-      const level = tokens[i].depth;
-      let j = i + 1;
-      if (keyword(tokens[j], "recursive")) j++;
-      while (identifier(tokens[j]) && tokens[j].depth === level) {
-        ctes.add(key(tokens[j].value));
-        j++;
-        if (tokens[j]?.value === "(") {
-          const end = ends.get(tokens[j].from) ?? Infinity;
-          while (j < tokens.length && tokens[j].to < end) j++;
-          j++;
-        }
-        if (!keyword(tokens[j], "as")) break;
-        j++;
-        if (keyword(tokens[j], "not")) j++;
-        if (keyword(tokens[j], "materialized")) j++;
-        if (tokens[j]?.value !== "(") break;
-        const end = ends.get(tokens[j].from) ?? Infinity;
-        while (j < tokens.length && tokens[j].to < end) j++;
-        j++;
-        if (tokens[j]?.value !== ",") break;
-        j++;
-      }
-    }
-  const base = tokens.filter(
-    (t) =>
-      t.kind !== "comment" &&
-      t.depth === context.depth &&
-      t.parent === context.parent &&
-      t.from >= context.start &&
-      t.from < context.end,
-  );
-  const bindings: Binding[] = [];
-  let inFrom = false,
-    expectTable = false;
-  for (let i = 0; i < base.length; i++) {
-    const t = base[i];
-    if (keyword(t, "from") || keyword(t, "join")) {
-      inFrom = true;
-      expectTable = true;
-      continue;
-    }
-    if (t.kind === "word" && boundaries.has(key(t.value)) && !keyword(t, "join")) {
-      if (
-        !["on", "left", "right", "inner", "outer", "full", "cross", "using"].includes(key(t.value))
-      )
-        inFrom = false;
-    }
-    if (inFrom && t.value === ",") {
-      expectTable = true;
-      continue;
-    }
-    if (!expectTable) continue;
-    expectTable = false;
-    let name = "",
-      table: SqlTable | null = null;
-    if (identifier(t)) {
-      name = t.value;
-      table = ctes.has(key(name)) ? null : (catalogue.get(key(name)) ?? null);
-    } else if (t.value !== "(") continue;
-    if (base[i + 1]?.value === ".") {
-      table = null;
-      while (base[i + 1]?.value === "." && identifier(base[i + 2])) i += 2;
-    }
-    if (t.value === "(" || base[i + 1]?.value === "(") {
-      table = null;
-      const open = t.value === "(" ? t : base[++i];
-      const end = ends.get(open.from) ?? Infinity;
-      while (i + 1 < base.length && base[i + 1].to <= end) i++;
-    }
-    if (keyword(base[i + 1], "as")) {
-      i++;
-      if (identifier(base[i + 1])) name = base[++i].value;
-    } else if (
-      identifier(base[i + 1]) &&
-      (base[i + 1].kind === "quoted" || !boundaries.has(key(base[i + 1].value)))
-    )
-      name = base[++i].value;
-    if (name) {
-      bindings.push({ alias: name, table, relationFrom: t.from });
-      if (bindings.length > 64) return null;
-    }
-  }
-  return { bindings, catalogue, ctes, base };
-}
-
 export interface SqlCompletionContext {
   kind: "dot" | "join" | "table" | "having" | "expression" | "none";
   prefixLength: number;
@@ -631,6 +487,25 @@ export function sqlCompletions(
     if (!prefix || matches) options.push(option);
   };
   const columns = (binding: Binding, qualified: boolean) => {
+    if (binding.cte?.columns) {
+      const output = new Map<string, string | null>();
+      for (const name of binding.cte.columns)
+        if (name !== null) output.set(key(name), output.has(key(name)) ? null : name);
+      for (const name of output.values()) {
+        if (options.length >= MAX_COMPLETION_OPTIONS) break;
+        if (name === null) continue;
+        offer(
+          {
+            label: qualified ? `${binding.alias}.${name}` : name,
+            insertText: (qualified ? sqlIdentifier(binding.alias) + "." : "") + sqlIdentifier(name),
+            type: "property",
+            detail: `CTE · ${binding.cte.name}`,
+          },
+          name,
+        );
+      }
+      return;
+    }
     if (!binding.table) return;
     for (const c of binding.table.columns) {
       if (options.length >= MAX_COMPLETION_OPTIONS) break;
@@ -654,21 +529,30 @@ export function sqlCompletions(
     const qualifier = before[before.length - 2];
     if (!identifier(qualifier) || before[before.length - 3]?.value === ".") return null;
     const matches = info.bindings.filter((b) => key(b.alias) === key(qualifier.value));
+    const name = key(qualifier.value);
     const binding =
       matches.length === 1
         ? matches[0]
-        : matches.length === 0 &&
-            info.bindings.length === 0 &&
-            context.depth === 0 &&
-            !info.ctes.has(key(qualifier.value))
+        : matches.length === 0 && info.bindings.length === 0 && context.depth === 0
           ? {
               alias: qualifier.value,
-              table: info.catalogue.get(key(qualifier.value)) ?? null,
+              table: info.ctes.has(name) ? null : (info.catalogue.get(name) ?? null),
+              cte: info.ctes.get(name) ?? undefined,
               relationFrom: -1,
             }
           : null;
     if (binding) columns(binding, false);
   } else if (tablePosition) {
+    for (const cte of info.ctes.values()) {
+      if (!cte) continue;
+      offer({
+        label: cte.name,
+        insertText: sqlIdentifier(cte.name),
+        type: "table",
+        detail: "CTE",
+        boost: 10,
+      });
+    }
     for (const [name, table] of info.catalogue)
       if (table && !info.ctes.has(name))
         offer({
@@ -693,7 +577,8 @@ export function sqlCompletions(
     }
     const resolved = info.bindings.filter(
       (b) =>
-        b.table && info.bindings.filter((other) => key(other.alias) === key(b.alias)).length === 1,
+        (b.table || b.cte) &&
+        info.bindings.filter((other) => key(other.alias) === key(b.alias)).length === 1,
     );
     for (const b of resolved) columns(b, info.bindings.length > 1);
     for (const f of SQL_FUNCTIONS)

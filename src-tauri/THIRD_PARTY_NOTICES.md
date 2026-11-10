@@ -7,6 +7,12 @@ Exact package versions and complete copyright/permission notices are embedded in
 assets as `third-party-codemirror.txt` (source: `public/third-party-codemirror.txt`).
 Regenerate with `node scripts/update_codemirror_notices.mjs` after editor dependency updates.
 
+## Charts
+
+Apache ECharts (Apache-2.0), zrender (BSD-3-Clause), and tslib (0BSD) are used by the
+chart workspace. Exact versions and the corresponding license and notice text are
+embedded as `third-party-charts.txt` (source: `public/third-party-charts.txt`).
+
 The application statically links the following software. The exact Rust package versions are
 recorded in `Cargo.lock`.
 
