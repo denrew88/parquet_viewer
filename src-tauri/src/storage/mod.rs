@@ -4,7 +4,8 @@ mod temp;
 
 pub(crate) use csv_cache::{
     lock_csv_cache_control, preview_unavailable_cache_location, recover_csv_cache_migration,
-    replace_unavailable_cache_location, CsvCacheCleanupResult, CsvCacheIdentity,
+    replace_unavailable_cache_location, validate_existing_csv_cache_directory,
+    validate_existing_storage_directory, CsvCacheCleanupResult, CsvCacheIdentity,
     CsvCacheMigrationPreview, CsvCacheMigrationProgress, CsvCacheMigrationResult,
     CsvPersistentCache, CsvPersistentCacheLease,
 };

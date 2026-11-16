@@ -1,0 +1,30 @@
+{
+  "promotedOn": "2026-11-16",
+  "phase": 25,
+  "version": "0.25.0",
+  "scope": "12px spacing between SQL temporary-storage description and reset button",
+  "binary": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 62542848,
+  "sha256": "176B5037FED2F67F8C518BB66B10988B43F07426FA8A61643CEC650B14F3F07E",
+  "previousSha256": "041AD9484900D7D274A0F6D40E508EA5723F4A498F247458BC6D595C5FF575D5",
+  "previousReceipt": "artifacts/phase-25/promotion-history/2026-11-16-settings-folders.json",
+  "operation": "User-approved byte-identical copy of rebuilt candidate; no rebuild during promotion",
+  "testedSource": "src-tauri/target/release/candidates/phase-25-settings/data-viewer.exe",
+  "buildLog": "artifacts/dev-check/2026-11-16T11-32-22-824Z-phase25-workspace-draft-build.log",
+  "validation": {
+    "native": "Not rerun for this CSS-only rebuild; previous Settings native evidence belongs to previous EXE hash",
+    "screenshotsReviewed": true,
+    "browserPassed": 3,
+    "frontendLog": "artifacts/dev-check/2026-11-16T11-30-16-570Z-format.log",
+    "browserLog": "artifacts/dev-check/2026-11-16T11-30-25-673Z-phase25-e2e.log",
+    "frontendStatic": "pass",
+    "viewports": [
+      "1440x900",
+      "1024x768",
+      "800x600"
+    ]
+  },
+  "phaseStatus": "in progress; separate existing OS file-drop gate remains",
+  "distribution": "Local EXE promotion only; no installer or external publication",
+  "sourceDuplicateRemoved": true
+}

@@ -14,6 +14,7 @@ import { serializeCopyRows } from "../copy/serializer";
 import type { CopyOptions } from "../copy/model";
 import type { QueryFilter, QuerySearch } from "../query/model";
 import {
+  foldSqlIdentifier,
   parseSqlStatus,
   validateSqlBoundary,
   validateSqlPage,
@@ -200,11 +201,14 @@ export function createSqlWorkspaceMock(
       fail: boolean;
       action: string;
       boundary: boolean;
+      large: boolean;
     }
   >();
   const results = new Map<string, MockResult>();
   const chartPins = new Map<string, number>();
   const releasedTabs = new Set<string>();
+  const viewPins = new Map<string, number>();
+  const releasedViews = new Set<string>();
   type Match = NonNullable<FindQueryMatchResponse["match"]>;
   const views = new Map<
     string,
@@ -270,12 +274,32 @@ export function createSqlWorkspaceMock(
   };
   const rowIndexes = (runId: string, resultId: string, viewId?: string) => {
     const result = snapshot(runId, resultId);
-    if (viewId === undefined) return Array.from({ length: result.rowCount ?? 0 }, (_, row) => row);
+    if (viewId === undefined) {
+      const length = result.rowCount ?? 0;
+      return {
+        length,
+        at: (row: number) => (row >= 0 && row < length ? row : undefined),
+        slice: (start: number, end: number) => {
+          const offset = Math.max(0, start);
+          return Array.from(
+            { length: Math.max(0, Math.min(length, end) - offset) },
+            (_, row) => offset + row,
+          );
+        },
+        filter: (predicate: (row: number) => boolean) => {
+          const selected: number[] = [];
+          for (let row = 0; row < length; row++) if (predicate(row)) selected.push(row);
+          return selected;
+        },
+      };
+    }
     const view = resultView(runId, resultId, viewId);
     if (view.status.state !== "complete")
       throw new DataViewerError("QueryStale", "SQL result view is unavailable.");
     return view.rows;
   };
+  const indexAt = (indexes: ReturnType<typeof rowIndexes>, row: number) =>
+    Array.isArray(indexes) ? indexes[row] : indexes.at(row);
   const matchesFilter = (result: MockResult, row: number, filter: QueryFilter) => {
     const cell = value(result, row, filter.columnId);
     const input = filter.values[0];
@@ -342,7 +366,7 @@ export function createSqlWorkspaceMock(
         item.status.phase = "complete";
         if (item.action === "execute") {
           item.status.resultId = `sql-result-${runId}`;
-          item.status.rowCount = item.boundary ? 260 : 4;
+          item.status.rowCount = item.large ? 1_000_257 : item.boundary ? 260 : 4;
           item.status.rowsProduced = item.status.rowCount;
           item.status.columns = [
             { id: "r0", name: "value", logicalType: "BIGINT", nullable: false },
@@ -455,7 +479,8 @@ export function createSqlWorkspaceMock(
       },
       async release(runId, resultId, viewId) {
         resultView(runId, resultId, viewId);
-        views.delete(viewId);
+        if (viewPins.has(viewId)) releasedViews.add(viewId);
+        else views.delete(viewId);
       },
       async find(runId, resultId, viewId, request) {
         const { matches, status } = resultView(runId, resultId, viewId);
@@ -501,8 +526,21 @@ export function createSqlWorkspaceMock(
       validateSqlRequest(request);
       if (tasks.has(request.runId))
         throw new DataViewerError("InvalidRequest", "Duplicate SQL run.");
+      // The mock recognizes simple FROM/JOIN clauses used by the browser fixtures.
+      // Native results carry identities discovered by DuckDB's binder.
+      const fixtureSql = request.sql.replace(/'(?:''|[^'])*'|--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
+      const aliases = new Set(
+        Array.from(
+          fixtureSql.matchAll(/\b(?:from|join)\s+(?:"((?:""|[^"])*)"|([\w$]+))/gi),
+          ([, quoted, bare]) => foldSqlIdentifier(quoted?.replace(/""/g, '"') ?? bare),
+        ),
+      );
+      const referencedSources = request.tables.flatMap(({ alias, documentId, sessionId }) =>
+        aliases.has(foldSqlIdentifier(alias)) ? [{ documentId, sessionId }] : [],
+      );
       const status: SqlStatus = {
         runId: request.runId,
+        referencedSources,
         state: "running",
         phase: "executing",
         elapsedMs: 0,
@@ -521,6 +559,7 @@ export function createSqlWorkspaceMock(
         delay: /\/\*\s*slow\s*\*\//i.test(request.sql) ? 30_000 : 300,
         fail: /\/\*\s*fail\s*\*\//i.test(request.sql),
         boundary: /\/\*\s*boundary\s*\*\//i.test(request.sql),
+        large: /\/\*\s*sql-scale\s*\*\//i.test(request.sql),
         action: request.action,
       });
       if (tasks.size > 16) {
@@ -562,7 +601,7 @@ export function createSqlWorkspaceMock(
     },
     async readCell(runId, resultId, row, columnId, viewId) {
       const result = snapshot(runId, resultId);
-      const sourceRow = rowIndexes(runId, resultId, viewId)[row];
+      const sourceRow = indexAt(rowIndexes(runId, resultId, viewId), row);
       if (sourceRow === undefined || !result.columns.some((c) => c.id === columnId))
         throw new DataViewerError("InvalidRequest", "Unknown SQL cell.");
       return value(result, sourceRow, columnId);
@@ -596,7 +635,11 @@ export function createSqlWorkspaceMock(
               column: columnDelta < 0 ? 0 : columnDelta > 0 ? bounds.columnCount - 1 : start.column,
             }
           : ctrlArrowTarget(start, rowDelta, columnDelta, bounds, ({ row, column }) => {
-              const state = value(result, indexes[row], checked.visibleColumnIds[column]).state;
+              const state = value(
+                result,
+                indexAt(indexes, row)!,
+                checked.visibleColumnIds[column],
+              ).state;
               return state === "null" || state === "empty";
             });
       return {
@@ -613,14 +656,45 @@ export function createSqlWorkspaceMock(
       snapshot(runId, resultId);
       if (chartPins.has(resultId)) releasedTabs.add(resultId);
       else results.delete(resultId);
-      for (const [id, view] of views) if (view.status.sessionId === resultId) views.delete(id);
+      for (const [id, view] of views)
+        if (view.status.sessionId === resultId) {
+          if (viewPins.has(id)) releasedViews.add(id);
+          else views.delete(id);
+        }
     },
-    async retainMockChartResult(runId, resultId) {
-      snapshot(runId, resultId);
+    async retainMockChartResult(runId, resultId, viewId, selection) {
+      const result = snapshot(runId, resultId);
+      const count = viewId
+        ? resultView(runId, resultId, viewId).rows.length
+        : (result.rowCount ?? 0);
+      if (
+        selection &&
+        (!Number.isSafeInteger(selection.rowStart) ||
+          selection.rowStart < 0 ||
+          !Number.isSafeInteger(selection.rowEndExclusive) ||
+          selection.rowEndExclusive > count ||
+          selection.rowEndExclusive <= selection.rowStart ||
+          selection.columnIds.some((id) => !result.columns.some((column) => column.id === id)))
+      )
+        throw new DataViewerError("InvalidRequest", "The chart selection is outside the result.");
+      if (viewId) {
+        const view = resultView(runId, resultId, viewId);
+        if (view.status.state !== "complete")
+          throw new DataViewerError("QueryStale", "SQL result view is unavailable.");
+        viewPins.set(viewId, (viewPins.get(viewId) ?? 0) + 1);
+      }
       chartPins.set(resultId, (chartPins.get(resultId) ?? 0) + 1);
     },
-    async releaseMockChartResult(runId, resultId) {
+    async releaseMockChartResult(runId, resultId, viewId) {
       snapshot(runId, resultId);
+      if (viewId) {
+        const pins = (viewPins.get(viewId) ?? 1) - 1;
+        if (pins > 0) viewPins.set(viewId, pins);
+        else {
+          viewPins.delete(viewId);
+          if (releasedViews.delete(viewId)) views.delete(viewId);
+        }
+      }
       const remaining = (chartPins.get(resultId) ?? 1) - 1;
       if (remaining > 0) chartPins.set(resultId, remaining);
       else {

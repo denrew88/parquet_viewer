@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { selectSettingsCategory } from "./settingsHelpers";
 import {
   expectInsideViewport,
   expectNoHorizontalPageOverflow,
@@ -44,6 +45,7 @@ test("keeps primary UI, dialogs, and query popovers unclipped", async ({ page },
   await settingsDialog.screenshot({
     path: `artifacts/phase-10/ui/settings-${artifactName}.png`,
   });
+  await selectSettingsCategory(settingsDialog, "Storage");
   await settingsDialog
     .getByRole("heading", { name: "Reusable CSV cache" })
     .scrollIntoViewIfNeeded();

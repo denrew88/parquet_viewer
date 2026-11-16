@@ -87,12 +87,13 @@ async function measure(workspace: Locator, name: string, info: TestInfo) {
         })),
       renderedColumns: element.querySelectorAll('[aria-label="SQL column list"] button').length,
       selectedRadios: element.querySelectorAll('fieldset input[type="radio"]:checked').length,
-      alignment: Array.from(element.querySelectorAll('[data-grid-row="0"][data-grid-column]')).map(
-        (cell) => {
+      alignment: Array.from(element.querySelectorAll('[data-grid-row="0"][data-grid-column]'))
+        .filter(visible)
+        .map((cell) => {
           const index = cell.getAttribute("data-grid-column");
-          const header = element.querySelector(
-            `.virtual-grid__column-header[data-column-index="${index}"]`,
-          );
+          const header = cell
+            .closest('[role="grid"]')
+            ?.querySelector(`.virtual-grid__column-header[data-column-index="${index}"]`);
           if (!header) return { index, missingHeader: true, leftDelta: 0, widthDelta: 0 };
           const a = cell.getBoundingClientRect(),
             b = header.getBoundingClientRect();
@@ -102,8 +103,7 @@ async function measure(workspace: Locator, name: string, info: TestInfo) {
             leftDelta: Math.abs(a.left - b.left),
             widthDelta: Math.abs(a.width - b.width),
           };
-        },
-      ),
+        }),
     };
   });
   expect(value.body.scrollWidth).toBeLessThanOrEqual(value.body.clientWidth + 1);
@@ -231,6 +231,10 @@ test("T-P22-001/004/019 alias editing and examples preserve SQL until explicit i
         .then((lines) => lines.join("\n")),
     )
     .toBe("SELECT preserve_this_text;");
+  await workspace.getByRole("button", { name: "Examples & help", exact: true }).click();
+  await expect(
+    workspace.getByRole("button", { name: "Examples & help", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   await workspace.getByRole("button", { name: "JOIN", exact: true }).click();
   const example = workspace.locator('pre[aria-label="SQL example"]');
   await expect(example).toContainText("current_orders AS a");
@@ -304,6 +308,10 @@ test("T-P22-018/019/021 examples, writing help and result-free plan states", asy
   page,
 }, info) => {
   const workspace = await openSql(page);
+  await workspace.getByRole("button", { name: "Examples & help", exact: true }).click();
+  await expect(
+    workspace.getByRole("button", { name: "Examples & help", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   await workspace.getByRole("tab", { name: "Writing guide", exact: true }).click();
   await expect(
     workspace.getByRole("heading", { name: "One mode per table", exact: true }),

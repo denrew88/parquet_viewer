@@ -3177,6 +3177,7 @@ describe("App", () => {
     });
     render(<App backend={backend({ getQueryTempUsage, clearQueryTemp })} />);
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
     const queryStorage = (
       await screen.findByRole("heading", {
         name: "Query temporary data",
@@ -3232,6 +3233,7 @@ describe("App", () => {
     render(<App backend={backend({ getQueryTempUsage, clearQueryTemp, clearCsvCache })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
     expect(await screen.findByText("512.0 MiB · 2 items")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear inactive CSV cache" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm clear inactive CSV cache" }));
@@ -3358,6 +3360,7 @@ describe("App", () => {
     render(<App backend={backend({ updateSettings })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Copy" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy settings" }));
     expect(screen.getByRole("dialog", { name: "Copy settings" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Application settings" })).not.toBeInTheDocument();

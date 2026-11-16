@@ -38,6 +38,33 @@ import {
 } from "./backend";
 import { defaultAppSettings } from "./settings/model";
 
+describe("managed storage folder transport", () => {
+  it("reads folder locations independently and invokes only the selected kind", async () => {
+    invokeMock.mockReset();
+    const locations = {
+      csvCache: { path: "D:\\Cache\\한글, files", available: true },
+      queryTemp: { path: "C:\\Local App\\query-temp", available: true },
+    };
+    invokeMock.mockResolvedValueOnce(locations).mockResolvedValueOnce(null);
+    expect(await tauriBackend.storageFolders!.getLocations()).toEqual(locations);
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "get_storage_locations", undefined);
+    await tauriBackend.storageFolders!.openFolder("queryTemp");
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "open_storage_folder", { kind: "queryTemp" });
+  });
+
+  it("rejects unknown kinds before IPC and malformed folder metadata", async () => {
+    invokeMock.mockReset();
+    await expect(
+      tauriBackend.storageFolders!.openFolder("C:\\private" as "csvCache"),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+    expect(invokeMock).not.toHaveBeenCalled();
+    invokeMock.mockResolvedValueOnce({ csvCache: { path: "C:\\cache", available: true } });
+    await expect(tauriBackend.storageFolders!.getLocations()).rejects.toMatchObject({
+      code: "InvalidResponse",
+    });
+  });
+});
+
 const validSummary = {
   sessionId: "session-1",
   fileName: "fixture.parquet",

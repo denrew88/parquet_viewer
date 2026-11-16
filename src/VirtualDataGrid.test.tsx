@@ -1470,6 +1470,23 @@ describe("VirtualDataGrid", () => {
     expect(within(operator).queryByRole("option", { name: "Contains" })).not.toBeInTheDocument();
   });
 
+  it("keeps a newly opened filter for a queued scroll event but closes on a new scroll", () => {
+    render(<QueryGridHarness />);
+    const grid = screen.getByRole("grid", { name: "Data preview" });
+    grid.scrollLeft = 20;
+    fireEvent.click(screen.getByRole("button", { name: "Filter column_0" }));
+    const dialog = screen.getByRole("dialog", { name: "Filter column_0" });
+
+    fireEvent.scroll(grid);
+    expect(dialog).toBeInTheDocument();
+    fireEvent.scroll(grid);
+    expect(dialog).toBeInTheDocument();
+
+    grid.scrollLeft = 21;
+    fireEvent.scroll(grid);
+    expect(dialog).not.toBeInTheDocument();
+  });
+
   it("clamps the filter popover and restores trigger focus on Escape", async () => {
     render(<QueryGridHarness />);
     const trigger = screen.getByRole("button", { name: "Filter column_0" });
@@ -1797,11 +1814,11 @@ describe("VirtualDataGrid", () => {
     expect(within(grid).getByText("R3C3")).toHaveClass("is-active");
   });
 
-  it("does not intercept spreadsheet shortcuts owned by search and resize controls", () => {
+  it("keeps text selection and resize arrow keys in their own controls", () => {
     const { grid } = renderGrid();
     const search = screen.getByRole("searchbox", { name: "Search columns" });
     fireEvent.change(search, { target: { value: "column" } });
-    fireEvent.keyDown(search, { key: "a", ctrlKey: true });
+    expect(fireEvent.keyDown(search, { key: "a", ctrlKey: true })).toBe(true);
     fireEvent.keyDown(search, { key: "ArrowDown" });
     expect(search).toHaveValue("column");
     expect(grid).toHaveAttribute("data-selection-kind", "cell");
@@ -1810,6 +1827,29 @@ describe("VirtualDataGrid", () => {
     fireEvent.keyDown(separator, { key: "ArrowRight" });
     expect(grid).toHaveAttribute("data-active-column", "0");
   });
+
+  it.each(["header", "resize", "toolbar"] as const)(
+    "selects the whole logical table with Ctrl+A while a %s control has focus",
+    (control) => {
+      const { grid } = renderGrid();
+      fireEvent.click(within(grid).getByText("R2C2"));
+      const target =
+        control === "header"
+          ? grid.querySelector<HTMLElement>('[role="columnheader"][data-column-index="0"]')!
+          : control === "resize"
+            ? screen.getByRole("separator", { name: "Resize column_0" })
+            : screen.getByRole("button", { name: "Choose columns" });
+      target.focus();
+      fireEvent.keyDown(target, { key: "a", ctrlKey: true });
+
+      expect(grid).toHaveAttribute("data-selection-kind", "all");
+      expect(grid).toHaveAttribute("data-selection-top", "0");
+      expect(grid).toHaveAttribute("data-selection-left", "0");
+      expect(grid).toHaveAttribute("data-selection-bottom", "10239");
+      expect(grid).toHaveAttribute("data-selection-right", "119");
+      expect(grid).toHaveFocus();
+    },
+  );
 
   it("closes copy options on scroll and resize", () => {
     renderGrid();
@@ -1997,6 +2037,82 @@ describe("VirtualDataGrid", () => {
       options: { includeHeaders: true },
     });
     expect(writeClipboardText).not.toHaveBeenCalled();
+  });
+
+  it("keeps the pointer menu on a pending scroll event and closes it after the grid moves", () => {
+    const { grid } = renderGrid();
+    fireEvent.contextMenu(within(grid).getByText("R0C0"), { clientX: 100, clientY: 120 });
+    const menu = screen.getByRole("menu", { name: "Cell actions" });
+    fireEvent.scroll(grid);
+    expect(menu).toBeInTheDocument();
+    fireEvent.scroll(grid, { target: { scrollTop: GRID_ROW_HEIGHT } });
+    expect(menu).not.toBeInTheDocument();
+    fireEvent.contextMenu(within(grid).getByText("R0C0"));
+    fireEvent.resize(window);
+    expect(screen.queryByRole("menu", { name: "Cell actions" })).not.toBeInTheDocument();
+  });
+
+  it("sends the selected whole columns in current display order to Charts and Copy", async () => {
+    const onChartSelection = vi.fn();
+    const { grid, startCopy } = renderGrid(undefined, undefined, summary, makePage(), {
+      onChartSelection,
+      showChartSelectionAction: true,
+    });
+    const header = (name: string) => within(grid).getByRole("columnheader", { name });
+    const chart = screen.getByRole("button", { name: "Create Chart from Selection" });
+    fireEvent.click(header("column_0"));
+    fireEvent.click(header("column_2"), { ctrlKey: true });
+    expect(header("column_0")).toHaveAttribute("aria-selected", "true");
+    expect(header("column_1")).toHaveAttribute("aria-selected", "false");
+    expect(header("column_2")).toHaveAttribute("aria-selected", "true");
+    expect(within(grid).getByText("R1C0").closest('[role="gridcell"]')).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(grid).getByText("R1C1").closest('[role="gridcell"]')).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(grid).toHaveAttribute("data-selection-column-count", "2");
+
+    for (let step = 0; step < 2; step += 1) {
+      fireEvent.keyDown(header("column_2"), { key: "ArrowLeft", altKey: true, shiftKey: true });
+    }
+    expect(header("column_0")).toHaveAttribute("aria-selected", "true");
+    expect(header("column_2")).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(chart);
+    expect(onChartSelection).toHaveBeenLastCalledWith({
+      rowStart: 0,
+      rowEndExclusive: 10_240,
+      columnIds: ["column_2", "column_0"],
+    });
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(startCopy).toHaveBeenCalledTimes(1));
+    expect(startCopy.mock.calls[0]?.[0].selection).toEqual(onChartSelection.mock.calls[0]?.[0]);
+    fireEvent.click(header("column_2"), { metaKey: true });
+    fireEvent.click(header("column_0"), { ctrlKey: true });
+    expect(grid).toHaveAttribute("data-selection-kind", "cell");
+    expect(header("column_0")).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("includes only visible columns in a Shift header span and keeps it on context chart creation", () => {
+    const onChartSelection = vi.fn();
+    const { grid } = renderGrid(undefined, undefined, summary, makePage(), { onChartSelection });
+    const header = (name: string) => within(grid).getByRole("columnheader", { name });
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    const chooser = screen.getByRole("dialog", { name: "Column chooser" });
+    fireEvent.click(within(chooser).getByRole("button", { name: "column_1" }));
+    fireEvent.click(header("column_3"));
+    fireEvent.keyDown(header("column_0"), { key: "Enter", shiftKey: true });
+    expect(grid).toHaveFocus();
+    expect(grid).toHaveAttribute("data-selection-column-count", "3");
+    fireEvent.contextMenu(within(grid).getByText("R2C2"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create chart from selection" }));
+    expect(onChartSelection).toHaveBeenCalledWith({
+      rowStart: 0,
+      rowEndExclusive: 10_240,
+      columnIds: ["column_0", "column_2", "column_3"],
+    });
   });
 
   it("selects an out-of-range context target and supports keyboard menu invocation", async () => {

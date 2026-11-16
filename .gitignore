@@ -44,6 +44,9 @@ fixtures/*
 !fixtures/phase-23/**
 !fixtures/phase-24/
 !fixtures/phase-24/**
+!fixtures/phase-25/
+!fixtures/phase-25/generate_chart_fidelity.py
+!fixtures/phase-25/chart-preview-validation.json
 # Large synthetic benchmark inputs stay local; hashes and profiles are retained.
 fixtures/phase-20/performance/*/source.csv
 fixtures/phase-20/performance/main-high/high-5850000x15.csv
@@ -51,6 +54,26 @@ fixtures/phase-22/commerce/*.csv
 fixtures/phase-22/commerce/*.parquet
 
 # Local UI validation captures and intermediate evidence
+# Keep generated test screenshots local; application icons and docs assets are unaffected.
+artifacts/**/*.png
+artifacts/**/*.jpg
+artifacts/**/*.jpeg
+artifacts/**/*.webp
+# Generated test results, geometry captures, and intermediate build records stay local.
+artifacts/**/*.json
+# Keep authoritative release records, fixture manifests, and tool configuration.
+!artifacts/**/release-promotion.json
+!artifacts/**/promotion-history/*.json
+!artifacts/**/product-exe.json
+!artifacts/**/release-build.json
+!artifacts/**/20-build.json
+!artifacts/**/40-manifest.json
+!artifacts/**/*promotion-manifest.json
+!artifacts/**/fixtures.json
+!artifacts/**/*fixture*manifest.json
+!artifacts/**/package.json
+!artifacts/**/package-lock.json
+!artifacts/**/tsconfig*.json
 artifacts/bugfix-*/
 artifacts/*-ux/
 artifacts/**/ui/*-pre-final.png
@@ -60,13 +83,13 @@ artifacts/**/*-unsandboxed*
 artifacts/experiments/
 artifacts/optimizations/
 
-# Phase 21 raw runs stay local; retain summaries, reviews and final UI evidence.
+# Phase 21 raw runs stay local; retain summaries and reviews.
 artifacts/phase-21/native/*.json
 artifacts/phase-21/native/native-after-data-validation.png
 artifacts/phase-21/native/native-column-values.png
 artifacts/phase-21/native/native-ui-cache-preview-*.png
 
-# Phase 22 native raw runs are local; commit concise reviews and final UI evidence.
+# Phase 22 native raw runs are local; commit concise reviews.
 artifacts/phase-22/native/*.json
 
 # Keep Phase 23 raw native runs and intermediate screenshots local.

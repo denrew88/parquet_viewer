@@ -1,3 +1,9 @@
+import type { ReactNode } from "react";
+import type { DataPage } from "../backend";
+import type { SqlSourceIdentity } from "../sql-workspace/backend";
+import type { ChartNavigationRequest, RelatedChart } from "../workspaceNavigation";
+import type { ChartBinding, ResolvedSource } from "./chartModel";
+
 export interface ChartFileSource {
   kind: "file";
   documentId: string;
@@ -33,12 +39,19 @@ export interface ChartColumn {
   logicalType: string;
 }
 
+export interface SqlReference {
+  statement: string;
+  referencedSources: SqlSourceIdentity[];
+  origin?: SqlSourceIdentity;
+}
+
 export interface ChartSourceOption {
   id: string;
   name: string;
   kind: "file" | "sql";
   columns: ChartColumn[];
   source: ChartLiveSource | null;
+  sqlReference?: SqlReference;
 }
 
 export interface ChartSelection {
@@ -52,6 +65,7 @@ export interface ChartBlock {
   name: string;
   columns: ChartColumn[];
   rowCount: number;
+  origin?: ChartLiveSource;
 }
 
 export const MAX_CHART_BLOCK_CELLS = 100_000;
@@ -86,7 +100,16 @@ export interface ChartRequest {
   histogramRange?: HistogramRange;
   whiskers?: BoxWhiskers;
   bar?: BarAnalysis;
+  detail?: ChartDetailRequest;
 }
+
+export type ChartDetailRequest =
+  | { kind: "range"; x: [number, number]; y?: [number, number] }
+  | { kind: "groups"; offset: number; search?: string }
+  | { kind: "group"; label: string };
+
+export type ChartExtent = [xMin: number, xMax: number, yMin: number, yMax: number];
+export type CountedChartExtent = [...ChartExtent, count: number];
 
 export interface ChartData {
   totalRows: number;
@@ -101,7 +124,9 @@ export interface ChartData {
   xUnit?: string;
   yUnit?: string;
   points?: [number, number][];
-  scatterExtent?: [xMin: number, xMax: number, yMin: number, yMax: number];
+  scatterExtent?: ChartExtent;
+  scatterTiles?: CountedChartExtent[];
+  lineBuckets?: CountedChartExtent[];
   pointDetails?: { row: number; x: string; y: string; label?: string }[];
   bins?: { start: number; end: number; count: number }[];
   histogramOutside?: { below: number; above: number };
@@ -117,7 +142,13 @@ export interface ChartData {
     whiskers?: [number, number];
     outlierCount?: number;
     outliers?: number[];
+    observations?: number[];
   }[];
+  groupDirectory?: {
+    total: number;
+    offset: number;
+    entries: { label: string; count: number; value?: number }[];
+  };
 }
 
 export const MAX_CHART_IMAGE_PIXELS = 4_194_304;
@@ -173,6 +204,15 @@ export interface ChartWorkspaceProps {
   seed: ChartSeed | null;
   backend: ChartBackend;
   onSeedHandled(): void;
+  navigation?: ChartNavigationRequest | null;
+  onNavigationHandled?(id: number): void;
+  onRelatedChartsChange?(links: RelatedChart[]): void;
+  renderChartReference?(
+    binding: ChartBinding,
+    resolved: ResolvedSource,
+    active: boolean,
+    chartColumnIds: readonly string[],
+  ): ReactNode;
 }
 
 export interface ChartCapture {
@@ -182,5 +222,6 @@ export interface ChartCapture {
 }
 
 export interface ChartTransport extends ChartBackend {
+  readBlockPreview(blockId: string, limit: number, columns: string[]): Promise<DataPage>;
   capture(request: ChartCapture): Promise<void>;
 }

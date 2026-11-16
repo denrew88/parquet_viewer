@@ -24,17 +24,59 @@ const psStep = (name, entry, args = []) => ({
 });
 const phase23Rust = (stage) => psStep(`phase23-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "23", "-Stage", stage]);
 const phase24Rust = (stage) => psStep(`phase24-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "24", "-Stage", stage]);
+const phase25Rust = (stage) => psStep(`phase25-${stage}`, "scripts/phase22_checks.ps1", ["-Phase", "25", "-Stage", stage]);
 const frontendBuild = () => nodeStep("frontend-build", "node_modules/vite/bin/vite.js", ["build"]);
 const tasks = {
+  "phase25-settings-build": () => [frontendBuild(), { ...phase25Rust("workspace-draft-build"), env: { P25_SETTINGS_DRAFT: "1" } }],
+  "phase25-settings-rust-unit": () => [phase25Rust("storage-folders-unit")],
+  "phase25-settings-native": () => [nodeStep("phase25-settings-native", "scripts/phase24_native_smoke.mjs", [], { P25_SETTINGS: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-settings/data-viewer.exe") })],
+  "phase25-settings-format": () => [nodeStep("phase25-settings-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/settings/**/*.{ts,tsx,css}", "src/App{,.test}.tsx", "src/backend{,.test}.ts", "e2e/settingsHelpers.ts", "e2e/phase25-settings.spec.ts", "e2e/phase{11,13,14,21}.spec.ts", "e2e/{ui-geometry,workspace-ui,phase22-join-completion,phase22-sql-storage}.spec.ts"])],
+  "phase25-settings-native-format": () => [nodeStep("phase25-settings-native-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "scripts/native_phase25_settings.mjs"])],
+  "phase25-sql-scale-fixtures": () => [{ name: "phase25-sql-scale-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-25/generate_sql_scale.py"], env: { PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python") } }],
+  "phase25-sql-scale-build": () => [frontendBuild(), { ...phase25Rust("workspace-draft-build"), env: { P25_SQL_SCALE_DRAFT: "1" } }],
+  "phase25-sql-scale-native": () => [nodeStep("phase25-sql-scale-native", "scripts/phase24_native_smoke.mjs", [], { P25_SQL_SCALE: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-sql-scale/data-viewer.exe") })],
+  "phase25-sql-scale-ui-unit": () => [nodeStep("phase25-sql-scale-ui-unit", "node_modules/vitest/vitest.mjs", ["run", "src/sql-workspace", "src/chartTransport.test.ts", "--maxWorkers=2"])],
+  "phase25-sql-scale-format": () => [nodeStep("phase25-sql-scale-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/App.tsx", "src/VirtualDataGrid{,.test}.tsx", "src/chartTransport{,.test}.ts", "src/sql-workspace/**/*.{ts,tsx,css}", "e2e/phase25-{sql-scale,workspaces}.spec.ts", "e2e/phase22-{editor-layout,editor-usability,sql}.spec.ts", "e2e/phase24-chart{s,-analysis,-options,-image-export}.spec.ts", "e2e/phase24-sql-grid-navigation.spec.ts", "scripts/native_phase25_sql_scale.mjs"])],
+  "phase25-frontend-format": () => [nodeStep("phase25-frontend-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/App.tsx", "src/Workspaces.css", "src/workspaceNavigation.ts", "src/components/{LinkedCharts,RelatedWork,WorkspaceFiles,WorkspaceReference,WorkspaceReference.test}.tsx", "src/VirtualDataGrid*.tsx", "src/gridSelection*.ts", "src/gridHeaderSelection.css", "src/chart-workspace/**/*.{ts,tsx,css}", "src/sql-workspace/**/*.{ts,tsx,css}", "e2e/phase25-workspaces.spec.ts"])],
+  "phase25-fidelity-format": () => [nodeStep("phase25-fidelity-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/chartTransport{,.test}.ts", "src/chart-workspace/chartFidelitySeries*.ts", "src/sql-workspace/SqlTabs.tsx", "src/sql-workspace/SqlWorkspace.css", "e2e/phase24-chart{s,-analysis,-options}.spec.ts", "e2e/phase25-chart-fidelity.spec.ts", "e2e/phase25-tooltip.spec.ts"])],
+  "phase25-fidelity-ui-format": () => [nodeStep("phase25-fidelity-ui-format", "node_modules/prettier/bin/prettier.cjs", ["--write", "src/chart-workspace/**/*.{ts,tsx,css}"])],
+  "phase25-fidelity-fixtures": () => [{ name: "phase25-fidelity-fixtures", program: "C:/ProgramData/miniforge3/python.exe", args: ["fixtures/phase-25/generate_chart_fidelity.py"], env: { PYTHONPATH: path.join(root, ".tmp/hdf5-fixture-python") } }],
+  "phase25-fidelity-build": () => [frontendBuild(), phase25Rust("chart-fidelity-build")],
+  "phase25-fidelity-bundle": () => [phase25Rust("chart-fidelity-bundle")],
+  "phase25-fidelity-native": () => [nodeStep("phase25-fidelity-native", "scripts/phase24_native_smoke.mjs", [], { P25_CHART_FIDELITY: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-chart-fidelity/data-viewer.exe") })],
+  "phase25-card-native": () => [nodeStep("phase25-card-native", "scripts/phase24_native_smoke.mjs", [], { P25_CARD_INTERACTIONS: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-chart-fidelity/data-viewer.exe") })],
+  "phase25-tooltip-build": () => [frontendBuild(), phase25Rust("scatter-tooltip-build")],
+  "phase25-tooltip-bundle": () => [phase25Rust("scatter-tooltip-bundle")],
+  "phase25-tooltip-native": () => [nodeStep("phase25-tooltip-native", "scripts/phase24_native_smoke.mjs", [], { P25_SCATTER_TOOLTIP: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-scatter-tooltip-opacity/data-viewer.exe") })],
+  "phase25-tooltip-direct-native": () => [nodeStep("phase25-tooltip-direct-native", "scripts/phase24_native_smoke.mjs", [], { P25_SCATTER_TOOLTIP: "1", P24_REQUIRE_PRODUCT: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/data-viewer.exe") })],
+  "phase25-chart-unit": () => [phase25Rust("chart-unit")],
+  "phase25-e2e": (filter) => [nodeStep("phase25-e2e", "scripts/phase22_e2e.mjs", [filter ?? "Phase 25"])],
+  "phase25-app-test": (filter) => [nodeStep("phase25-app-test", "node_modules/vitest/vitest.mjs", ["run", "src/App.test.tsx", "--maxWorkers=1", ...(filter ? ["--testNamePattern", filter] : [])])],
+  "phase25-clippy": () => [phase25Rust("clippy")],
+  "phase25-format": () => [phase25Rust("format")],
+  "phase25-sql-unit": () => [phase25Rust("sql-unit")],
+  "phase25-rust-test": () => [phase25Rust("test")],
+  "phase25-environment-retry": () => [phase25Rust("environment-retry")],
+  "phase25-storage-retry": () => [phase25Rust("storage-reclaim-retry")],
+  "phase25-draft-build": () => [frontendBuild(), phase25Rust("workspace-draft-build")],
+  "phase25-draft-link": () => [phase25Rust("workspace-draft-build")],
+  "phase25-draft-bundle": () => [phase25Rust("workspace-draft-bundle")],
+  "phase25-direct-build": () => [frontendBuild(), phase25Rust("workspace-direct-build")],
+  "phase25-direct-native": () => [nodeStep("phase25-direct-native", "scripts/phase24_native_smoke.mjs", [], { P25_WORKSPACES: "1", P24_REQUIRE_PRODUCT: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/data-viewer.exe") })],
+  "phase25-native": () => [nodeStep("phase25-native", "scripts/phase24_native_smoke.mjs", [], { P25_WORKSPACES: "1", P24_EXPECT_VERSION: "0.25.0", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-25-workspaces/data-viewer.exe") })],
   "phase24-format": () => [phase24Rust("format")],
   "phase24-check": () => [phase24Rust("check")],
   "phase24-clippy": () => [phase24Rust("clippy")],
   "phase24-test": () => [phase24Rust("test")],
   "phase24-chart-unit": () => [phase24Rust("chart-unit")],
+  "phase24-chart-batch-audit": () => [phase24Rust("chart-batch-audit")],
   "phase24-native-build": () => [frontendBuild(), phase24Rust("native-build")],
   "phase24-chart-followup-build": () => [frontendBuild(), phase24Rust("chart-followup-build")],
   "phase24-chart-options-build": () => [frontendBuild(), phase24Rust("chart-options-build")],
   "phase24-chart-analysis-build": () => [frontendBuild(), phase24Rust("chart-analysis-build")],
+  "phase24-chart-performance-build": () => [frontendBuild(), phase24Rust("chart-performance-build")],
+  "phase24-chart-performance-smoke": () => [nodeStep("phase24-chart-performance-smoke", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_PERFORMANCE: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-performance/data-viewer.exe") })],
+  "phase24-chart-performance-ui": () => [nodeStep("phase24-chart-performance-ui", "scripts/phase24_native_smoke.mjs", ["--performance-ui-only"], { P24_CHART_PERFORMANCE: "1", P24_REQUIRE_PRODUCT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-performance/data-viewer.exe") })],
   "chart-image-export-build": () => [frontendBuild(), phase24Rust("chart-image-export-build")],
   "chart-image-export-native": () => [nodeStep("chart-image-export-native", "scripts/phase24_native_smoke.mjs", [], { P24_CHART_IMAGE_EXPORT: "1", P24_BINARY: path.join(root, "src-tauri/target/release/candidates/phase-24-chart-image-export/data-viewer.exe") })],
   "chart-image-release-build": () => [frontendBuild(), phase24Rust("chart-image-release-build"), phase24Rust("chart-image-release-bundle")],
@@ -168,7 +210,7 @@ if (args.length === 1 && args[0] === "--list") {
 }
 const [task, filter] = args;
 if (!Object.hasOwn(tasks, task) || args.length > 2 ||
-    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase23-e2e", "phase24-e2e", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
+    (filter !== undefined && (!["frontend-test", "e2e", "phase21-e2e", "phase22-e2e", "phase23-e2e", "phase24-e2e", "phase25-e2e", "phase25-app-test", "phase22-stress"].includes(task) || !filter || /^-/.test(filter) || /[\r\n\0]/.test(filter)))) {
   console.error("Usage: node scripts/dev-check.mjs [--dry-run] TASK [FILTER]\nUse --list for the fixed task list. Filters are supported only for frontend-test and e2e.");
   process.exit(2);
 }

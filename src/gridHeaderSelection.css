@@ -1,0 +1,47 @@
+.grid-chart-selection {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 3px 10px;
+  border-bottom: 1px solid #d8dddf;
+  background: #f8f9f9;
+  font-size: 12px;
+}
+
+.grid-chart-selection > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #52656a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-chart-selection > button {
+  display: inline-flex;
+  min-height: 27px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid #076e68;
+  border-radius: 5px;
+  color: #fff;
+  background: #076e68;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.grid-chart-selection > button:disabled {
+  border-color: #c4d0cf;
+  color: #52656a;
+  background: #e9efee;
+  cursor: default;
+}
+
+.grid-chart-selection > button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}

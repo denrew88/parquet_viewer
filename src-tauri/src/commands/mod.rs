@@ -3,6 +3,7 @@ pub(crate) mod chart;
 pub(crate) mod chart_image;
 pub(crate) mod column_values;
 pub(crate) mod sql_workspace;
+pub(crate) mod storage_folders;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -916,6 +917,9 @@ impl AppState {
         if let Some(service) = self.initialized_query_service() {
             service.cancel_source_sql(document_id, session_id);
         }
+        if closed.is_ok() {
+            self.charts.invalidate_file_detail(document_id, session_id);
+        }
         closed
     }
 
@@ -952,6 +956,7 @@ impl AppState {
             .documents
             .replace_source(document_id, session_id, source)
             .map_err(document_error)?;
+        self.charts.invalidate_file_detail(document_id, session_id);
         Ok(OpenFileResponse {
             document_id: document_id.to_owned(),
             session_id: new_session_id,
@@ -2021,6 +2026,9 @@ pub async fn apply_csv_profile(
         .documents
         .replace_source(&request.document_id, &request.session_id, source)
         .map_err(document_error)?;
+    state
+        .charts
+        .invalidate_file_detail(&request.document_id, &request.session_id);
     let response = OpenFileResponse {
         document_id: request.document_id,
         session_id,

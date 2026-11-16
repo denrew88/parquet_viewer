@@ -1,0 +1,10 @@
+[
+  { "limit": 1, "columns": ["c0"], "valid": true },
+  { "limit": 6, "columns": ["c7", "c6", "c5", "c4", "c3", "c2", "c1", "c0"], "valid": true },
+  { "limit": 0, "columns": ["c0"], "valid": false },
+  { "limit": 7, "columns": ["c0"], "valid": false },
+  { "limit": 1, "columns": [], "valid": false },
+  { "limit": 1, "columns": ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"], "valid": false },
+  { "limit": 1, "columns": ["c0", "c0"], "valid": false },
+  { "limit": 1, "columns": ["missing"], "valid": false }
+]

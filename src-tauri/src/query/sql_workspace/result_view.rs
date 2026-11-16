@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 pub(crate) const VIEW_DOCUMENT: &str = "sql-result-view";
 const PUBLIC_DOCUMENT: &str = "sql-workspace";
 const MAX_VIEWS_PER_RESULT: usize = 3;
+const MAX_RETAINED_VIEWS_PER_RESULT: usize = 32;
 const PAGE_LIMIT_ERROR: &str = "SQL result view page exceeds 8 MiB. Select fewer columns.";
 
 pub(crate) fn sql_view_temp_cap(process_limit: u64) -> u64 {
@@ -21,6 +22,8 @@ pub(crate) fn sql_view_temp_cap(process_limit: u64) -> u64 {
 pub(super) struct SqlResultView {
     session: String,
     alive: AtomicBool,
+    tab_owned: AtomicBool,
+    chart_owners: std::sync::atomic::AtomicUsize,
 }
 
 impl SqlResult {
@@ -99,7 +102,14 @@ impl QueryService {
         if !result.alive.load(Ordering::Acquire) {
             return Err(DataError::task_cancelled());
         }
-        if views.contains_key(view_id) || views.len() >= MAX_VIEWS_PER_RESULT {
+        if views.contains_key(view_id)
+            || views
+                .values()
+                .filter(|view| view.tab_owned.load(Ordering::Acquire))
+                .count()
+                >= MAX_VIEWS_PER_RESULT
+            || views.len() >= MAX_VIEWS_PER_RESULT + MAX_RETAINED_VIEWS_PER_RESULT
+        {
             return Err(invalid(
                 "SQL result view identity is in use or the view limit was reached.",
             ));
@@ -137,6 +147,8 @@ impl QueryService {
             Arc::new(SqlResultView {
                 session,
                 alive: AtomicBool::new(true),
+                tab_owned: AtomicBool::new(true),
+                chart_owners: std::sync::atomic::AtomicUsize::new(0),
             }),
         );
         Ok(public_status(status, id, view_id))
@@ -172,11 +184,20 @@ impl QueryService {
     ) -> Result<(), DataError> {
         validate_sql_identity(view_id)?;
         let result = self.sql_result(run, id)?;
-        let view = result
-            .views
-            .lock()
-            .map_err(|_| registry_error())?
-            .remove(view_id);
+        let view = {
+            let mut views = result.views.lock().map_err(|_| registry_error())?;
+            match views.get(view_id) {
+                Some(view) => {
+                    view.tab_owned.store(false, Ordering::Release);
+                    if view.chart_owners.load(Ordering::Acquire) == 0 {
+                        views.remove(view_id)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            }
+        };
         if let Some(view) = view {
             view.alive.store(false, Ordering::Release);
             self.close_sql_view_session(&view.session)?;
@@ -199,12 +220,25 @@ impl QueryService {
     }
 
     pub(super) fn close_sql_result_views(&self, result: &SqlResult) -> Result<(), DataError> {
-        let views = std::mem::take(&mut *result.views.lock().map_err(|_| registry_error())?);
-        for view in views.values() {
+        let views = {
+            let mut views = result.views.lock().map_err(|_| registry_error())?;
+            let mut released = Vec::new();
+            views.retain(|_, view| {
+                view.tab_owned.store(false, Ordering::Release);
+                if view.chart_owners.load(Ordering::Acquire) == 0 {
+                    released.push(Arc::clone(view));
+                    false
+                } else {
+                    true
+                }
+            });
+            released
+        };
+        for view in &views {
             view.alive.store(false, Ordering::Release);
         }
         let mut outcome = Ok(());
-        for view in views.into_values() {
+        for view in views {
             outcome = outcome.and(self.close_sql_view_session(&view.session));
         }
         outcome
@@ -331,6 +365,74 @@ impl QueryService {
             })
             .transpose()?;
         Ok(Arc::new(SqlChartReader { result, indexed }))
+    }
+
+    /// Retains immutable result/view storage and only selection metadata. No
+    /// selected cells are read until preview or chart calculation requests them.
+    pub(crate) fn sql_selection_chart_reader(
+        self: &Arc<Self>,
+        run: &str,
+        id: &str,
+        view_id: Option<&str>,
+        selection: &CopySelectionSnapshot,
+    ) -> Result<Arc<dyn CopyRowReader>, DataError> {
+        let result = self.sql_result(run, id)?;
+        let indexed = view_id
+            .map(|id| {
+                let view = result.view(id)?;
+                let index = self.sql_view_result(&view)?;
+                check_view_current(&result, &view)?;
+                Ok::<_, DataError>((view, index))
+            })
+            .transpose()?;
+        let rows = indexed
+            .as_ref()
+            .map_or(result.rows, |(_, index)| index.row_count);
+        if selection.row_start >= selection.row_end_exclusive
+            || selection.row_end_exclusive > rows
+            || selection.row_end_exclusive > SQL_MAX_SAFE_ROWS
+            || selection.column_ids.is_empty()
+            || selection.column_ids.len() > 64
+        {
+            return Err(invalid(
+                "The selected SQL range is outside its immutable result.",
+            ));
+        }
+        let mut used = std::collections::HashSet::new();
+        for column in &selection.column_ids {
+            if !used.insert(column)
+                || !result
+                    .columns
+                    .iter()
+                    .any(|candidate| candidate.id == *column)
+            {
+                return Err(invalid("The selected SQL columns are invalid."));
+            }
+        }
+        self.retain_chart_sql_result(run, id)?;
+        let mut lease = SqlSelectionLease {
+            service: Arc::clone(self),
+            result: Arc::clone(&result),
+            result_id: id.to_owned(),
+            view: None,
+        };
+        if let Some((view, _)) = &indexed {
+            let views = result.views.lock().map_err(|_| registry_error())?;
+            if !views.values().any(|current| Arc::ptr_eq(current, view))
+                || !view.alive.load(Ordering::Acquire)
+            {
+                return Err(DataError::task_cancelled());
+            }
+            if view.chart_owners.load(Ordering::Acquire) >= 128 {
+                return Err(invalid("The SQL view chart retention limit was reached."));
+            }
+            view.chart_owners.fetch_add(1, Ordering::AcqRel);
+            lease.view = Some(Arc::clone(view));
+        }
+        Ok(Arc::new(SqlSelectionReader {
+            reader: SqlChartReader { result, indexed },
+            _lease: lease,
+        }))
     }
 
     pub fn export_sql_result_view(
@@ -498,6 +600,58 @@ struct SqlViewCopyReader {
 struct SqlChartReader {
     result: Arc<SqlResult>,
     indexed: Option<(Arc<SqlResultView>, Arc<QueryResult>)>,
+}
+
+struct SqlSelectionLease {
+    service: Arc<QueryService>,
+    result: Arc<SqlResult>,
+    result_id: String,
+    view: Option<Arc<SqlResultView>>,
+}
+
+impl Drop for SqlSelectionLease {
+    fn drop(&mut self) {
+        let close = self.view.as_ref().and_then(|view| {
+            let mut views = self.result.views.lock().ok()?;
+            let owners = view.chart_owners.load(Ordering::Acquire);
+            if owners == 0 {
+                return None;
+            }
+            view.chart_owners.store(owners - 1, Ordering::Release);
+            if owners == 1 && !view.tab_owned.load(Ordering::Acquire) {
+                views.retain(|_, current| !Arc::ptr_eq(current, view));
+                view.alive.store(false, Ordering::Release);
+                Some(view.session.clone())
+            } else {
+                None
+            }
+        });
+        if let Some(session) = close {
+            let _ = self.service.close_sql_view_session(&session);
+        }
+        let _ = self
+            .service
+            .release_chart_sql_result(&self.result.run_id, &self.result_id);
+    }
+}
+
+struct SqlSelectionReader {
+    reader: SqlChartReader,
+    _lease: SqlSelectionLease,
+}
+
+impl CopyRowReader for SqlSelectionReader {
+    fn read_rows(
+        &self,
+        offset: u64,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        self.reader.read_rows(offset, limit, columns)
+    }
+    fn validate_current(&self) -> Result<(), DataError> {
+        self.reader.validate_current()
+    }
 }
 
 impl CopyRowReader for SqlChartReader {
@@ -733,6 +887,10 @@ impl SqlSnapshotProvider {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "selection_tests.rs"]
+mod selection_tests;
 
 #[cfg(test)]
 mod tests {

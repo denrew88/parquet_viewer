@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { BookOpen, Pencil, Play, Square, X } from "lucide-react";
+import { BookOpen, PanelRight, Pencil, Play, Square, X } from "lucide-react";
 import type { BackendAdapter, DataPage, FileSummary } from "../backend";
 import type { ChartColumn, ChartSelection, ChartSqlSource } from "../chart-workspace/contract";
 import type { AppSettings } from "../settings/model";
@@ -15,6 +15,7 @@ import {
 } from "./backend";
 import {
   sqlIdentifier,
+  quoteSqlIdentifier,
   reconcileSqlTables,
   sourceKey,
   sqlAliasConflict,
@@ -32,6 +33,7 @@ import { SqlResults } from "./SqlResults";
 import type { SqlRunQueue } from "./runQueue";
 import { clampSourcePane, SOURCE_SEPARATOR_PX } from "./sourcePaneState";
 import { clampQueryPane, QUERY_SEPARATOR_PX, useVerticalSplitter } from "./useVerticalSplitter";
+import { useSqlPaneLayout } from "./useSqlPaneLayout";
 import {
   captureSqlExecution,
   readSqlHelpOpen,
@@ -43,13 +45,19 @@ import {
 interface Props {
   active: boolean;
   workspaceId?: string;
+  initialSource?: SqlSourceIdentity;
   runQueue?: SqlRunQueue;
   backend: BackendAdapter;
   sources: SqlSourceIdentity[];
   settings: AppSettings;
   onOpenCopySettings(): void;
   onOpenSource(source: SqlSourceIdentity): void;
-  onResultChange?(result: SqlStatus | null): void;
+  onResultChange?(result: SqlStatus | null, statement?: string): void;
+  renderFileReference?(
+    source: SqlSourceIdentity,
+    sqlTabId: string | undefined,
+    active: boolean,
+  ): ReactNode;
   onSendChart?(): void;
   onChartSelection?(
     source: ChartSqlSource,
@@ -112,6 +120,7 @@ function resultSummary(status: SqlStatus): FileSummary {
 export function SqlWorkspace({
   active,
   workspaceId,
+  initialSource,
   runQueue,
   backend,
   sources,
@@ -119,6 +128,7 @@ export function SqlWorkspace({
   onOpenCopySettings,
   onOpenSource,
   onResultChange,
+  renderFileReference,
   onSendChart,
   onChartSelection,
 }: Props) {
@@ -157,6 +167,7 @@ export function SqlWorkspace({
   const [pendingResult, setPendingResult] = useState<PendingResult | null>(null);
   const [output, setOutput] = useState<"result" | "plan" | "messages">("result");
   const [helpOpen, setHelpOpen] = useState(readSqlHelpOpen);
+  const [referenceOpen, setReferenceOpen] = useState(true);
   const [helpTab, setHelpTab] = useState<"examples" | "guide">("examples");
   const [example, setExample] = useState<SqlExample>("basic");
   const editor = useRef<SqlEditorHandle>(null);
@@ -180,9 +191,17 @@ export function SqlWorkspace({
   latestTables.current = tables;
   const activeRef = useRef(active);
   activeRef.current = active;
+  const initializedSource = useRef(false);
   const sourcesKey = JSON.stringify(sources);
   const busy = busyStatus(status);
   const selected = tables.find((table) => sourceKey(table) === selectedKey) ?? tables[0];
+  const referenceSource =
+    selected && sources.some((source) => sourceKey(source) === sourceKey(selected))
+      ? selected
+      : undefined;
+  const showReference = Boolean(referenceOpen && referenceSource && renderFileReference);
+  const paneLayout = useSqlPaneLayout(active, showReference);
+  const showHelp = helpOpen && !showReference;
   const visiblePathHint =
     active && pathHint && tables.some((table) => sourceKey(table) === pathHint.key)
       ? pathHint
@@ -268,6 +287,16 @@ export function SqlWorkspace({
         if (mounted.current && generation === sourceGeneration.current) setSourceLoading(false);
       });
   }, [active, api, sourcesKey, sources.length, sourceRetry]);
+
+  useEffect(() => {
+    if (!initialSource || initializedSource.current) return;
+    const key = sourceKey(initialSource);
+    const table = tables.find((candidate) => sourceKey(candidate) === key);
+    if (!table) return;
+    initializedSource.current = true;
+    setSelectedKey(key);
+    setSql((current) => current || `SELECT * FROM ${quoteSqlIdentifier(table.alias)} LIMIT 100;`);
+  }, [initialSource, tables]);
 
   const disposeUnpublishedRun = useCallback(
     async (run: NonNullable<typeof currentRun.current>) => {
@@ -371,7 +400,7 @@ export function SqlWorkspace({
     const value = { status: next, page, summary: resultSummary(next), execution };
     resultRef.current = value;
     setResult(value);
-    onResultChange?.(next);
+    onResultChange?.(next, execution.sql);
     setPendingResult(null);
     pendingResultRef.current = null;
     setOutput("result");
@@ -553,7 +582,15 @@ export function SqlWorkspace({
       )
     : null;
   return (
-    <section className="sql-workspace" aria-label="SQL workspace" hidden={!active}>
+    <section
+      className="sql-workspace"
+      aria-label="SQL workspace"
+      data-reference={showReference}
+      data-source-dock={paneLayout.dock}
+      ref={paneLayout.pane}
+      style={paneLayout.style}
+      hidden={!active}
+    >
       <aside
         className="sql-sources"
         aria-label="SQL tables and columns"
@@ -784,21 +821,40 @@ export function SqlWorkspace({
           )}
         </div>
       </aside>
+      <div
+        className="sql-pane-separator sql-pane-separator--tables"
+        {...paneLayout.tablesSeparator}
+      />
       <div className="sql-main">
         <header className="sql-query-heading">
           <h2>Query</h2>
-          <button
-            type="button"
-            aria-expanded={helpOpen}
-            onClick={() => {
-              const next = !helpOpen;
-              setHelpOpen(next);
-              saveSqlHelpOpen(next);
-            }}
-          >
-            <BookOpen aria-hidden="true" />
-            Examples & help
-          </button>
+          <div className="sql-query-heading__actions">
+            {renderFileReference && (
+              <button
+                type="button"
+                aria-expanded={showReference}
+                aria-controls={paneId("sql-source-reference")}
+                disabled={!referenceSource}
+                onClick={() => setReferenceOpen((visible) => !visible)}
+              >
+                <PanelRight aria-hidden="true" />
+                Source Data
+              </button>
+            )}
+            <button
+              type="button"
+              aria-expanded={showHelp}
+              onClick={() => {
+                const next = !showHelp;
+                setReferenceOpen(false);
+                setHelpOpen(next);
+                saveSqlHelpOpen(next);
+              }}
+            >
+              <BookOpen aria-hidden="true" />
+              Examples & help
+            </button>
+          </div>
         </header>
         <div
           className="sql-split"
@@ -811,7 +867,7 @@ export function SqlWorkspace({
         >
           <div
             id={paneId("sql-query-editor-pane")}
-            className={`sql-editing${helpOpen ? "" : " sql-editing--help-closed"}`}
+            className={`sql-editing${showHelp ? "" : " sql-editing--help-closed"}`}
           >
             <div className="sql-editor-area">
               <SqlEditor
@@ -869,7 +925,7 @@ export function SqlWorkspace({
                 <code>c.</code> needs a declared alias.
               </p>
             </div>
-            {helpOpen && (
+            {showHelp && (
               <aside className="sql-help" aria-label="SQL examples and help">
                 <div role="tablist" aria-label="SQL help">
                   <button
@@ -1170,6 +1226,51 @@ export function SqlWorkspace({
           </div>
         </div>
       </div>
+      {showReference && (
+        <div
+          className="sql-pane-separator sql-pane-separator--source"
+          {...paneLayout.sourceSeparator}
+        />
+      )}
+      {renderFileReference && (
+        <aside
+          className="sql-source-reference"
+          id={paneId("sql-source-reference")}
+          aria-label="SQL source reference"
+          hidden={!showReference}
+        >
+          {showReference && (
+            <>
+              <div className="sql-source-reference__heading">
+                <h2>Source Data</h2>
+                <button type="button" onClick={paneLayout.toggleDock}>
+                  {paneLayout.dock === "right" ? "Dock bottom" : "Dock right"}
+                </button>
+              </div>
+              <div className="sql-source-files" role="group" aria-label="Source files">
+                {tables.map((table) => (
+                  <button
+                    key={sourceKey(table)}
+                    type="button"
+                    title={table.path}
+                    aria-pressed={Boolean(selected && sourceKey(table) === sourceKey(selected))}
+                    onClick={() => setSelectedKey(sourceKey(table))}
+                  >
+                    {table.fileName}
+                    {tables.filter(
+                      (candidate) =>
+                        candidate.fileName.toLowerCase() === table.fileName.toLowerCase(),
+                    ).length > 1 && ` (${table.alias})`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {showReference &&
+            referenceSource &&
+            renderFileReference(referenceSource, workspaceId, active)}
+        </aside>
+      )}
       {visiblePathHint &&
         createPortal(
           <div

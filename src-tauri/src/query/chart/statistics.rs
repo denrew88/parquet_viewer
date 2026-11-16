@@ -1,19 +1,24 @@
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
-use crate::domain::{DataError, DataValue};
+use crate::domain::DataError;
 
 use super::{
-    axis::{canonical, group_label, is_temporal, Axis, AxisExclusion},
-    bar, invalid, line, ChartBin, ChartData, ChartGroup, ChartKind, ChartPointDetails,
-    ChartRequest, HistogramOptions, HistogramOutside, HistogramRange, Input, Job, Projection,
-    WhiskerMode, MAX_BINS, MAX_GROUPS,
+    axis::{canonical, group_label, is_temporal, kind, Axis, AxisExclusion},
+    bar, invalid, line, ChartBin, ChartCell, ChartData, ChartGroup, ChartGroupDirectory,
+    ChartGroupEntry, ChartKind, ChartPointDetails, ChartRequest, HistogramOptions,
+    HistogramOutside, HistogramRange, Input, Job, Projection, WhiskerMode, MAX_BINS, MAX_GROUPS,
 };
+
+mod occupancy;
+pub(super) use occupancy::ScatterTiles;
 
 pub(super) const MAX_POINTS: usize = 20_000;
 pub(super) const MAX_GROUP_LABEL_BYTES: usize = 256;
+pub(super) const MAX_GROUP_CATEGORIES: usize = 65_536;
 const MAX_POINT_DETAIL_BYTES: usize = 128;
 const MAX_GROUP_SAMPLES: usize = 2_048;
 const MAX_GROUP_OUTLIERS: usize = 128;
+const MAX_GROUP_OBSERVATIONS: usize = 128;
 const DENSITY_POINTS: usize = 41;
 
 pub(super) fn compute_chart(
@@ -25,26 +30,24 @@ pub(super) fn compute_chart(
     match request.kind {
         ChartKind::Line => return line::compute(request, projection, input, job),
         ChartKind::Bar => return bar::compute(request, projection, input, job),
+        ChartKind::Histogram => return compute_histogram(request, projection, input, job),
         _ => {}
     }
     let mut x_axis = Axis::default();
     let mut y_axis = Axis::default();
-    let mut output = ChartData {
-        histogram_outside: request.histogram_range.map(|_| HistogramOutside::default()),
-        ..ChartData::default()
-    };
+    let mut output = ChartData::default();
     let mut points = Reservoir::<([f64; 2], ChartPointDetails)>::new(MAX_POINTS);
-    let mut histogram = Distribution::new(MAX_POINTS);
-    let mut groups = BTreeMap::<String, Distribution>::new();
+    let mut tiles = None;
+    let mut groups = BTreeMap::<String, GroupState>::new();
 
-    input.visit(&projection.columns, job, |row, indices| {
+    input.visit(&projection.columns, job, |row| {
         output.total_rows += 1;
-        if !matches_filter(request, projection, row, indices) {
+        if !matches_filter(request, projection, row) {
             output.filtered_rows += 1;
             return Ok(());
         }
-        let x = &row[indices[0]];
-        let y = projection.y.map(|slot| &row[indices[slot]]);
+        let x = row[0];
+        let y = projection.y.map(|slot| row[slot]);
         let valid = match request.kind {
             ChartKind::Scatter => {
                 scatter_point(request, &mut x_axis, &mut y_axis, x, y).map(|point| {
@@ -59,10 +62,20 @@ pub(super) fn compute_chart(
                     extent[1] = extent[1].max(x_coordinate);
                     extent[2] = extent[2].min(y_coordinate);
                     extent[3] = extent[3].max(y_coordinate);
+                    if points.seen >= MAX_POINTS as u64 {
+                        let occupancy = tiles.get_or_insert_with(|| {
+                            let mut occupancy = ScatterTiles::default();
+                            for (retained, _) in &points.values {
+                                occupancy.add(*retained);
+                            }
+                            occupancy
+                        });
+                        occupancy.add(point);
+                    }
                     points.add_with(|| {
                         let label = projection
                             .scatter_label
-                            .and_then(|index| detail_text(&row[indices[index]]))
+                            .and_then(|index| detail_text(row[index]))
                             .map(bounded_detail);
                         (
                             point,
@@ -76,33 +89,6 @@ pub(super) fn compute_chart(
                     });
                 })
             }
-            ChartKind::Histogram => match x_axis.coordinate(x, request.x_scale) {
-                Ok(value) => {
-                    if let Some((range, outside)) = request
-                        .histogram_range
-                        .zip(output.histogram_outside.as_mut())
-                    {
-                        if x_axis.has_offset() {
-                            return Err(invalid(
-                                "A fixed histogram range requires an absolute X axis.",
-                            ));
-                        }
-                        if value < range.min {
-                            outside.below += 1;
-                            output.excluded_rows += 1;
-                            return Ok(());
-                        }
-                        if value > range.max {
-                            outside.above += 1;
-                            output.excluded_rows += 1;
-                            return Ok(());
-                        }
-                    }
-                    histogram.add(value);
-                    Ok(())
-                }
-                Err(excluded) => Err(excluded),
-            },
             ChartKind::Box | ChartKind::Violin => {
                 let Some(label) =
                     group_label(x).filter(|label| label.len() <= MAX_GROUP_LABEL_BYTES)
@@ -115,24 +101,33 @@ pub(super) fn compute_chart(
                     .and_then(|y| y_axis.coordinate(y, request.y_scale));
                 match number {
                     Ok(value) => {
-                        let group = if let Some(group) = groups.get_mut(label) {
+                        let group = if let Some(group) = groups.get_mut(label.as_ref()) {
                             group
-                        } else if groups.len() < MAX_GROUPS {
-                            groups
-                                .entry(label.to_owned())
-                                .or_insert_with(|| Distribution::new(MAX_GROUP_SAMPLES))
                         } else {
-                            output.groups_truncated = true;
-                            output.excluded_rows += 1;
-                            return Ok(());
+                            let known = groups.len();
+                            if known >= MAX_GROUP_CATEGORIES {
+                                return Err(invalid(
+                                    "A distribution supports at most 65,536 groups. Filter the data or group categories first.",
+                                ));
+                            }
+                            groups.entry(label.into_owned()).or_insert_with(|| GroupState {
+                                count: 0,
+                                distribution: (known < MAX_GROUPS)
+                                    .then(|| Distribution::new(MAX_GROUP_SAMPLES)),
+                            })
                         };
-                        group.add(value);
+                        group.count += 1;
+                        if let Some(distribution) = &mut group.distribution {
+                            distribution.add(value);
+                        }
                         Ok(())
                     }
                     Err(excluded) => Err(excluded),
                 }
             }
-            ChartKind::Line | ChartKind::Bar => unreachable!("handled by separate chart modules"),
+            ChartKind::Line | ChartKind::Bar | ChartKind::Histogram => {
+                unreachable!("handled before visiting")
+            }
         };
         match valid {
             Ok(()) => output.valid_rows += 1,
@@ -144,73 +139,164 @@ pub(super) fn compute_chart(
     match request.kind {
         ChartKind::Scatter => {
             output.sampled = points.sampled();
+            output.scatter_tiles = tiles.map(ScatterTiles::finish);
             let (points, details) = points.values.into_iter().unzip();
             output.points = Some(points);
             output.point_details = Some(details);
         }
-        ChartKind::Histogram => {
-            let mut bins = Histogram::new(&histogram, request.histogram, request.histogram_range)?;
-            if histogram.values.sampled() {
-                // Re-read bounded projections once the exact range is known. This keeps
-                // histogram counts exact without storing every source row.
-                input.visit(&projection.columns, job, |row, indices| {
-                    if matches_filter(request, projection, row, indices) {
-                        if let Ok(value) = x_axis.coordinate(&row[indices[0]], request.x_scale) {
-                            if request
-                                .histogram_range
-                                .is_some_and(|range| value < range.min || value > range.max)
-                            {
-                                return Ok(());
-                            }
-                            if !(histogram.min..=histogram.max).contains(&value) {
-                                return Err(invalid(
-                                    "The source changed while computing the histogram.",
-                                ));
-                            }
-                            bins.add(value);
-                        }
-                    }
-                    Ok(())
-                })?;
-                if bins.count() != output.valid_rows {
-                    return Err(invalid("The source changed while computing the histogram."));
-                }
-            } else {
-                for value in histogram.values.values {
-                    bins.add(value);
-                }
-            }
-            output.bins = Some(bins.finish());
-        }
         ChartKind::Box | ChartKind::Violin => {
+            output.groups_truncated = groups.len() > MAX_GROUPS;
+            let mut entries = Vec::with_capacity(groups.len());
+            let mut distributions = BTreeMap::new();
+            for (label, group) in groups {
+                if let Some(distribution) = group.distribution {
+                    distributions.insert(label.clone(), distribution);
+                }
+                entries.push(ChartGroupEntry {
+                    label,
+                    count: group.count,
+                    value: None,
+                });
+            }
+            populate_group_directory(&mut output, entries);
             finish_distributions(
                 request,
                 projection,
                 input,
                 job,
                 &mut y_axis,
-                groups,
+                distributions,
                 &mut output,
             )?;
         }
-        ChartKind::Line | ChartKind::Bar => unreachable!("handled by separate chart modules"),
+        ChartKind::Line | ChartKind::Bar | ChartKind::Histogram => {
+            unreachable!("handled before visiting")
+        }
     }
     (output.x_origin, output.x_unit) = x_axis.metadata();
     (output.y_origin, output.y_unit) = y_axis.metadata();
     Ok(output)
 }
 
-fn detail_text(cell: &DataValue) -> Option<&str> {
-    if is_temporal(cell.kind) {
+fn compute_histogram(
+    request: &ChartRequest,
+    projection: &Projection,
+    input: &Input,
+    job: &Job<'_>,
+) -> Result<ChartData, DataError> {
+    let mut x_axis = Axis::default();
+    let range = request.histogram_range;
+    let mut output = ChartData {
+        histogram_outside: range.map(|_| HistogramOutside::default()),
+        ..ChartData::default()
+    };
+    // Keep an edge error until the first scan has checked source identity and
+    // established that its axis supports an absolute range.
+    let mut fixed = range
+        .zip(request.histogram)
+        .map(|(range, options)| Histogram::new(0, None, Some(options), Some(range)))
+        .transpose();
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    let mut values = Vec::new();
+    input.visit(&projection.columns, job, |row| {
+        output.total_rows += 1;
+        if !matches_filter(request, projection, row) {
+            output.filtered_rows += 1;
+            return Ok(());
+        }
+        let value = match x_axis.coordinate(row[0], request.x_scale) {
+            Ok(value) => value,
+            Err(excluded) => {
+                record_exclusion(&mut output, excluded);
+                return Ok(());
+            }
+        };
+        if let Some((range, outside)) = range.zip(output.histogram_outside.as_mut()) {
+            if x_axis.has_offset() {
+                return Err(invalid(
+                    "A fixed histogram range requires an absolute X axis.",
+                ));
+            }
+            if value < range.min {
+                outside.below += 1;
+                output.excluded_rows += 1;
+                return Ok(());
+            }
+            if value > range.max {
+                outside.above += 1;
+                output.excluded_rows += 1;
+                return Ok(());
+            }
+        }
+        output.valid_rows += 1;
+        match &mut fixed {
+            Ok(Some(bins)) => bins.add(value),
+            Ok(None) => {
+                min = min.min(value);
+                max = max.max(value);
+                // Small inputs can be binned exactly from these values. For larger
+                // inputs only the exact extrema and count inform the bin edges.
+                if values.len() < MAX_POINTS {
+                    values.push(value);
+                }
+            }
+            Err(_) => {}
+        }
+        Ok(())
+    })?;
+
+    let bins = if let Some(bins) = fixed? {
+        bins
+    } else {
+        let observed = (output.valid_rows > 0).then_some((min, max));
+        let mut bins = Histogram::new(output.valid_rows, observed, request.histogram, range)?;
+        if output.valid_rows <= MAX_POINTS as u64 {
+            for value in values {
+                bins.add(value);
+            }
+        } else if min == max {
+            bins.add_count(min, output.valid_rows);
+        } else {
+            // A second scan keeps bin counts exact without retaining all coordinates.
+            input.visit(&projection.columns, job, |row| {
+                if matches_filter(request, projection, row) {
+                    if let Ok(value) = x_axis.coordinate(row[0], request.x_scale) {
+                        if range.is_some_and(|range| value < range.min || value > range.max) {
+                            return Ok(());
+                        }
+                        if !(min..=max).contains(&value) {
+                            return Err(invalid(
+                                "The source changed while computing the histogram.",
+                            ));
+                        }
+                        bins.add(value);
+                    }
+                }
+                Ok(())
+            })?;
+            if bins.count() != output.valid_rows {
+                return Err(invalid("The source changed while computing the histogram."));
+            }
+        }
+        bins
+    };
+    output.bins = Some(bins.finish());
+    (output.x_origin, output.x_unit) = x_axis.metadata();
+    Ok(output)
+}
+
+pub(super) fn detail_text(cell: ChartCell<'_>) -> Option<Cow<'_, str>> {
+    if kind(cell).is_some_and(is_temporal) {
         group_label(cell)
     } else {
         canonical(cell)
     }
 }
 
-fn bounded_detail(text: &str) -> String {
+pub(super) fn bounded_detail(text: Cow<'_, str>) -> String {
     if text.len() <= MAX_POINT_DETAIL_BYTES {
-        return text.to_owned();
+        return text.into_owned();
     }
     let end = text.floor_char_boundary(MAX_POINT_DETAIL_BYTES - '…'.len_utf8());
     format!("{}…", &text[..end])
@@ -240,8 +326,8 @@ pub(super) fn scatter_point(
     request: &ChartRequest,
     x_axis: &mut Axis,
     y_axis: &mut Axis,
-    x: &DataValue,
-    y: Option<&DataValue>,
+    x: ChartCell<'_>,
+    y: Option<ChartCell<'_>>,
 ) -> Result<[f64; 2], AxisExclusion> {
     // Evaluate both coordinates even if one is excluded. The first readable
     // value of each linear axis determines its offset for the entire scan.
@@ -255,26 +341,25 @@ pub(super) fn scatter_point(
 pub(super) fn matches_filter(
     request: &ChartRequest,
     projection: &Projection,
-    row: &[DataValue],
-    indices: &[usize],
+    row: &[ChartCell<'_>],
 ) -> bool {
     request
         .filter
         .as_ref()
         .zip(projection.filter)
         .is_none_or(|(filter, index)| {
-            canonical(&row[indices[index]]) == Some(filter.equals.as_str())
+            canonical(row[index]).as_deref() == Some(filter.equals.as_str())
         })
 }
 
-struct Reservoir<T> {
+pub(super) struct Reservoir<T> {
     cap: usize,
     seen: u64,
-    values: Vec<T>,
+    pub(super) values: Vec<T>,
 }
 
 impl<T> Reservoir<T> {
-    fn new(cap: usize) -> Self {
+    pub(super) fn new(cap: usize) -> Self {
         Self {
             cap,
             seen: 0,
@@ -282,7 +367,7 @@ impl<T> Reservoir<T> {
         }
     }
 
-    fn add(&mut self, value: T) {
+    pub(super) fn add(&mut self, value: T) {
         self.add_with(|| value);
     }
 
@@ -298,7 +383,7 @@ impl<T> Reservoir<T> {
         }
     }
 
-    fn sampled(&self) -> bool {
+    pub(super) fn sampled(&self) -> bool {
         self.seen > self.values.len() as u64
     }
 }
@@ -309,6 +394,21 @@ fn sample_hash(mut value: u64) -> u64 {
     value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     value ^ (value >> 31)
+}
+
+struct GroupState {
+    count: u64,
+    distribution: Option<Distribution>,
+}
+
+pub(super) fn populate_group_directory(output: &mut ChartData, entries: Vec<ChartGroupEntry>) {
+    output.group_count = Some(entries.len());
+    output.group_directory = Some(ChartGroupDirectory {
+        total: entries.len(),
+        offset: 0,
+        entries: entries.iter().take(MAX_GROUPS).cloned().collect(),
+    });
+    output.all_groups = Some(entries);
 }
 
 struct Distribution {
@@ -332,28 +432,26 @@ impl Distribution {
         self.values.add(value);
     }
 
-    fn quartiles(&mut self) -> [f64; 5] {
-        self.values.values.sort_unstable_by(f64::total_cmp);
+    fn quartiles(&self, ordered: &[f64]) -> [f64; 5] {
         [
             self.min,
-            percentile(&self.values.values, 0.25),
-            percentile(&self.values.values, 0.5),
-            percentile(&self.values.values, 0.75),
+            percentile(ordered, 0.25),
+            percentile(ordered, 0.5),
+            percentile(ordered, 0.75),
             self.max,
         ]
     }
 
     fn density(
         &self,
+        ordered: &[f64],
         bandwidth_multiplier: f64,
         job: &Job<'_>,
     ) -> Result<Option<Vec<[f64; 2]>>, DataError> {
-        if self.values.values.len() < 2 || self.min == self.max {
+        if ordered.len() < 2 || self.min == self.max {
             return Ok(None);
         }
-        let sample = self
-            .values
-            .values
+        let sample = ordered
             .iter()
             .map(|value| ratio(*value, self.min, self.max))
             .collect::<Vec<_>>();
@@ -444,6 +542,7 @@ struct Whiskers {
     fences: [f64; 2],
     endpoints: [f64; 2],
     outliers: Reservoir<f64>,
+    outlier_extrema: [f64; 2],
     observed: u64,
 }
 
@@ -452,11 +551,123 @@ impl Whiskers {
         self.observed += 1;
         if value < self.fences[0] || value > self.fences[1] {
             self.outliers.add(value);
+            self.outlier_extrema[0] = self.outlier_extrema[0].min(value);
+            self.outlier_extrema[1] = self.outlier_extrema[1].max(value);
         } else {
             self.endpoints[0] = self.endpoints[0].min(value);
             self.endpoints[1] = self.endpoints[1].max(value);
         }
     }
+
+    fn apply(mut self, result: &mut ChartGroup, output: &mut ChartData) -> Result<(), DataError> {
+        if self.observed != result.count || self.endpoints[0] > self.endpoints[1] {
+            return Err(invalid(
+                "The source changed while computing distribution whiskers.",
+            ));
+        }
+        let sampled = self.outliers.sampled();
+        output.sampled |= sampled;
+        result.whiskers = Some(self.endpoints);
+        result.outlier_count = Some(self.outliers.seen);
+        self.outliers.values.sort_unstable_by(f64::total_cmp);
+        if sampled {
+            self.outliers.values[0] = self.outlier_extrema[0];
+            let last = self.outliers.values.len() - 1;
+            self.outliers.values[last] = self.outlier_extrema[1];
+        }
+        result.outliers = Some(self.outliers.values);
+        Ok(())
+    }
+}
+
+fn summarize_distribution(
+    request: &ChartRequest,
+    group: Distribution,
+    job: &Job<'_>,
+    output: &mut ChartData,
+) -> Result<(ChartGroup, Option<Whiskers>), DataError> {
+    job.check()?;
+    let sampled = group.values.sampled();
+    output.sampled |= sampled;
+    let mut ordered = group.values.values.clone();
+    ordered.sort_unstable_by(f64::total_cmp);
+    let summary = group.quartiles(&ordered);
+    let density = if request.kind == ChartKind::Violin {
+        group.density(&ordered, request.violin_bandwidth.unwrap_or(1.0), job)?
+    } else {
+        None
+    };
+    let radius = 1.5 * (summary[3] - summary[1]);
+    let fences = [summary[1] - radius, summary[3] + radius];
+    // Global extrema are exact even when quartiles use a sample. If both
+    // extrema are inside the fences there can be no outliers to scan for.
+    let mut whiskers = (request.whiskers != Some(WhiskerMode::Minmax)
+        && (summary[0] < fences[0] || summary[4] > fences[1]))
+        .then(|| Whiskers {
+            fences,
+            endpoints: [f64::INFINITY, f64::NEG_INFINITY],
+            outliers: Reservoir::new(MAX_GROUP_OUTLIERS),
+            outlier_extrema: [f64::INFINITY, f64::NEG_INFINITY],
+            observed: 0,
+        });
+    let mut result = ChartGroup {
+        count: group.values.seen,
+        summary: Some(summary),
+        density,
+        sample_count: Some(group.values.values.len()),
+        whiskers: Some([summary[0], summary[4]]),
+        outlier_count: Some(0),
+        outliers: Some(Vec::new()),
+        observations: (!sampled && ordered.len() <= MAX_GROUP_OBSERVATIONS).then_some(ordered),
+        ..ChartGroup::default()
+    };
+    if !sampled {
+        if let Some(mut whiskers) = whiskers.take() {
+            // Exact retained values are already available in source order.
+            // Outlier sampling must see that order, not quartile sort order.
+            for value in group.values.values {
+                whiskers.add(value);
+            }
+            whiskers.apply(&mut result, output)?;
+        }
+    }
+    Ok((result, whiskers))
+}
+
+pub(super) type DistributionValueVisitor<'a> = dyn FnMut(f64) -> Result<(), DataError> + 'a;
+
+pub(super) fn group_detail(
+    request: &ChartRequest,
+    label: &str,
+    visit: &mut dyn FnMut(&mut DistributionValueVisitor<'_>) -> Result<(), DataError>,
+    job: &Job<'_>,
+) -> Result<ChartData, DataError> {
+    let mut group = Distribution::new(MAX_GROUP_SAMPLES);
+    visit(&mut |value| {
+        group.add(value);
+        Ok(())
+    })?;
+    let count = group.values.seen;
+    if count == 0 {
+        return Err(invalid("This group has no valid observations."));
+    }
+    let mut output = ChartData {
+        total_rows: count,
+        valid_rows: count,
+        group_count: Some(1),
+        ..ChartData::default()
+    };
+    let (mut result, whiskers) = summarize_distribution(request, group, job, &mut output)?;
+    if let Some(mut whiskers) = whiskers {
+        visit(&mut |value| {
+            whiskers.add(value);
+            Ok(())
+        })?;
+        whiskers.apply(&mut result, &mut output)?;
+    }
+    result.label = label.to_owned();
+    output.groups = Some(vec![result]);
+    Ok(output)
 }
 
 fn finish_distributions(
@@ -468,55 +679,25 @@ fn finish_distributions(
     groups: BTreeMap<String, Distribution>,
     output: &mut ChartData,
 ) -> Result<(), DataError> {
-    let use_iqr = request.whiskers != Some(WhiskerMode::Minmax);
     let mut calculated = BTreeMap::new();
     let mut requires_rescan = false;
-    for (label, mut group) in groups {
-        job.check()?;
-        output.sampled |= group.values.sampled();
-        let summary = group.quartiles();
-        let density = if request.kind == ChartKind::Violin {
-            group.density(request.violin_bandwidth.unwrap_or(1.0), job)?
-        } else {
-            None
-        };
-        let radius = 1.5 * (summary[3] - summary[1]);
-        let fences = [summary[1] - radius, summary[3] + radius];
-        // Global extrema are exact even when quartiles use a sample. If both
-        // extrema are inside the fences there can be no outliers to scan for.
-        let whiskers =
-            (use_iqr && (summary[0] < fences[0] || summary[4] > fences[1])).then(|| Whiskers {
-                fences,
-                endpoints: [f64::INFINITY, f64::NEG_INFINITY],
-                outliers: Reservoir::new(MAX_GROUP_OUTLIERS),
-                observed: 0,
-            });
+    for (label, group) in groups {
+        let (result, whiskers) = summarize_distribution(request, group, job, output)?;
         requires_rescan |= whiskers.is_some();
-        let result = ChartGroup {
-            label: String::new(),
-            count: group.values.seen,
-            summary: Some(summary),
-            density,
-            sample_count: Some(group.values.values.len()),
-            whiskers: Some([summary[0], summary[4]]),
-            outlier_count: Some(0),
-            outliers: Some(Vec::new()),
-            ..ChartGroup::default()
-        };
         calculated.insert(label, (result, whiskers));
     }
     if requires_rescan {
         let y = projection
             .y
             .ok_or_else(|| invalid("A distribution requires a Y column."))?;
-        input.visit(&projection.columns, job, |row, indices| {
-            if !matches_filter(request, projection, row, indices) {
+        input.visit(&projection.columns, job, |row| {
+            if !matches_filter(request, projection, row) {
                 return Ok(());
             }
             if let Some((_, Some(whiskers))) =
-                group_label(&row[indices[0]]).and_then(|label| calculated.get_mut(label))
+                group_label(row[0]).and_then(|label| calculated.get_mut(label.as_ref()))
             {
-                if let Ok(value) = y_axis.coordinate(&row[indices[y]], request.y_scale) {
+                if let Ok(value) = y_axis.coordinate(row[y], request.y_scale) {
                     whiskers.add(value);
                 }
             }
@@ -526,17 +707,8 @@ fn finish_distributions(
     let mut results = Vec::with_capacity(calculated.len());
     for (label, (mut result, whiskers)) in calculated {
         result.label = label;
-        if let Some(mut whiskers) = whiskers {
-            if whiskers.observed != result.count || whiskers.endpoints[0] > whiskers.endpoints[1] {
-                return Err(invalid(
-                    "The source changed while computing distribution whiskers.",
-                ));
-            }
-            output.sampled |= whiskers.outliers.sampled();
-            result.whiskers = Some(whiskers.endpoints);
-            result.outlier_count = Some(whiskers.outliers.seen);
-            whiskers.outliers.values.sort_unstable_by(f64::total_cmp);
-            result.outliers = Some(whiskers.outliers.values);
+        if let Some(whiskers) = whiskers {
+            whiskers.apply(&mut result, output)?;
         }
         results.push(result);
     }
@@ -544,24 +716,20 @@ fn finish_distributions(
     Ok(())
 }
 
-struct Histogram {
+pub(super) struct Histogram {
     edges: Vec<f64>,
     counts: Vec<u64>,
 }
 
 impl Histogram {
-    fn new(
-        distribution: &Distribution,
+    pub(super) fn new(
+        count: u64,
+        observed: Option<(f64, f64)>,
         options: Option<HistogramOptions>,
         range: Option<HistogramRange>,
     ) -> Result<Self, DataError> {
-        let count = distribution.values.seen;
-        let (min, max) = range.map_or((distribution.min, distribution.max), |range| {
-            (range.min, range.max)
-        });
-        let edges = if count == 0 && range.is_none() {
-            Vec::new()
-        } else {
+        let edges = if let Some((min, max)) = range.map(|range| (range.min, range.max)).or(observed)
+        {
             match options {
                 Some(HistogramOptions::Width { width }) => {
                     width_edges(min, max, width, range.is_some())?
@@ -575,26 +743,32 @@ impl Histogram {
                     false,
                 )?,
             }
+        } else {
+            Vec::new()
         };
         let counts = vec![0; edges.len().saturating_sub(1)];
         Ok(Self { edges, counts })
     }
 
-    fn add(&mut self, value: f64) {
+    pub(super) fn add(&mut self, value: f64) {
+        self.add_count(value, 1);
+    }
+
+    fn add_count(&mut self, value: f64, count: u64) {
         // Interior ranges are [start, end); the last range includes the maximum.
         let bin = self
             .edges
             .partition_point(|edge| *edge <= value)
             .saturating_sub(1)
             .min(self.counts.len() - 1);
-        self.counts[bin] += 1;
+        self.counts[bin] += count;
     }
 
     fn count(&self) -> u64 {
         self.counts.iter().sum()
     }
 
-    fn finish(self) -> Vec<ChartBin> {
+    pub(super) fn finish(self) -> Vec<ChartBin> {
         self.edges
             .windows(2)
             .zip(self.counts)
@@ -664,7 +838,7 @@ pub(super) fn ratio(value: f64, min: f64, max: f64) -> f64 {
     }
 }
 
-fn interpolate(a: f64, b: f64, fraction: f64) -> f64 {
+pub(super) fn interpolate(a: f64, b: f64, fraction: f64) -> f64 {
     if fraction == 0.0 || a == b {
         a
     } else if fraction == 1.0 {

@@ -202,6 +202,88 @@ async function capture(page: Page, info: TestInfo, name: string, row: number, co
   await info.attach(name, { path: screenshot, contentType: "image/png" });
 }
 
+test("Phase 25 SQL navigation Ctrl+A selects Results from header and toolbar focus", async ({
+  page,
+}, info) => {
+  await setup(page);
+  const table = grid(page);
+  await cell(page, 0, 0).click();
+  const whole: Rect = [0, 259, 0, 4];
+  await press(page, "Control+a", 259, 4, whole);
+  await expect(table).toHaveAttribute("data-selection-kind", "all");
+  await page.keyboard.press("Escape");
+
+  const controls = [
+    table.locator('[role="columnheader"][data-column-index="0"]'),
+    table.getByRole("separator", { name: "Resize r0", exact: true }),
+    table.getByRole("button", { name: "Sort row_id: not sorted", exact: true }),
+    panel(page).getByRole("button", { name: "Choose columns", exact: true }),
+  ];
+  for (const control of controls) {
+    await control.focus();
+    await press(page, "Control+a", 259, 4, whole);
+    await expect(table).toHaveAttribute("data-selection-kind", "all");
+    await expect(table).toBeFocused();
+    await page.keyboard.press("Escape");
+  }
+  await page.keyboard.press("Control+a");
+  await writeFile(
+    info.outputPath("control-a-scroll.json"),
+    JSON.stringify(
+      await table.evaluate((element) => {
+        const viewport = element as HTMLElement;
+        const active = viewport.querySelector<HTMLElement>(".is-active[role='gridcell']")!;
+        return {
+          scrollLeft: viewport.scrollLeft,
+          scrollWidth: viewport.scrollWidth,
+          clientWidth: viewport.clientWidth,
+          offsetWidth: viewport.offsetWidth,
+          canvasWidth: viewport.querySelector<HTMLElement>(".virtual-grid__canvas")?.offsetWidth,
+          grid: viewport.getBoundingClientRect().toJSON(),
+          cell: active.getBoundingClientRect().toJSON(),
+        };
+      }),
+    ),
+  );
+  await expect
+    .poll(async () =>
+      cell(page, 259, 4).evaluate((active) => {
+        const table = active.closest<HTMLElement>('[role="grid"]')!;
+        const outer = table.getBoundingClientRect();
+        const inner = active.getBoundingClientRect();
+        return (
+          inner.top >= outer.top - 1 &&
+          inner.bottom <= outer.top + table.clientHeight + 1 &&
+          inner.left >= outer.left - 1 &&
+          inner.right <= outer.left + table.clientWidth + 1
+        );
+      }),
+    )
+    .toBe(true);
+  await capture(page, info, "sql-results-control-a", 259, 4);
+  const calls = await recorded(page);
+  expect(calls.boundaries).toHaveLength(0);
+  expect(calls.pages.every(({ limit, columns }) => limit <= 200 && columns.length <= 64)).toBe(
+    true,
+  );
+
+  await page.keyboard.press("Control+f");
+  const find = panel(page).getByRole("searchbox", { name: "Find data", exact: true });
+  await find.fill("alpha beta");
+  await find.press("Control+a");
+  expect(
+    await find.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd]),
+  ).toEqual([0, "alpha beta".length]);
+  await selection(page, 259, 4, whole);
+
+  const sqlEditor = workspace(page).getByRole("textbox", { name: "SQL editor", exact: true });
+  const sql = "SELECT 42 AS value;";
+  await sqlEditor.fill(sql);
+  await sqlEditor.press("Control+a");
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(sql);
+  await selection(page, 259, 4, whole);
+});
+
 test("Phase 24 SQL navigation T-P24-027 matches Data directional selection shortcuts", async ({
   page,
 }, info) => {
@@ -285,6 +367,10 @@ test("Phase 24 SQL navigation T-P24-028 follows the committed Results view and d
   await expect(cell(page, 0, 0)).toHaveText("260");
   const descending = (await recorded(page)).views.at(-1)!;
 
+  await cell(page, 0, 1).click();
+  await press(page, "Control+a", 119, 4, [0, 119, 0, 4]);
+  await expect(grid(page)).toHaveAttribute("data-selection-kind", "all");
+  await page.keyboard.press("Control+Home");
   await cell(page, 0, 1).click();
   await press(page, "Control+ArrowDown", 1, 1);
   await press(page, "Control+Shift+ArrowDown", 39, 1, [1, 39, 1, 1]);

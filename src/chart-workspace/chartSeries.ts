@@ -1,5 +1,5 @@
 import type { CustomSeriesOption } from "echarts/charts";
-import type { ChartData } from "./contract";
+import type { ChartData, CountedChartExtent } from "./contract";
 import type { ChartOptions } from "./chartModel";
 
 export const TEAL = "#087f78";
@@ -18,7 +18,7 @@ interface TooltipDatum {
   value?: unknown;
 }
 
-function firstDatum(params: TooltipDatum | TooltipDatum[]): TooltipDatum | undefined {
+export function firstDatum(params: TooltipDatum | TooltipDatum[]): TooltipDatum | undefined {
   return Array.isArray(params) ? params[0] : params;
 }
 
@@ -159,12 +159,30 @@ export function lineCoordinates(
   points: [number, number][],
   gap: number | undefined,
   unit: string | undefined,
+  buckets?: CountedChartExtent[],
 ): [number, number | null][] {
-  if (!gap) return points;
-  const threshold = unit === "ns" ? gap * 1e9 : unit === "days" ? gap / 86_400 : gap;
+  if (!gap && !buckets?.length) return points;
+  const threshold = !gap
+    ? Infinity
+    : unit === "ns"
+      ? gap * 1e9
+      : unit === "days"
+        ? gap / 86_400
+        : gap;
+  const emptyIntervals =
+    buckets?.flatMap(([start], index) => {
+      const previous = buckets[index - 1];
+      if (!previous || start <= previous[1]) return [];
+      return [previous[1] / 2 + start / 2];
+    }) ?? [];
+  let interval = 0;
   return points.flatMap((point, index) => {
     const previous = points[index - 1];
-    if (!previous || point[0] - previous[0] <= threshold) return [point];
+    if (!previous) return [point];
+    while (interval < emptyIntervals.length && emptyIntervals[interval] <= previous[0]) interval++;
+    if (interval < emptyIntervals.length && emptyIntervals[interval] < point[0])
+      return [[emptyIntervals[interval], null], point];
+    if (point[0] - previous[0] <= threshold) return [point];
     return [[previous[0] / 2 + point[0] / 2, null], point];
   });
 }
@@ -200,9 +218,16 @@ export function histogramSeries(
       const start = Number(api.value(0));
       const end = Number(api.value(1));
       const value = Number(api.value(2));
-      if (!Number.isFinite(value) || value <= 0) return null;
-      const [left, top] = api.coord([start, value]);
+      const count = Number(api.value(3));
+      if (count <= 0) return null;
+      const [left, top] = api.coord([start, Number.isFinite(value) ? value : 0]);
       const [right, baseline] = api.coord([end, 0]);
+      if (baseline - top < 3)
+        return {
+          type: "circle",
+          shape: { cx: left / 2 + right / 2, cy: baseline - 2, r: 2.5 },
+          style: { fill: "#944716", stroke: "#fff", lineWidth: 0.7 },
+        };
       return {
         type: "rect",
         shape: {

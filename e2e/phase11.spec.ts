@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { writeFile } from "node:fs/promises";
 import { expectInsideViewport, expectNoHorizontalPageOverflow, openMockFile } from "./helpers";
 
@@ -83,6 +84,7 @@ test("keeps a 5.85M-row grid navigable through the final-row segment", async ({
 
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Application settings" });
+  await selectSettingsCategory(settings, "Display");
   await settings.getByRole("combobox", { name: "Integer grouping" }).selectOption("comma");
   if (testInfo.project.name === "desktop-wide") {
     const settingsGeometry = await settings.evaluate((dialog) => {

@@ -4,23 +4,27 @@ use crate::domain::DataError;
 
 use super::{
     axis::{
-        absolute_number, bucket_nanoseconds, canonical, is_temporal, scaled_number, Axis, LineKey,
+        absolute_number, bucket_nanoseconds, has_value, is_temporal, kind, scaled_number, Axis,
+        LineKey,
     },
     invalid,
-    statistics::{matches_filter, point, ratio, record_exclusion, CompensatedSum, MAX_POINTS},
-    ChartData, ChartRequest, Input, Job, LineAggregate, LineOptions, Projection,
+    statistics::{
+        interpolate, matches_filter, point, ratio, record_exclusion, CompensatedSum, MAX_POINTS,
+    },
+    ChartData, ChartRequest, Input, Job, LineAggregate, Projection,
 };
 
 const MAX_AGGREGATE_KEYS: usize = 65_536;
 
 #[derive(Clone, Copy)]
-struct LinePoint {
-    row: u64,
-    xy: [f64; 2],
+pub(super) struct LinePoint {
+    pub(super) row: u64,
+    pub(super) xy: [f64; 2],
+    pub(super) count: u64,
 }
 
 impl LinePoint {
-    fn cmp_x(&self, other: &Self) -> Ordering {
+    pub(super) fn cmp_x(&self, other: &Self) -> Ordering {
         self.xy[0]
             .total_cmp(&other.xy[0])
             .then_with(|| self.row.cmp(&other.row))
@@ -33,6 +37,7 @@ struct Extrema {
     last: LinePoint,
     min: LinePoint,
     max: LinePoint,
+    count: u64,
 }
 
 impl Extrema {
@@ -42,10 +47,12 @@ impl Extrema {
             last: point,
             min: point,
             max: point,
+            count: point.count,
         }
     }
 
     fn add(&mut self, point: LinePoint) {
+        self.count += point.count;
         if point.cmp_x(&self.first).is_lt() {
             self.first = point;
         }
@@ -61,22 +68,26 @@ impl Extrema {
     }
 }
 
-struct Envelope {
+pub(super) struct Envelope {
     min_x: f64,
     max_x: f64,
     slots: Vec<Option<Extrema>>,
 }
 
 impl Envelope {
-    fn new(min_x: f64, max_x: f64) -> Self {
+    pub(super) fn new(min_x: f64, max_x: f64) -> Self {
+        Self::with_slots(min_x, max_x, MAX_POINTS / 4)
+    }
+
+    fn with_slots(min_x: f64, max_x: f64, slots: usize) -> Self {
         Self {
             min_x,
             max_x,
-            slots: vec![None; MAX_POINTS / 4],
+            slots: vec![None; slots],
         }
     }
 
-    fn add(&mut self, point: LinePoint) {
+    pub(super) fn add(&mut self, point: LinePoint) {
         let index = (ratio(point.xy[0], self.min_x, self.max_x) * self.slots.len() as f64) as usize;
         let index = index.min(self.slots.len() - 1);
         if let Some(extrema) = &mut self.slots[index] {
@@ -86,7 +97,26 @@ impl Envelope {
         }
     }
 
-    fn finish(self) -> Vec<LinePoint> {
+    pub(super) fn buckets(&self) -> Vec<[f64; 5]> {
+        let width = self.slots.len() as f64;
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(index, extrema)| {
+                extrema.map(|extrema| {
+                    [
+                        interpolate(self.min_x, self.max_x, index as f64 / width),
+                        interpolate(self.min_x, self.max_x, (index + 1) as f64 / width),
+                        extrema.min.xy[1],
+                        extrema.max.xy[1],
+                        extrema.count as f64,
+                    ]
+                })
+            })
+            .collect()
+    }
+
+    pub(super) fn finish(self) -> Vec<LinePoint> {
         let mut points = self
             .slots
             .into_iter()
@@ -124,11 +154,10 @@ pub(super) fn compute(
     input: &Input,
     job: &Job<'_>,
 ) -> Result<ChartData, DataError> {
-    let options = request.line.unwrap_or_default();
-    if options.aggregate == LineAggregate::Raw {
+    if request.line.unwrap_or_default().aggregate == LineAggregate::Raw {
         raw_line(request, projection, input, job)
     } else {
-        aggregated_line(request, projection, input, job, options)
+        aggregated_line(request, projection, input, job)
     }
 }
 
@@ -163,9 +192,11 @@ fn raw_line(
             return Err(invalid("The source changed while reducing the line."));
         }
         output.sampled = true;
+        output.line_buckets = Some(envelope.buckets());
         points = envelope.finish();
     } else {
         points.sort_unstable_by(LinePoint::cmp_x);
+        set_line_buckets(&mut output, &points);
     }
     output.points = Some(points.into_iter().map(|point| point.xy).collect());
     axes.annotate(&mut output);
@@ -184,20 +215,21 @@ fn scan_raw(
     let y = projection
         .y
         .ok_or_else(|| invalid("A line requires a Y column."))?;
-    input.visit(&projection.columns, job, |row, indices| {
+    input.visit(&projection.columns, job, |row| {
         output.total_rows += 1;
-        if !matches_filter(request, projection, row, indices) {
+        if !matches_filter(request, projection, row) {
             output.filtered_rows += 1;
             return Ok(());
         }
         match point(
-            axes.x.coordinate(&row[indices[0]], request.x_scale),
-            axes.y.coordinate(&row[indices[y]], request.y_scale),
+            axes.x.coordinate(row[0], request.x_scale),
+            axes.y.coordinate(row[y], request.y_scale),
         ) {
             Ok(xy) => {
                 visit(LinePoint {
                     row: output.total_rows,
                     xy,
+                    count: 1,
                 })?;
                 output.valid_rows += 1;
             }
@@ -220,8 +252,47 @@ fn aggregated_line(
     projection: &Projection,
     input: &Input,
     job: &Job<'_>,
-    options: LineOptions,
 ) -> Result<ChartData, DataError> {
+    let mut points = Vec::new();
+    let mut output = visit_aggregated_points(request, projection, input, job, |xy, row, count| {
+        points.push(LinePoint { row, xy, count });
+        Ok(())
+    })?;
+    points.sort_unstable_by(LinePoint::cmp_x);
+    if points.len() > MAX_POINTS {
+        let mut envelope = Envelope::new(points[0].xy[0], points[points.len() - 1].xy[0]);
+        for point in points {
+            envelope.add(point);
+        }
+        output.sampled = true;
+        output.line_buckets = Some(envelope.buckets());
+        points = envelope.finish();
+    } else {
+        set_line_buckets(&mut output, &points);
+    }
+    output.points = Some(points.into_iter().map(|point| point.xy).collect());
+    Ok(output)
+}
+
+fn set_line_buckets(output: &mut ChartData, points: &[LinePoint]) {
+    if let (Some(first), Some(last)) = (points.first(), points.last()) {
+        let mut envelope =
+            Envelope::with_slots(first.xy[0], last.xy[0], points.len().min(MAX_POINTS / 4));
+        for &point in points {
+            envelope.add(point);
+        }
+        output.line_buckets = Some(envelope.buckets());
+    }
+}
+
+pub(super) fn visit_aggregated_points(
+    request: &ChartRequest,
+    projection: &Projection,
+    input: &Input,
+    job: &Job<'_>,
+    mut visit: impl FnMut([f64; 2], u64, u64) -> Result<(), DataError>,
+) -> Result<ChartData, DataError> {
+    let options = request.line.unwrap_or_default();
     let mut axes = Axes::new();
     let mut output = ChartData::default();
     let mut groups = HashMap::<LineKey, Aggregate>::new();
@@ -229,20 +300,19 @@ fn aggregated_line(
     let y = projection
         .y
         .ok_or_else(|| invalid("A line requires a Y column."))?;
-    input.visit(&projection.columns, job, |row, indices| {
+    input.visit(&projection.columns, job, |row| {
         output.total_rows += 1;
-        if !matches_filter(request, projection, row, indices) {
+        if !matches_filter(request, projection, row) {
             output.filtered_rows += 1;
             return Ok(());
         }
-        let x_cell = &row[indices[0]];
-        if bucket.is_some() && canonical(x_cell).is_some() && !is_temporal(x_cell.kind) {
+        let x_cell = row[0];
+        if bucket.is_some() && has_value(x_cell) && !kind(x_cell).is_some_and(is_temporal) {
             return Err(invalid("Time buckets require a temporal X column."));
         }
         let xy = point(
             axes.x.coordinate(x_cell, request.x_scale),
-            absolute_number(&row[indices[y]])
-                .ok_or(super::axis::AxisExclusion::Invalid),
+            absolute_number(row[y]).ok_or(super::axis::AxisExclusion::Invalid),
         );
         match xy {
             Ok([x, y]) => {
@@ -266,7 +336,6 @@ fn aggregated_line(
         Ok(())
     })?;
 
-    let mut points = Vec::with_capacity(groups.len());
     for group in groups.into_values() {
         job.check()?;
         let y = if options.aggregate == LineAggregate::Mean {
@@ -277,10 +346,7 @@ fn aggregated_line(
         match scaled_number(y, request.y_scale) {
             Ok(y) => {
                 output.valid_rows += group.count;
-                points.push(LinePoint {
-                    row: group.first_row,
-                    xy: [group.x, y],
-                });
+                visit([group.x, y], group.first_row, group.count)?;
             }
             Err(excluded) => {
                 output.excluded_rows += group.count;
@@ -290,16 +356,6 @@ fn aggregated_line(
             }
         }
     }
-    points.sort_unstable_by(LinePoint::cmp_x);
-    if points.len() > MAX_POINTS {
-        let mut envelope = Envelope::new(points[0].xy[0], points[points.len() - 1].xy[0]);
-        for point in points {
-            envelope.add(point);
-        }
-        output.sampled = true;
-        points = envelope.finish();
-    }
-    output.points = Some(points.into_iter().map(|point| point.xy).collect());
     axes.annotate(&mut output);
     Ok(output)
 }

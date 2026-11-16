@@ -19,6 +19,7 @@ export interface ChartImageSnapshot {
   height: number;
   totalRows: number;
   option: EChartsCoreOption;
+  overviewOption?: EChartsCoreOption;
   view: PlotView | null;
   scatterExtent?: Extent;
   scatterView?: Extent;
@@ -42,8 +43,9 @@ function exportOption(
   snapshot: ChartImageSnapshot,
   extent?: Extent,
   allPoints = false,
+  entire = false,
 ): EChartsCoreOption {
-  const option = snapshot.option;
+  const option = (entire ? snapshot.overviewOption : undefined) ?? snapshot.option;
   const series = option.series as EChartsCoreOption[] | undefined;
   return {
     ...option,
@@ -61,9 +63,20 @@ function exportOption(
       silent: true,
       ...(allPoints
         ? { data: [] }
-        : extent && Array.isArray(item.data)
-          ? { data: scatterPointsInRange(item.data, extent) }
-          : {}),
+        : extent && Array.isArray(item.data) && item.id === "scatter-occupancy"
+          ? {
+              data: item.data.filter(
+                (tile) =>
+                  Array.isArray(tile) &&
+                  tile[0] <= extent[1] &&
+                  tile[1] >= extent[0] &&
+                  tile[2] <= extent[3] &&
+                  tile[3] >= extent[2],
+              ),
+            }
+          : extent && Array.isArray(item.data)
+            ? { data: scatterPointsInRange(item.data, extent) }
+            : {}),
     })),
   };
 }
@@ -190,7 +203,7 @@ export async function renderChartSvg(
   }
   const chart = init(null, undefined, { renderer: "svg", ssr: true, width, height });
   try {
-    chart.setOption(exportOption(snapshot, extent, allPoints), { silent: true });
+    chart.setOption(exportOption(snapshot, extent, allPoints, view === "entire"), { silent: true });
     if (!extent && view === "current" && snapshot.view) sendPlotView(chart, snapshot.view);
     const data = addSvgTitle(chart.renderToSVGString({ useViewBox: true }), snapshot);
     if (!allPoints || !extent) return { data };

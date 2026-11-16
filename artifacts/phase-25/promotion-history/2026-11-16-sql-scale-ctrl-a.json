@@ -1,0 +1,72 @@
+{
+  "promotedOn": "2026-11-16",
+  "phase": 25,
+  "version": "0.25.0",
+  "binary": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 62455808,
+  "sha256": "F303CC4808A98724088529B7A546C4EF249117481E5AD7CBFB826FC6D0CE5D59",
+  "previousSha256": "04886549455B8F9628C3AF6247969AEA758EB388BE00D1560C9B888AD3C52FE2",
+  "operation": "User-approved byte-identical copy of verified candidate; no rebuild",
+  "testedSource": "src-tauri/target/release/candidates/phase-25-sql-scale/data-viewer.exe",
+  "frontend": {
+    "passed": 942,
+    "log": "artifacts/dev-check/2026-11-16T04-43-22-554Z-phase24-frontend-test.log"
+  },
+  "browser": {
+    "passed": 350,
+    "log": "artifacts/dev-check/2026-11-16T04-43-22-543Z-phase24-e2e-full.log",
+    "skipped": 4
+  },
+  "nativeVerification": {
+    "state": "pass",
+    "binary": "C:\\Users\\denrew\\Documents\\Study\\Codex\\parquet_viewer\\src-tauri\\target\\release\\candidates\\phase-25-sql-scale\\data-viewer.exe",
+    "version": "0.25.0",
+    "checks": [
+      {
+        "testId": "T-P25-101/104/108/112/114/117/120 SQL source and large selection",
+        "state": "pass",
+        "sourceRows": 1000257,
+        "sourceColumns": 11,
+        "selectionPayloadBytes": 67017219,
+        "controlASelectsEntireSqlResult": true,
+        "captureMs": 372,
+        "capturePrivateBytesBefore": 7282688,
+        "capturePrivateBytesAfter": 7757824,
+        "chartSurvivedRerunSqlTabCloseFileCloseAndDuplicate": true,
+        "chartKinds": [
+          "histogram",
+          "scatter",
+          "line",
+          "bar",
+          "box",
+          "violin"
+        ],
+        "filteredSelectedRows": 499997,
+        "releasedViewAndResultRemainReadable": true,
+        "elapsedMs": 21380
+      },
+      {
+        "testId": "T-P24-007 WebView2 diagnostics",
+        "state": "pass",
+        "viewport": {
+          "width": 1180,
+          "height": 760,
+          "scale": 1
+        },
+        "elapsedMs": 2
+      }
+    ],
+    "consoleErrors": [],
+    "identifier": "com.denrew88.data-viewer-phase25-acceptance",
+    "windowsVersion": {
+      "FileVersion": "0.25.0",
+      "ProductVersion": "0.25.0"
+    },
+    "executable": {
+      "bytes": 62455808,
+      "sha256": "f303cc4808a98724088529b7a546c4ef249117481e5ad7cbfb826fc6d0ce5d59"
+    }
+  },
+  "phaseStatus": "in progress; pre-existing real OS file-drop gate remains separate",
+  "distribution": "Local executable promotion only; no installer or external publication"
+}

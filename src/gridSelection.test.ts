@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyGridKey,
   createSelection,
+  isSelected,
   normalizeRect,
   selectionReducer,
   ctrlArrowTarget,
@@ -44,7 +45,13 @@ describe("grid selection reducer", () => {
     expect(state.anchor).toEqual({ row: 3, column: 4 });
     state = selectionReducer(state, { type: "row", row: 4, bounds });
     expect([state.kind, state.rect]).toEqual(["row", { top: 4, left: 0, bottom: 4, right: 7 }]);
-    state = selectionReducer(state, { type: "column", column: 3, bounds });
+    state = selectionReducer(state, {
+      type: "column",
+      column: 3,
+      visibleColumns: [0, 1, 2, 3, 4, 5, 6, 7],
+      mode: "replace",
+      bounds,
+    });
     expect(state.includeColumnHeaders).toBe(true);
     expect(state.rect).toEqual({ top: 0, left: 3, bottom: 11, right: 3 });
     state = selectionReducer(state, { type: "all", bounds });
@@ -56,6 +63,61 @@ describe("grid selection reducer", () => {
       bounds,
     });
     expect(state.rect).toEqual({ top: 11, left: 7, bottom: 11, right: 7 });
+  });
+
+  it("extends and shrinks whole columns in visible order from the same header anchor", () => {
+    const visibleColumns = [0, 1, 3, 4, 6, 7];
+    let state = selectionReducer(createSelection("session", bounds), {
+      type: "column",
+      column: 4,
+      mode: "replace",
+      visibleColumns,
+      bounds,
+    });
+    state = selectionReducer(state, {
+      type: "column",
+      column: 1,
+      mode: "extend",
+      visibleColumns,
+      bounds,
+    });
+    expect(state.wholeColumns).toEqual(new Set([1, 3, 4]));
+    expect(state.anchor.column).toBe(4);
+    expect(state.rect).toEqual({ top: 0, left: 1, bottom: 11, right: 4 });
+    expect(isSelected(state, { row: 7, column: 2 })).toBe(false);
+    expect(isSelected(state, { row: 12, column: 4 })).toBe(false);
+    expect(isSelected(state, { row: 12, column: 4 }, 20)).toBe(true);
+    state = selectionReducer(state, {
+      type: "column",
+      column: 6,
+      mode: "extend",
+      visibleColumns,
+      bounds,
+    });
+    expect(state.wholeColumns).toEqual(new Set([4, 6]));
+  });
+
+  it("remaps each toggled column and falls back to a cell after the final toggle", () => {
+    const visibleColumns = [0, 1, 2, 3, 4, 5, 6, 7];
+    const toggle = (state: ReturnType<typeof createSelection>, column: number) =>
+      selectionReducer(state, { type: "column", mode: "toggle", column, visibleColumns, bounds });
+    let state = toggle(createSelection("session", bounds), 1);
+    state = toggle(state, 5);
+    expect(state.wholeColumns).toEqual(new Set([1, 5]));
+    expect(isSelected(state, { row: 0, column: 3 })).toBe(false);
+    state = selectionReducer(state, {
+      type: "remapColumns",
+      previousColumnIds: ["a", "b", "c", "d", "e", "f", "g", "h"],
+      nextColumnIds: ["b", "a", "c", "d", "e", "g", "h", "f"],
+      bounds,
+    });
+    expect(state.wholeColumns).toEqual(new Set([0, 7]));
+    state = toggle(state, 7);
+    expect(state.wholeColumns).toEqual(new Set([0]));
+    state = toggle(state, 0);
+    expect(state.kind).toBe("cell");
+    expect(state.wholeColumns).toBeNull();
+    expect(state.active).toEqual({ row: 0, column: 0 });
   });
 
   it("remaps anchor and active coordinates by stable column ID", () => {

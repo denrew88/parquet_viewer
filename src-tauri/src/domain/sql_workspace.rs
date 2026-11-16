@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 pub const SQL_MAX_TEXT_BYTES: usize = 65_536;
 pub const SQL_MAX_SOURCES: usize = 32;
 pub const SQL_MAX_COLUMNS: usize = 4096;
-pub const SQL_MAX_ROWS: u64 = 1_000_000;
+// Row coordinates cross JSON/JavaScript. This is a precision boundary, not a
+// product result-size quota; disk, memory, time and batch budgets bound execution.
+pub const SQL_MAX_SAFE_ROWS: u64 = 9_007_199_254_740_991;
 pub fn sql_text_is_blank(value: &str) -> bool {
     value.chars().all(|c| c.is_whitespace() || c == '\u{feff}')
 }
@@ -86,6 +88,7 @@ pub struct SqlResultColumn {
 #[serde(rename_all = "camelCase")]
 pub struct SqlStatus {
     pub run_id: String,
+    pub referenced_sources: Vec<SqlSourceIdentity>,
     pub state: SqlState,
     pub phase: String,
     pub elapsed_ms: u64,
@@ -176,14 +179,14 @@ impl SqlPageRequest {
     pub fn validate(&self) -> Result<(), DataError> {
         validate_sql_identity(&self.run_id)?;
         validate_sql_identity(&self.result_id)?;
-        if self.offset > SQL_MAX_ROWS
+        if self.offset > SQL_MAX_SAFE_ROWS
             || self.limit == 0
             || self.limit > 200
             || self.columns.is_empty()
             || self.columns.len() > 64
         {
             return Err(DataError::invalid_request(
-                "SQL page requires offset <=1000000, 1..200 rows and 1..64 columns.",
+                "SQL page requires an exact JavaScript row offset, 1..200 rows and 1..64 columns.",
             ));
         }
         let mut used = std::collections::HashSet::new();

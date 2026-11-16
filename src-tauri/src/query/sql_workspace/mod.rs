@@ -56,6 +56,8 @@ struct SqlResult {
     alive: AtomicBool,
     tab_owned: AtomicBool,
     chart_owners: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    read_count: std::sync::atomic::AtomicUsize,
     views: Mutex<HashMap<String, Arc<result_view::SqlResultView>>>,
     _lease: Arc<QueryTempLease>,
 }
@@ -397,6 +399,7 @@ impl QueryService {
         }
         let status = SqlStatus {
             run_id: request.run_id.clone(),
+            referenced_sources: references,
             state: SqlState::Queued,
             phase: "preparingInputs".to_owned(),
             elapsed_ms: 0,
@@ -653,6 +656,8 @@ impl QueryService {
                 alive: AtomicBool::new(true),
                 tab_owned: AtomicBool::new(true),
                 chart_owners: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                read_count: std::sync::atomic::AtomicUsize::new(0),
                 views: Mutex::new(HashMap::new()),
                 _lease: Arc::clone(&lease),
             });
@@ -662,6 +667,10 @@ impl QueryService {
                 .map_err(|_| registry_error())?
                 .insert(id.clone(), result);
         }
+        // Completion must transfer sole lease ownership to the published
+        // result. Otherwise a caller can release its final result reader while
+        // this worker still keeps the physical directory alive after Complete.
+        drop(lease);
         let mut status = task.status.lock().map_err(|_| registry_error())?;
         status.state = SqlState::Complete;
         status.phase = "complete".to_owned();
@@ -1031,6 +1040,8 @@ impl SqlResult {
         columns: &[String],
         full: bool,
     ) -> Result<DataPage, DataError> {
+        #[cfg(test)]
+        self.read_count.fetch_add(1, Ordering::Relaxed);
         if !self.alive.load(Ordering::Acquire) {
             return Err(DataError::task_cancelled());
         }

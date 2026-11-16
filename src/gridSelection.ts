@@ -18,6 +18,7 @@ export interface SelectionState {
   active: GridCoordinate;
   rect: GridRect;
   kind: SelectionKind;
+  wholeColumns: ReadonlySet<number> | null;
   includeColumnHeaders: boolean;
   generation: number;
 }
@@ -47,7 +48,13 @@ export type SelectionAction =
   | { type: "click"; coordinate: GridCoordinate; shiftKey?: boolean; bounds: GridBounds }
   | { type: "drag"; coordinate: GridCoordinate; bounds: GridBounds }
   | { type: "row"; row: number; bounds: GridBounds }
-  | { type: "column"; column: number; bounds: GridBounds }
+  | {
+      type: "column";
+      column: number;
+      visibleColumns: readonly number[];
+      mode: "replace" | "extend" | "toggle";
+      bounds: GridBounds;
+    }
   | { type: "all"; bounds: GridBounds }
   | {
       type: "key";
@@ -93,6 +100,7 @@ function makeState(
     active,
     rect: normalizeRect(anchor, active),
     kind,
+    wholeColumns: null,
     includeColumnHeaders,
     generation: previous.generation + 1,
   };
@@ -107,6 +115,7 @@ export function createSelection(sessionId: string, bounds: GridBounds): Selectio
     active: coordinate,
     rect: normalizeRect(coordinate, coordinate),
     kind: "cell",
+    wholeColumns: null,
     includeColumnHeaders: false,
     generation: 0,
   };
@@ -118,6 +127,55 @@ function moveTo(
   extend: boolean,
 ): SelectionState {
   return makeState(state, extend ? state.anchor : coordinate, coordinate);
+}
+
+function makeColumnState(
+  state: SelectionState,
+  bounds: GridBounds,
+  wholeColumns: ReadonlySet<number>,
+  anchor: number,
+  active: number,
+): SelectionState {
+  const next = makeState(
+    state,
+    { row: 0, column: anchor },
+    { row: bounds.rowCount - 1, column: active },
+    "column",
+    true,
+  );
+  for (const column of wholeColumns) {
+    next.rect.left = Math.min(next.rect.left, column);
+    next.rect.right = Math.max(next.rect.right, column);
+  }
+  return { ...next, wholeColumns };
+}
+
+function selectColumn(
+  state: SelectionState,
+  { column, visibleColumns, mode, bounds }: Extract<SelectionAction, { type: "column" }>,
+): SelectionState {
+  const clicked = visibleColumns.indexOf(column);
+  if (!isValidCoordinate({ row: 0, column }, bounds) || clicked < 0) return state;
+  if (mode === "extend" && state.wholeColumns) {
+    const anchor = visibleColumns.indexOf(state.anchor.column);
+    if (anchor >= 0) {
+      const span = visibleColumns.slice(Math.min(anchor, clicked), Math.max(anchor, clicked) + 1);
+      return makeColumnState(state, bounds, new Set(span), state.anchor.column, column);
+    }
+  }
+  if (mode === "toggle") {
+    const columns = new Set(state.wholeColumns);
+    if (!columns.delete(column)) {
+      columns.add(column);
+      return makeColumnState(state, bounds, columns, column, column);
+    }
+    const remaining = visibleColumns.find((index) => columns.has(index));
+    if (remaining === undefined) return moveTo(state, { row: 0, column }, false);
+    const anchor = columns.has(state.anchor.column) ? state.anchor.column : remaining;
+    const active = columns.has(state.active.column) ? state.active.column : remaining;
+    return makeColumnState(state, bounds, columns, anchor, active);
+  }
+  return makeColumnState(state, bounds, new Set([column]), column, column);
 }
 
 function stepCoordinate(
@@ -236,17 +294,31 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
   }
   if (action.type === "remapColumns") {
     if (!validBounds(action.bounds)) return state;
+    const positions = new Map(action.nextColumnIds.map((id, index) => [id, index]));
+    const remapColumn = (column: number) => positions.get(action.previousColumnIds[column]);
     const remap = (coordinate: GridCoordinate): GridCoordinate => {
-      const columnId = action.previousColumnIds[coordinate.column];
-      const nextColumn = columnId ? action.nextColumnIds.indexOf(columnId) : -1;
+      const nextColumn = remapColumn(coordinate.column) ?? 0;
       return {
         row: Math.max(0, Math.min(action.bounds.rowCount - 1, coordinate.row)),
-        column: Math.max(
-          0,
-          Math.min(action.bounds.columnCount - 1, nextColumn < 0 ? 0 : nextColumn),
-        ),
+        column: Math.max(0, Math.min(action.bounds.columnCount - 1, nextColumn)),
       };
     };
+    if (state.wholeColumns) {
+      const columns = new Set<number>();
+      for (const column of state.wholeColumns) {
+        const remapped = remapColumn(column);
+        if (remapped !== undefined) columns.add(remapped);
+      }
+      const first = columns.values().next().value;
+      if (first === undefined) return moveTo(state, remap(state.active), false);
+      return makeColumnState(
+        state,
+        action.bounds,
+        columns,
+        remapColumn(state.anchor.column) ?? first,
+        remapColumn(state.active.column) ?? first,
+      );
+    }
     return makeState(
       state,
       remap(state.anchor),
@@ -271,21 +343,7 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
       "row",
     );
   }
-  if (action.type === "column") {
-    if (
-      !Number.isInteger(action.column) ||
-      action.column < 0 ||
-      action.column >= action.bounds.columnCount
-    )
-      return state;
-    return makeState(
-      state,
-      { row: 0, column: action.column },
-      { row: action.bounds.rowCount - 1, column: action.column },
-      "column",
-      true,
-    );
-  }
+  if (action.type === "column") return selectColumn(state, action);
   if (action.type === "all") {
     return makeState(
       state,
@@ -297,11 +355,20 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
   return applyGridKey(state, action.command, action.bounds, action.isEmpty);
 }
 
-export function isSelected(state: SelectionState, coordinate: GridCoordinate): boolean {
+export function isSelectedColumn(state: SelectionState, column: number): boolean {
+  return (
+    state.wholeColumns?.has(column) ?? (column >= state.rect.left && column <= state.rect.right)
+  );
+}
+
+export function isSelected(
+  state: SelectionState,
+  coordinate: GridCoordinate,
+  rowCount = state.rect.bottom + 1,
+): boolean {
   return (
     coordinate.row >= state.rect.top &&
-    coordinate.row <= state.rect.bottom &&
-    coordinate.column >= state.rect.left &&
-    coordinate.column <= state.rect.right
+    coordinate.row < (state.wholeColumns ? rowCount : state.rect.bottom + 1) &&
+    isSelectedColumn(state, coordinate.column)
   );
 }

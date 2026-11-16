@@ -1,0 +1,257 @@
+.app-settings-dialog.app-settings-dialog {
+  width: min(960px, calc(100vw - 32px));
+  height: min(740px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.app-settings-dialog [hidden] {
+  display: none !important;
+}
+.app-settings-dialog.app-settings-dialog :is(button, input, select, textarea) {
+  min-height: 32px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.app-settings-dialog.app-settings-dialog input[type="checkbox"] {
+  min-height: 0;
+}
+.app-settings-dialog.app-settings-dialog h2 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.app-settings-dialog.app-settings-dialog h3 {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.app-settings-dialog .settings-dialog__header {
+  padding: 14px 18px;
+}
+.app-settings-dialog .settings-dialog__body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+.app-settings-dialog .settings-categories {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  padding: 14px 10px;
+  border-right: 1px solid #d8dddf;
+  background: #f6f8f8;
+}
+.app-settings-dialog .settings-categories button {
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #43545a;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.app-settings-dialog .settings-categories button[aria-selected="true"] {
+  border-color: #bddbd5;
+  color: #076e63;
+  background: #e4f2ef;
+  font-weight: 650;
+}
+.app-settings-dialog .settings-categories button:focus-visible {
+  outline: 2px solid #087f78;
+  outline-offset: 1px;
+}
+.app-settings-dialog .settings-dialog__content {
+  min-width: 0;
+  overflow: auto;
+}
+.app-settings-dialog .settings-section {
+  min-width: 0;
+  padding: 20px;
+  border-bottom: 0;
+}
+.app-settings-dialog .settings-section__heading {
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+}
+.app-settings-dialog .settings-section__heading > svg {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+.app-settings-dialog .settings-section__heading > .secondary-button {
+  grid-column: 2;
+  justify-self: start;
+  margin-top: 4px;
+  white-space: normal;
+}
+.app-settings-dialog.app-settings-dialog
+  :is(
+    .settings-field-description,
+    .settings-field-error,
+    .settings-section__heading p,
+    .storage-consequence,
+    .storage-facts,
+    .storage-result,
+    .storage-path,
+    .storage-group__summary p,
+    .copy-setting-summary span
+  ) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.app-settings-dialog .settings-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  margin-top: 18px;
+  padding-left: 30px;
+}
+.app-settings-dialog .settings-field select {
+  width: min(100%, 340px);
+  padding: 5px 9px;
+  border: 1px solid #aeb8bb;
+  border-radius: 4px;
+  color: #263b41;
+  background: white;
+}
+.app-settings-dialog #sql-temp-limit-help + button {
+  margin-top: 12px;
+}
+.app-settings-dialog.app-settings-dialog
+  :is(
+    .settings-number-field,
+    .copy-setting-summary strong,
+    .storage-group__summary strong,
+    .storage-group__summary h4,
+    .display-format-row__summary > strong
+  ) {
+  font-size: 13px;
+}
+.app-settings-dialog .settings-number-field {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.app-settings-dialog .storage-groups {
+  padding-left: 0;
+}
+.app-settings-dialog .storage-group__summary {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.app-settings-dialog .settings-folder-location {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.app-settings-dialog .settings-folder-location > button {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 7px;
+}
+.app-settings-dialog .settings-folder-location button svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.app-settings-dialog .settings-folder-location code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.app-settings-dialog .settings-dialog__content button:not(.settings-segmented button) {
+  padding: 5px 10px;
+  border: 1px solid #aeb8bb;
+  border-radius: 4px;
+  color: #35464b;
+  background: #fff;
+  cursor: pointer;
+}
+.app-settings-dialog button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.app-settings-dialog .display-format-row__summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px;
+}
+.app-settings-dialog .display-format-row__summary > strong {
+  grid-column: 1;
+  grid-row: 1;
+}
+.app-settings-dialog .display-format-row__summary > button,
+.app-settings-dialog .display-format-row__toggle-space {
+  grid-column: 2;
+  grid-row: 1;
+}
+.app-settings-dialog .display-format-row__primary {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.app-settings-dialog .display-format-row__summary output {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  overflow: visible;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  text-overflow: clip;
+}
+.app-settings-dialog :is(.display-format-row__primary, .display-format-row__details) label {
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.app-settings-dialog .display-format-row__details {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  margin: 0 12px 12px;
+  padding: 12px;
+}
+.app-settings-dialog :is(.display-format-row__primary, .display-format-row__details) select {
+  max-width: 100%;
+}
+.app-settings-dialog .settings-invalid-drafts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  color: #a33a2c;
+  font-size: 12px;
+}
+.app-settings-dialog .settings-dialog__actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-settings-dialog .settings-dialog__actions > button {
+  flex: none;
+}
+.app-settings-dialog .settings-dialog__actions .settings-invalid-drafts button {
+  min-width: 0;
+  color: #a33a2c;
+  background: white;
+}
+@media (max-width: 850px) {
+  .app-settings-dialog .settings-dialog__body {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+  .app-settings-dialog .settings-section {
+    padding: 16px;
+  }
+  .app-settings-dialog .settings-categories {
+    padding-inline: 8px;
+  }
+  .app-settings-dialog .settings-categories button {
+    padding-inline: 9px;
+  }
+}

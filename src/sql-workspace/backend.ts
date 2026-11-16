@@ -72,6 +72,7 @@ export interface SqlStatus {
   planJson: unknown;
   warnings: string[];
   error: { code: string; message: string } | null;
+  referencedSources?: SqlSourceIdentity[];
 }
 export interface SqlPageRequest {
   runId: string;
@@ -106,8 +107,13 @@ export interface SqlResultViewBackend {
 }
 export interface SqlWorkspaceBackend {
   resultView?: SqlResultViewBackend;
-  retainMockChartResult?(runId: string, resultId: string): Promise<void>;
-  releaseMockChartResult?(runId: string, resultId: string): Promise<void>;
+  retainMockChartResult?(
+    runId: string,
+    resultId: string,
+    viewId?: string,
+    selection?: StartCopyRequest["selection"],
+  ): Promise<void>;
+  releaseMockChartResult?(runId: string, resultId: string, viewId?: string): Promise<void>;
   describeTables(sources: SqlSourceIdentity[]): Promise<SqlTableDescriptor[]>;
   startQuery(request: StartSqlRequest): Promise<SqlStatus>;
   getStatus(runId: string): Promise<SqlStatus>;
@@ -272,19 +278,36 @@ export function parseSqlStatus(value: unknown, runId?: string): SqlStatus {
     o.error === null
       ? null
       : { code: text(obj(o.error).code), message: text(obj(o.error).message) };
+  let referencedSources: SqlSourceIdentity[] | undefined;
+  if (o.referencedSources !== undefined) {
+    if (!Array.isArray(o.referencedSources) || o.referencedSources.length > 32) fail();
+    referencedSources = o.referencedSources.map((entry) => {
+      const source = obj(entry);
+      return { documentId: identity(source.documentId), sessionId: identity(source.sessionId) };
+    });
+    if (
+      new Set(
+        referencedSources.map(({ documentId, sessionId }) =>
+          JSON.stringify([documentId, sessionId]),
+        ),
+      ).size !== referencedSources.length
+    )
+      fail();
+  }
   const result: SqlStatus = {
     runId: identity(o.runId),
     state: o.state as SqlStatus["state"],
     phase: text(o.phase),
     elapsedMs: integer(o.elapsedMs),
-    rowsProduced: integer(o.rowsProduced, 1_000_000),
+    rowsProduced: integer(o.rowsProduced),
     resultId: o.resultId === null ? null : identity(o.resultId),
     columns,
-    rowCount: o.rowCount === null ? null : integer(o.rowCount, 1_000_000),
+    rowCount: o.rowCount === null ? null : integer(o.rowCount),
     planText: nullableText(o.planText),
     planJson: o.planJson,
     warnings: o.warnings.map(text),
     error,
+    ...(referencedSources !== undefined && { referencedSources }),
   };
   if (runId !== undefined && result.runId !== runId)
     fail("The SQL response belongs to another run.");
@@ -300,7 +323,7 @@ export function validateSqlPage(request: SqlPageRequest): SqlPageRequest {
     identity(request.runId);
     identity(request.resultId);
     if (request.viewId !== undefined) identity(request.viewId);
-    integer(request.offset, 1_000_000);
+    integer(request.offset);
     integer(request.limit, 200);
     if (
       request.limit < 1 ||

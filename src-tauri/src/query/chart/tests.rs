@@ -1,4 +1,4 @@
-use std::sync::{mpsc, Mutex};
+use std::sync::{atomic::AtomicUsize, mpsc, Mutex};
 
 use crate::domain::{DataPage, ValueKind};
 
@@ -8,6 +8,7 @@ struct TestReader {
     rows: Vec<Vec<DataValue>>,
     columns: Vec<String>,
     batch_size: usize,
+    reads: AtomicUsize,
 }
 
 impl TestReader {
@@ -16,6 +17,7 @@ impl TestReader {
             columns: columns.iter().map(|column| (*column).to_owned()).collect(),
             rows,
             batch_size,
+            reads: AtomicUsize::new(0),
         }
     }
 }
@@ -27,6 +29,7 @@ impl CopyRowReader for TestReader {
         limit: usize,
         columns: &[String],
     ) -> Result<DataPage, DataError> {
+        self.reads.fetch_add(1, Ordering::Relaxed);
         let positions = columns
             .iter()
             .map(|column| {
@@ -51,6 +54,72 @@ impl CopyRowReader for TestReader {
             columns: columns.to_vec(),
             rows,
         })
+    }
+}
+
+struct TestChartStream {
+    columns: &'static [&'static str],
+    rows: Vec<Vec<ChartCell<'static>>>,
+    scans: AtomicUsize,
+}
+
+impl TestChartStream {
+    fn new(columns: &'static [&'static str], rows: Vec<Vec<ChartCell<'static>>>) -> Self {
+        Self {
+            columns,
+            rows,
+            scans: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl ProjectedChartSource for TestChartStream {
+    fn visit(
+        &self,
+        columns: &[String],
+        requires_exact_text: &[bool],
+        check: &dyn Fn() -> Result<(), DataError>,
+        visit: &mut ChartRowVisitor<'_>,
+    ) -> Result<bool, DataError> {
+        self.scans.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(requires_exact_text.len(), columns.len());
+        let indices = columns
+            .iter()
+            .map(|column| {
+                self.columns
+                    .iter()
+                    .position(|name| *name == column.as_str())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut projected = Vec::with_capacity(indices.len());
+        for rows in self.rows.chunks(MAX_BATCH_ROWS) {
+            check()?;
+            for row in rows {
+                projected.clear();
+                projected.extend(indices.iter().map(|&index| row[index]));
+                assert!(projected
+                    .iter()
+                    .zip(requires_exact_text)
+                    .all(|(cell, exact)| !exact || !matches!(cell, ChartCell::Float(_))));
+                visit(&projected)?;
+            }
+        }
+        Ok(true)
+    }
+}
+
+fn typed_chart(request: &ChartRequest, stream: Arc<TestChartStream>) -> ChartData {
+    ChartStore::default()
+        .compute_with_stream(request, Some(Arc::new(NoPagedChart)), Some(stream))
+        .unwrap()
+}
+
+struct NoPagedChart;
+
+impl CopyRowReader for NoPagedChart {
+    fn read_rows(&self, _: u64, _: usize, _: &[String]) -> Result<DataPage, DataError> {
+        panic!("typed chart should stream without paged reads");
     }
 }
 
@@ -102,6 +171,152 @@ fn compute_request(
     rows: Vec<Vec<DataValue>>,
 ) -> Result<ChartData, DataError> {
     ChartStore::default().compute(request, Some(Arc::new(TestReader::new(columns, rows, 3))))
+}
+
+#[test]
+fn typed_chart_cells_preserve_all_six_chart_outputs() {
+    const COLUMNS: &[&str] = &["ordinal", "amount", "group", "include", "fraction"];
+    let input = [
+        (1_i128, Some(0_i128), Some(""), true, -0.0_f64),
+        (2, Some(1), Some("a"), true, 1.125),
+        (3, Some(2), Some("a"), true, 1e-30),
+        (4, Some(3), Some("a"), false, 1e50),
+        (5, Some(-4), Some("a"), true, -4.0),
+        (6, None, Some("a"), true, 0.5),
+        (7, Some(300), None, true, 5.0),
+        (8, Some(1000), Some("a"), true, 10.0),
+    ];
+    let mut typed = Vec::new();
+    let mut legacy = Vec::new();
+    for (ordinal, amount, group, include, fraction) in input {
+        let ordinal = i128::from(u64::MAX) - ordinal;
+        typed.push(vec![
+            ChartCell::Integer(ordinal),
+            amount.map_or(ChartCell::Missing, ChartCell::Integer),
+            group.map_or(ChartCell::Missing, ChartCell::Text),
+            ChartCell::Boolean(include),
+            ChartCell::Float(fraction),
+        ]);
+        legacy.push(vec![
+            int(ordinal),
+            amount.map_or_else(DataValue::null, int),
+            match group {
+                Some("") => DataValue::empty(""),
+                Some(value) => text(value),
+                None => DataValue::null(),
+            },
+            DataValue::displayed(ValueKind::Boolean, include.to_string()),
+            DataValue::displayed(ValueKind::Float, fraction.to_string()),
+        ]);
+    }
+    let stream = Arc::new(TestChartStream::new(COLUMNS, typed));
+    for (kind, x, y) in [
+        (ChartKind::Scatter, "ordinal", Some("amount")),
+        (ChartKind::Line, "ordinal", Some("fraction")),
+        (ChartKind::Histogram, "fraction", None),
+        (ChartKind::Bar, "group", Some("amount")),
+        (ChartKind::Box, "group", Some("amount")),
+        (ChartKind::Violin, "group", Some("amount")),
+    ] {
+        let mut request = request(kind, x, y);
+        request.filter = Some(ChartFilter {
+            column_id: "include".to_owned(),
+            equals: "true".to_owned(),
+        });
+        if kind == ChartKind::Scatter {
+            request.scatter_label = Some("group".to_owned());
+        }
+        if kind == ChartKind::Line {
+            request.line = Some(LineOptions {
+                aggregate: LineAggregate::Mean,
+                bucket_seconds: None,
+            });
+        }
+        if kind == ChartKind::Bar {
+            request.bar = Some(BarOptions {
+                aggregate: BarAggregate::Mean,
+                sort: BarSort::Desc,
+                limit: 8,
+            });
+        }
+        assert_eq!(
+            typed_chart(&request, Arc::clone(&stream)),
+            compute_request(&request, COLUMNS, legacy.clone()).unwrap(),
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn exact_histogram_scans_large_inputs_once_with_fixed_edges_or_constant_values() {
+    let rows = (0..30_000)
+        .map(|index| vec![ChartCell::Integer(index % 5)])
+        .collect();
+    let stream = Arc::new(TestChartStream::new(&["x"], rows));
+    let mut request = request(ChartKind::Histogram, "x", None);
+    request.histogram_range = Some(HistogramRange { min: 1.0, max: 3.0 });
+    for options in [
+        HistogramOptions::Count { count: 2 },
+        HistogramOptions::Width { width: 1.0 },
+    ] {
+        stream.scans.store(0, Ordering::Relaxed);
+        request.histogram = Some(options);
+        let chart = typed_chart(&request, Arc::clone(&stream));
+        assert_eq!(stream.scans.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            chart.histogram_outside,
+            Some(HistogramOutside {
+                below: 6_000,
+                above: 6_000
+            })
+        );
+        let bins = chart.bins.unwrap();
+        assert_eq!((bins[0].count, bins[1].count), (6_000, 12_000));
+    }
+    stream.scans.store(0, Ordering::Relaxed);
+    request.histogram_range = None;
+    request.histogram = None;
+    let chart = typed_chart(&request, Arc::clone(&stream));
+    assert_eq!(stream.scans.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        chart.bins.unwrap().iter().map(|bin| bin.count).sum::<u64>(),
+        30_000
+    );
+
+    let constant = Arc::new(TestChartStream::new(
+        &["x"],
+        vec![vec![ChartCell::Integer(7)]; 30_000],
+    ));
+    let chart = typed_chart(&request, Arc::clone(&constant));
+    assert_eq!(constant.scans.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        chart.bins.unwrap(),
+        [ChartBin {
+            start: 7.0,
+            end: 7.0,
+            count: 30_000
+        }]
+    );
+}
+
+#[test]
+fn complete_group_retention_avoids_an_outlier_rescan() {
+    let stream = Arc::new(TestChartStream::new(
+        &["g", "x"],
+        [0, 2, 1, 3, 0, 100]
+            .into_iter()
+            .map(|value| vec![ChartCell::Text("a"), ChartCell::Integer(value)])
+            .collect(),
+    ));
+    for kind in [ChartKind::Box, ChartKind::Violin] {
+        stream.scans.store(0, Ordering::Relaxed);
+        let chart = typed_chart(&request(kind, "g", Some("x")), Arc::clone(&stream));
+        assert_eq!(stream.scans.load(Ordering::Relaxed), 1);
+        let group = &chart.groups.unwrap()[0];
+        assert_eq!(group.whiskers, Some([0.0, 3.0]));
+        assert_eq!(group.outliers.as_deref(), Some(&[100.0][..]));
+        assert_eq!(group.outlier_count, Some(1));
+    }
 }
 
 #[test]
@@ -273,6 +488,15 @@ fn line_aggregates_canonical_x_and_raw_y_before_final_scale() {
         ),
         (4, 2, 2)
     );
+    assert_eq!(
+        chart
+            .line_buckets
+            .unwrap()
+            .iter()
+            .map(|bucket| bucket[4])
+            .sum::<f64>(),
+        4.0
+    );
     assert!(chart.y_origin.is_none());
 }
 
@@ -331,6 +555,41 @@ fn reduced_raw_line_keeps_peaks_troughs_and_x_endpoints() {
     assert_eq!(points.last(), Some(&[f64::from(end), 0.0]));
     assert!(points.contains(&[f64::from(peak), 1_000_000.0]));
     assert!(points.contains(&[f64::from(trough), -1_000_000.0]));
+    let buckets = chart.line_buckets.unwrap();
+    assert_eq!(
+        buckets.iter().map(|bucket| bucket[4]).sum::<f64>(),
+        f64::from(end + 1)
+    );
+    assert!(buckets.iter().any(|bucket| bucket[3] == 1_000_000.0));
+    assert!(buckets.iter().any(|bucket| bucket[2] == -1_000_000.0));
+}
+
+#[test]
+fn line_buckets_keep_empty_intervals_and_exact_counts() {
+    let rows = (0..20_004)
+        .map(|row| {
+            let x = if row < 10_002 {
+                row % 2
+            } else {
+                1000 + row % 2
+            };
+            let y = if row == 100 { 99 } else { 1 };
+            vec![int(x), int(y)]
+        })
+        .collect();
+    let chart = compute(ChartKind::Line, "x", Some("y"), &["x", "y"], rows);
+    let buckets = chart.line_buckets.unwrap();
+    assert_eq!(
+        buckets.iter().map(|bucket| bucket[4]).sum::<f64>(),
+        20_004.0
+    );
+    assert!(buckets
+        .windows(2)
+        .any(|pair| pair[1][0] - pair[0][1] > 990.0));
+    assert_eq!(
+        buckets.iter().find(|bucket| bucket[3] == 99.0).unwrap()[4],
+        5_001.0
+    );
 }
 
 #[test]
@@ -374,6 +633,11 @@ fn locked_histogram_counts_outside_rows_and_clips_final_width() {
         vec![vec![DataValue::displayed(ValueKind::Date, "2026-01-01")]]
     )
     .is_err());
+    request.histogram = Some(HistogramOptions::Width { width: 0.001 });
+    let relative = compute_request(&request, &["x"], vec![vec![int(u64::MAX)]]).unwrap_err();
+    assert!(relative.message.contains("requires an absolute X axis"));
+    let empty = compute_request(&request, &["x"], vec![]).unwrap_err();
+    assert!(empty.message.contains("requires more than 48 bins"));
 }
 
 #[test]
@@ -424,7 +688,43 @@ fn outlier_scan_counts_all_rows_and_limits_rendered_dots() {
     assert_eq!(group.sample_count, Some(2_048));
     assert_eq!(group.outlier_count, Some(416));
     assert_eq!(group.whiskers, Some([0.0, 0.0]));
-    assert_eq!(group.outliers.as_ref().unwrap().len(), 128);
+    let outliers = group.outliers.as_ref().unwrap();
+    assert_eq!(outliers.len(), 128);
+    assert_eq!(outliers.first(), Some(&4_096.0));
+    assert_eq!(outliers.last(), Some(&4_511.0));
+}
+
+#[test]
+fn distribution_counts_late_groups_and_retains_small_observations() {
+    let rows = || {
+        (0..32)
+            .map(|index| vec![text(&format!("g{index:02}")), int(index)])
+            .chain([vec![text("late"), int(55)], vec![text("late"), int(77)]])
+            .collect()
+    };
+    for kind in [ChartKind::Box, ChartKind::Violin] {
+        let request = request(kind, "g", Some("y"));
+        let chart = compute_request(&request, &["g", "y"], rows()).unwrap();
+        assert_eq!((chart.valid_rows, chart.excluded_rows), (34, 0));
+        assert!(chart.groups_truncated);
+        assert_eq!(chart.group_count, Some(33));
+        let plotted = chart.groups.unwrap();
+        assert_eq!(plotted.len(), 32);
+        assert_eq!(plotted[0].observations.as_deref(), Some(&[0.0][..]));
+        assert_eq!(chart.group_directory.unwrap().entries.len(), 32);
+
+        let store = ChartStore::default();
+        let job = store.begin("selected-late-group", false).unwrap();
+        let mut visit = |emit: &mut statistics::DistributionValueVisitor<'_>| {
+            emit(55.0)?;
+            emit(77.0)
+        };
+        let detail = statistics::group_detail(&request, "late", &mut visit, &job).unwrap();
+        let plotted = detail.groups.unwrap();
+        assert_eq!(plotted[0].label, "late");
+        assert_eq!(plotted[0].count, 2);
+        assert_eq!(plotted[0].observations.as_deref(), Some(&[55.0, 77.0][..]));
+    }
 }
 
 #[test]
@@ -447,6 +747,12 @@ fn bar_ranking_includes_categories_beyond_the_legacy_group_limit() {
     assert_eq!(bar.group_count, Some(40));
     assert_eq!(bar.bar_total, Some(1_741.0));
     assert!(!bar.groups_truncated);
+    let directory = bar.group_directory.as_ref().unwrap();
+    assert_eq!(directory.total, 40);
+    assert_eq!(directory.offset, 0);
+    assert_eq!(directory.entries.len(), 32);
+    assert_eq!(directory.entries[0].label, "g39");
+    assert_eq!(directory.entries[0].value, Some(1_000.0));
     assert_eq!(
         bar.groups
             .unwrap()
@@ -977,7 +1283,8 @@ fn filtered_invalid_and_excess_groups_are_reported_separately() {
         .collect();
     let chart = compute(ChartKind::Bar, "g", None, &["g"], rows);
     assert!(chart.groups_truncated);
-    assert_eq!(chart.excluded_rows, 3);
+    assert_eq!((chart.valid_rows, chart.excluded_rows), (35, 0));
+    assert_eq!(chart.group_count, Some(35));
     assert_eq!(chart.groups.unwrap().len(), 32);
 }
 
@@ -1006,7 +1313,28 @@ fn scatter_sampling_is_bounded_and_independent_of_read_batch_size() {
     assert_eq!(a.valid_rows, 23_000);
     assert!(a.sampled);
     assert_eq!(a.scatter_extent, Some([0.0, 22_999.0, 0.0, 45_998.0]));
+    assert_eq!(
+        a.scatter_tiles
+            .unwrap()
+            .iter()
+            .map(|tile| tile[4])
+            .sum::<f64>(),
+        23_000.0
+    );
     assert_eq!(a.points.unwrap().len(), 20_000);
+}
+
+#[test]
+fn scatter_overview_counts_rare_points_even_if_sampling_drops_them() {
+    let rows = (0..25_000)
+        .map(|_| vec![int(0), int(0)])
+        .chain([vec![int(-500), int(1_000)], vec![int(500), int(-1_000)]])
+        .collect();
+    let chart = compute(ChartKind::Scatter, "x", Some("y"), &["x", "y"], rows);
+    assert!(chart.sampled);
+    let tiles = chart.scatter_tiles.unwrap();
+    assert_eq!(tiles.len(), 3);
+    assert_eq!(tiles.iter().filter(|tile| tile[4] == 1.0).count(), 2);
 }
 
 fn svg_frame() -> ScatterSvgFrame {
@@ -1188,6 +1516,236 @@ fn scatter_svg_rejects_invalid_frame_before_writing() {
         .unwrap();
     assert_eq!(error.code, DataErrorCode::InvalidRequest);
     assert!(svg.is_empty());
+}
+
+#[test]
+fn block_preview_preserves_captured_projection_without_reading_the_origin() {
+    let store = ChartStore::default();
+    let rows = (0..12).map(|value| vec![int(value), int(-value)]).collect();
+    let reader = Arc::new(TestReader::new(&["a", "b"], rows, 3));
+    store
+        .capture(
+            "preview",
+            reader.clone(),
+            &CopySelectionSnapshot {
+                row_start: 2,
+                row_end_exclusive: 10,
+                column_ids: vec!["b".to_owned(), "a".to_owned()],
+            },
+        )
+        .unwrap();
+    let reads = reader.reads.load(Ordering::Relaxed);
+    let columns = vec!["a".to_owned(), "b".to_owned()];
+    let page = store.preview_block("preview", 6, &columns).unwrap();
+    assert_eq!(page.offset, 0);
+    assert_eq!(page.limit, 6);
+    assert_eq!(page.total_rows, Some(8));
+    assert!(page.has_more);
+    assert_eq!(page.columns, columns);
+    assert_eq!(page.rows.len(), 6);
+    assert_eq!(page.rows[0], vec![int(2), int(-2)]);
+    assert_eq!(page.rows[5], vec![int(7), int(-7)]);
+    assert_eq!(store.preview_block("preview", 6, &columns).unwrap(), page);
+    assert_eq!(reader.reads.load(Ordering::Relaxed), reads);
+    drop(reader);
+    assert_eq!(store.preview_block("preview", 6, &columns).unwrap(), page);
+    store.release("preview").unwrap();
+    assert_eq!(
+        store
+            .preview_block("preview", 6, &columns)
+            .unwrap_err()
+            .code,
+        DataErrorCode::InvalidRequest
+    );
+}
+
+#[test]
+fn block_preview_preserves_typed_values_and_bounds_all_copied_text() {
+    let store = ChartStore::default();
+    let columns = [
+        "integer",
+        "decimal",
+        "timestamp",
+        "null",
+        "empty",
+        "duration",
+        "invalid",
+        "wide",
+    ];
+    let values = vec![
+        DataValue::displayed(ValueKind::Int, "170141183460469231731687303715884105727"),
+        DataValue::displayed(
+            ValueKind::Decimal,
+            "12345678901234567890.123456789012345678",
+        ),
+        DataValue::converted(
+            ValueKind::Timestamp,
+            "2026-11-11 01:02:03.123456789",
+            "1794358923123456789",
+        )
+        .with_temporal_metadata("ns", Some("Asia/Seoul")),
+        DataValue::converted_null("NULL"),
+        DataValue::empty(""),
+        DataValue::converted(ValueKind::Duration, "00:00:00.000000001", "1")
+            .with_source("1")
+            .with_temporal_metadata("ns", None),
+        DataValue::invalid(
+            ValueKind::Int,
+            "invalid",
+            "invalid",
+            "잘못된 값".repeat(100),
+        ),
+        DataValue::displayed(ValueKind::String, "가🙂".repeat(500)),
+    ];
+    let reader = Arc::new(TestReader::new(&columns, vec![values.clone()], 1));
+    let ids = columns
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    store
+        .capture(
+            "typed-preview",
+            reader,
+            &CopySelectionSnapshot {
+                row_start: 0,
+                row_end_exclusive: 1,
+                column_ids: ids.clone(),
+            },
+        )
+        .unwrap();
+    let page = store.preview_block("typed-preview", 6, &ids).unwrap();
+    assert_eq!(page.total_rows, Some(1));
+    assert!(!page.has_more);
+    assert_eq!(&page.rows[0][..6], &values[..6]);
+    let invalid = &page.rows[0][6];
+    assert_eq!(invalid.kind, values[6].kind);
+    assert_eq!(invalid.state, values[6].state);
+    assert_eq!(invalid.raw_display, values[6].raw_display);
+    assert!(invalid.diagnostic.as_ref().unwrap().message.ends_with('…'));
+    let wide = &page.rows[0][7];
+    assert!(wide.display.as_ref().unwrap().ends_with('…'));
+    for value in &page.rows[0] {
+        for text in [
+            &value.display,
+            &value.source_display,
+            &value.raw_display,
+            &value.unit,
+            &value.timezone,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(text.len() <= MAX_PREVIEW_TEXT_BYTES);
+        }
+        if let Some(diagnostic) = &value.diagnostic {
+            assert!(diagnostic.code.len() <= MAX_PREVIEW_TEXT_BYTES);
+            assert!(diagnostic.message.len() <= MAX_PREVIEW_TEXT_BYTES);
+        }
+    }
+    assert_eq!(
+        store.lock().unwrap().blocks["typed-preview"].rows[0],
+        values
+    );
+}
+
+#[test]
+fn block_preview_rejects_invalid_ids_rows_columns_and_missing_snapshots() {
+    let store = ChartStore::default();
+    let reader = Arc::new(TestReader::new(&["a"], vec![vec![int(1)]], 1));
+    store
+        .capture(
+            "preview",
+            reader,
+            &CopySelectionSnapshot {
+                row_start: 0,
+                row_end_exclusive: 1,
+                column_ids: vec!["a".to_owned()],
+            },
+        )
+        .unwrap();
+    let valid = vec!["a".to_owned()];
+    let too_many = (0..9)
+        .map(|index| format!("column-{index}"))
+        .collect::<Vec<_>>();
+    for (id, limit, columns) in [
+        ("", 1, valid.as_slice()),
+        ("../preview", 1, valid.as_slice()),
+        ("missing", 1, valid.as_slice()),
+        ("preview", 0, valid.as_slice()),
+        ("preview", 7, valid.as_slice()),
+        ("preview", usize::MAX, valid.as_slice()),
+        ("preview", 1, &[]),
+        ("preview", 1, too_many.as_slice()),
+        ("preview", 1, &["missing".to_owned()]),
+        ("preview", 1, &["a".to_owned(), "a".to_owned()]),
+        ("preview", 1, &[" ".to_owned()]),
+    ] {
+        assert_eq!(
+            store.preview_block(id, limit, columns).unwrap_err().code,
+            DataErrorCode::InvalidRequest,
+        );
+    }
+    assert_eq!(
+        store.preview_block("preview", 1, &valid).unwrap().rows,
+        vec![vec![int(1)]]
+    );
+    store.cancel_all();
+    assert!(store.preview_block("preview", 1, &valid).is_err());
+}
+
+#[test]
+fn block_preview_validation_matches_the_shared_frontend_fixture() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        limit: usize,
+        columns: Vec<String>,
+        valid: bool,
+    }
+
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .map(|root| root.join("fixtures/phase-25/chart-preview-validation.json"))
+        .find(|path| path.is_file())
+        .expect("The shared chart preview validation fixture is available.");
+    let cases: Vec<Case> = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+    let ids = (0..9).map(|index| format!("c{index}")).collect::<Vec<_>>();
+    let names = ids.iter().map(String::as_str).collect::<Vec<_>>();
+    let rows = (0..7)
+        .map(|row| (0..9).map(|column| int(row * 10 + column)).collect())
+        .collect();
+    let store = ChartStore::default();
+    store
+        .capture(
+            "parity-preview",
+            Arc::new(TestReader::new(&names, rows, 3)),
+            &CopySelectionSnapshot {
+                row_start: 0,
+                row_end_exclusive: 7,
+                column_ids: ids,
+            },
+        )
+        .unwrap();
+    for case in cases {
+        let result = store.preview_block("parity-preview", case.limit, &case.columns);
+        assert_eq!(
+            result.is_ok(),
+            case.valid,
+            "limit={}, columns={:?}",
+            case.limit,
+            case.columns,
+        );
+        if let Ok(page) = result {
+            assert_eq!(page.columns, case.columns);
+            assert_eq!(page.rows.len(), case.limit);
+            assert_eq!(page.total_rows, Some(7));
+            for (row_index, row) in page.rows.iter().enumerate() {
+                for (column, value) in page.columns.iter().zip(row) {
+                    let column_index = column.trim_start_matches('c').parse::<i64>().unwrap();
+                    assert_eq!(*value, int(row_index as i64 * 10 + column_index));
+                }
+            }
+        }
+    }
 }
 
 #[test]

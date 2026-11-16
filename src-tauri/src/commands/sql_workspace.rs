@@ -222,9 +222,13 @@ pub async fn release_sql_result(
         state
             .copy_manager
             .cancel_session(SQL_WORKSPACE_DOCUMENT_ID, &result_id, true);
+        let service = state.query_service(&app)?;
+        service.release_sql_result(&run_id, &result_id)?;
+        let pinned = service.sql_chart_reader(&run_id, &result_id, None).is_ok();
         state
-            .query_service(&app)?
-            .release_sql_result(&run_id, &result_id)
+            .charts
+            .invalidate_sql_detail(&run_id, &result_id, None, pinned);
+        Ok(())
     })
     .await
     .map_err(|_| DataError::query_failed("SQL result could not be released."))?
@@ -408,9 +412,15 @@ pub async fn release_sql_result_view(
     view_id: String,
     app: AppHandle,
 ) -> Result<(), DataError> {
-    let service = app.state::<AppState>().query_service(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        service.release_sql_result_view(&run_id, &result_id, &view_id)
+        let state = app.state::<AppState>();
+        state
+            .query_service(&app)?
+            .release_sql_result_view(&run_id, &result_id, &view_id)?;
+        state
+            .charts
+            .invalidate_sql_detail(&run_id, &result_id, Some(&view_id), true);
+        Ok(())
     })
     .await
     .map_err(|_| DataError::query_failed("SQL result view could not be released."))?

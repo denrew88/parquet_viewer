@@ -31,7 +31,7 @@ Data Viewer는 CSV와 Parquet 파일을 탐색하고 분석하는 Windows용 데
 
 여러 CSV·Parquet 파일을 열면 **Tables**에 표시된 별칭으로 `JOIN`할 수 있다. **Explain**은 실행 계획을 표시하고, **Analyze**는 쿼리를 실행하여 연산별 시간을 표시한다. SQL 조회 조건은 파일 탭의 필터와 별도로 `WHERE` 절에 지정한다.
 
-![SQL 결과 그리드와 현재 보기·전체 결과 내보내기 메뉴](artifacts/phase-23/ui/browser-desktop-export.png)
+![SQL 결과 그리드와 현재 보기·전체 결과 내보내기 메뉴](docs/images/sql-results-export.png)
 
 ## 파일과 SQL 결과를 차트로 비교하기
 

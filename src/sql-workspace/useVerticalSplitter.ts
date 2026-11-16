@@ -9,11 +9,11 @@ export function clampQueryPane(totalHeight: number, preferred: number | null) {
   );
   const compact = available < 485;
   const minimumQuery = compact ? 125 : 140;
-  const minimumOutput = compact ? 252 : 280;
+  const minimumOutput = compact ? 270 : 280;
   const fits = available >= minimumQuery + minimumOutput;
   const min = fits ? minimumQuery : Math.floor(available * 0.4);
   const max = fits ? available - minimumOutput : min;
-  const defaultTop = compact ? available * 0.37 : Math.max(205, Math.min(320, available * 0.4));
+  const defaultTop = compact ? available * 0.33 : Math.max(205, Math.min(320, available * 0.4));
   const requested = preferred !== null && Number.isFinite(preferred) ? preferred : defaultTop;
   return { min, max, top: Math.max(min, Math.min(max, Math.round(requested))) };
 }

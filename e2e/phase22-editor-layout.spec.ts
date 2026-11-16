@@ -81,6 +81,9 @@ test("T-P22-LAYOUT-004/007 long query scroll exposes its tail without widening t
   page,
 }, info) => {
   const workspace = await setup(page);
+  const helpToggle = workspace.getByRole("button", { name: "Examples & help", exact: true });
+  await helpToggle.click();
+  await expect(helpToggle).toHaveAttribute("aria-expanded", "true");
   const long =
     "SELECT " + Array.from({ length: 140 }, (_, i) => `field_${i}`).join(", ") + " AS END_TAIL";
   await editor(workspace).fill(long);

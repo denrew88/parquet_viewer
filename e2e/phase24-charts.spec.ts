@@ -91,21 +91,26 @@ test("Phase 24 SQL tab naming keeps the editor, result, and linked chart", async
   expect(resultId).toBeTruthy();
   await openSql(page);
   const tab = sqlTabs(page).getByRole("tab", { name: "Query 1", exact: true });
-  const name = page.getByRole("textbox", { name: "SQL tab name", exact: true });
+  const name = sqlTabs(page).getByRole("textbox", { name: "SQL tab name", exact: true });
 
   await tab.press("F2");
   await expect(name).toBeFocused();
   await expect(name).toHaveValue("Query 1");
   await name.fill(" ");
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await name.press("Enter");
+  await expect(name).toBeFocused();
+  await expect(tab).toHaveAttribute("id", "sql-tab-query-1");
   await name.press("Escape");
   await expect(tab).toBeFocused();
 
   await tab.dblclick();
   await expect(name).toBeFocused();
-  await name.press("Escape");
-  await page.getByRole("button", { name: "Rename tab", exact: true }).click();
+  const [fieldBounds, tabBounds] = await Promise.all([name.boundingBox(), tab.boundingBox()]);
+  expect(Math.abs(fieldBounds!.x - tabBounds!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fieldBounds!.y - tabBounds!.y)).toBeLessThanOrEqual(1);
   await name.fill("  요가 주문  ");
+  await name.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true });
+  await expect(name).toBeFocused();
   const controls = page.getByRole("navigation", { name: "SQL tab controls", exact: true });
   await expectInsideViewport(controls);
   await expectNoHorizontalPageOverflow(page);
@@ -153,8 +158,8 @@ test("Phase 24 T-P24-001/002/006 keeps SQL tabs independent and refreshes only l
   await chooseOption(combo(charts(page), "Filter column"), /^amount$/);
   await charts(page).getByRole("textbox", { name: "Filter value", exact: true }).fill("200000.25");
   await charts(page).getByRole("button", { name: "Apply filter", exact: true }).click();
-  await expect(left).toContainText("1 valid rows");
-  await expect(right).toContainText("4 valid rows");
+  await expect(left.getByText(/^1 valid row · /)).toBeVisible();
+  await expect(right.getByText(/^4 valid rows · /)).toBeVisible();
   const firstId = await left.getAttribute("data-result-id");
   const secondId = await right.getAttribute("data-result-id");
   expect(firstId).toBeTruthy();

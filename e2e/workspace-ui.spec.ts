@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { openMockFile } from "./helpers";
 import fs from "node:fs/promises";
 
@@ -266,15 +267,21 @@ test("validates application settings and storage controls", async ({ page }) => 
   await page.getByRole("button", { name: "Settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings" });
   await expect(dialog).toBeVisible();
+  await selectSettingsCategory(dialog, "Storage");
   await expect(dialog.getByText(/Total app-managed storage:/)).toContainText("0 B");
   await expect(dialog.getByRole("heading", { name: "Query temporary data" })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Reusable CSV cache" })).toBeVisible();
-  await expect(dialog.getByText("Browser mock (no persistent cache)")).toBeVisible();
+  await expect(
+    dialog
+      .getByRole("region", { name: "Reusable CSV cache", exact: true })
+      .getByText("C:\\Data Viewer\\csv-cache-v1", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByText(/20\.00 GiB available on disk/)).toBeVisible();
 
   const limit = dialog.getByRole("spinbutton", { name: "Overall managed storage limit" });
   const copyCells = dialog.getByRole("spinbutton", { name: "Maximum cells" });
   const copyMiB = dialog.getByRole("spinbutton", { name: "Maximum clipboard size" });
+  await selectSettingsCategory(dialog, "Copy");
   await expect(copyCells).toHaveValue("1000000");
   await expect(copyMiB).toHaveValue("64");
   await copyCells.fill("999");
@@ -286,6 +293,7 @@ test("validates application settings and storage controls", async ({ page }) => 
   await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
   await copyCells.fill("1000");
   await copyMiB.fill("256");
+  await selectSettingsCategory(dialog, "Storage");
   await limit.fill("0.01");
   await expect(dialog.getByRole("alert")).toContainText("64 MiB");
   await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
@@ -299,12 +307,14 @@ test("validates application settings and storage controls", async ({ page }) => 
   await expect(dialog.getByText(/CSV cache clear finished/)).toContainText(
     "Source CSV files were not changed",
   );
+  await selectSettingsCategory(dialog, "CSV");
   await dialog.getByRole("button", { name: "All Text" }).click();
   await expect(dialog.getByText(/Keep every column as text/)).toBeVisible();
   await dialog.getByRole("button", { name: "Apply" }).click();
   await expect(dialog).toHaveCount(0);
 
   await page.getByRole("button", { name: "Settings" }).click();
+  await selectSettingsCategory(dialog, "Storage");
   await expect(
     dialog.getByRole("spinbutton", { name: "Overall managed storage limit" }),
   ).toHaveValue("0.3");
@@ -334,11 +344,13 @@ test("validates application settings and storage controls", async ({ page }) => 
       2,
     ),
   );
+  await selectSettingsCategory(dialog, "CSV");
   await expect(
     page.getByRole("dialog", { name: "Application settings" }).getByRole("button", {
       name: "All Text",
     }),
   ).toHaveAttribute("aria-pressed", "true");
+  await selectSettingsCategory(dialog, "Copy");
   await expect(
     page
       .getByRole("dialog", { name: "Application settings" })

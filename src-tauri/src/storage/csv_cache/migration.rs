@@ -103,6 +103,34 @@ pub(super) fn validate_cache_location(root: &Path, configured: bool) -> Result<(
     Ok(())
 }
 
+/// Checks an existing managed folder without creating directories or markers.
+pub(crate) fn validate_existing_storage_directory(root: &Path) -> Result<(), DataError> {
+    if !root.is_absolute()
+        || root
+            .to_str()
+            .is_none_or(|path| path.is_empty() || path.len() > 4096 || path.contains('\0'))
+    {
+        return Err(DataError::invalid_request(
+            "The storage folder must be an absolute local directory.",
+        ));
+    }
+    reject_reparse(root)?;
+    let metadata = fs::metadata(root).map_err(|error| DataError::io(root, error))?;
+    if !metadata.is_dir() {
+        return Err(DataError::invalid_request(format!(
+            "The storage location is not an existing folder: {}",
+            root.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Reuses cache ownership checks through the strictly read-only branch.
+pub(crate) fn validate_existing_csv_cache_directory(root: &Path) -> Result<(), DataError> {
+    validate_existing_storage_directory(root)?;
+    validate_cache_location(root, true)
+}
+
 fn destination(source: &Path, parent: &Path) -> Result<PathBuf, DataError> {
     reject_reparse(parent)?;
     if !parent.is_absolute() || !parent.is_dir() {

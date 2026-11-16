@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { Maximize, Undo2, ZoomIn, ZoomOut } from "lucide-react";
-import { chartDataZoom, readNumericPlotGrid, usePlotZoom, type PlotZoomCache } from "./usePlotZoom";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { Maximize, RotateCcw, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  chartDataZoom,
+  readNumericPlotGrid,
+  usePlotZoom,
+  type PlotView,
+  type PlotZoomCache,
+} from "./usePlotZoom";
 import "./ChartZoom.css";
 import {
+  format,
   init,
   use as registerCharts,
   type EChartsCoreOption,
@@ -11,8 +18,23 @@ import {
 import { BarChart, BoxplotChart, CustomChart, LineChart, ScatterChart } from "echarts/charts";
 import { DataZoomComponent, GridComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import type { ChartData, ChartRequest, ChartScale } from "./contract";
+import type {
+  ChartBackend,
+  ChartData,
+  ChartDetailRequest,
+  ChartExtent,
+  ChartRequest,
+  ChartScale,
+} from "./contract";
 import type { ChartImageSnapshot } from "./chartImageRender";
+import {
+  chartDetailRange,
+  extentTooltip,
+  groupObservations,
+  lineBucketSeries,
+  scatterTileSeries,
+  sparseBarSeries,
+} from "./chartFidelitySeries";
 import { chartScales, type ChartKind, type ChartOptions } from "./chartModel";
 import {
   BLUE,
@@ -22,6 +44,7 @@ import {
   categoryName,
   distributionOutliers,
   distributionTooltip,
+  firstDatum,
   formatCoordinate,
   histogramSeries,
   lineCoordinates,
@@ -30,6 +53,8 @@ import {
   temporalTooltipFormatter,
   violinSeries,
 } from "./chartSeries";
+import { useChartDetail, type ChartDetailCache } from "./useChartDetail";
+import type { ChartScheduler, RenderedChart } from "./useChartJob";
 
 registerCharts([
   BarChart,
@@ -45,6 +70,7 @@ registerCharts([
 
 const numberFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 15 });
 const tickFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 8 });
+const MAX_FILLED_LINE_POINTS = 4_000;
 
 function formatNumericTick(value: number) {
   const magnitude = Math.abs(value);
@@ -56,7 +82,6 @@ function formatNumericTick(value: number) {
 interface PlotProps {
   data: ChartData;
   kind: ChartKind;
-  title: string;
   x: string;
   y: string | null;
   xScale: ChartScale;
@@ -68,12 +93,19 @@ interface PlotProps {
 }
 
 interface ChartPlotProps extends PlotProps {
+  title: string;
   zoomCache?: PlotZoomCache;
   cardId?: string;
   viewKey?: string;
   imageRequest: Omit<ChartRequest, "requestId">;
+  overview: RenderedChart;
+  backend: ChartBackend;
+  scheduler: ChartScheduler;
+  detailCache: ChartDetailCache;
+  inspectRanges: boolean;
   captureImage?: RefObject<(() => ChartImageSnapshot) | null>;
   onCaptureReady?(ready: boolean): void;
+  onExactScatterDetail?(visible: boolean): void;
 }
 
 function axisTitle(name: string, scale: ChartScale, origin?: string, unit?: string) {
@@ -232,11 +264,45 @@ function plotOption({
     details: kind === "scatter" ? data.pointDetails : undefined,
   });
   if (kind === "scatter" || kind === "line") {
+    const evidence = kind === "scatter" ? data.scatterTiles : data.lineBuckets;
+    const bucketGaps = kind === "line" && data.sampled ? data.lineBuckets : undefined;
+    const evidenceSeries = evidence?.length
+      ? kind === "scatter"
+        ? scatterTileSeries(evidence)
+        : lineBucketSeries(evidence)
+      : null;
     return {
       ...base,
       xAxis: valueAxis(xTitle, xFormatter, data.xUnit),
       yAxis: valueAxis(yTitle, yFormatter, data.yUnit),
-      tooltip: { ...tooltip, trigger: kind === "line" ? "axis" : "item", formatter: formatPoint },
+      tooltip: {
+        ...tooltip,
+        ...(kind === "scatter"
+          ? {
+              renderMode: "html",
+              className: "chart-point-tooltip",
+              backgroundColor: "rgba(255, 255, 255, 0.85)",
+              enterable: false,
+              extraCssText:
+                "z-index:2;white-space:pre-line;max-width:calc(100% - 16px);overflow-wrap:anywhere",
+            }
+          : {}),
+        trigger: kind === "line" ? "axis" : "item",
+        formatter: (params: Parameters<typeof formatPoint>[0]) => {
+          const items = Array.isArray(params) ? params : [params];
+          const mark = items.find((item) => item.seriesIndex === 1);
+          const point = items.find((item) => item.seriesIndex === 0);
+          const content = evidenceSeries
+            ? [
+                point ? formatPoint(point) : "",
+                mark ? extentTooltip(evidence?.[mark.dataIndex], xFormat, yFormat) : "",
+              ]
+                .filter(Boolean)
+                .join("\n")
+            : formatPoint(params);
+          return kind === "scatter" ? format.encodeHTML(content) : content;
+        },
+      },
       series: [
         kind === "scatter"
           ? {
@@ -251,19 +317,25 @@ function plotOption({
               progressiveThreshold: 4000,
               progressiveChunkMode: "mod",
               emphasis: { disabled: true },
+              z: 3,
             }
           : {
               type: "line",
               name: y ?? "Value",
               dimensions: [xTitle, yTitle],
-              data: lineCoordinates(data.points ?? [], options.lineGap, data.xUnit),
+              data: lineCoordinates(data.points ?? [], options.lineGap, data.xUnit, bucketGaps),
               connectNulls: false,
               showSymbol: (data.points?.length ?? 0) < 80,
               symbolSize: 4,
               lineStyle: { color: BLUE, width: markSize },
               itemStyle: { color: BLUE },
-              areaStyle: { color: "#e8f0f6" },
+              // Dense, jagged lines make a costly filled polygon. Keep every
+              // point and gap in the stroke and exact hover data.
+              ...((data.points?.length ?? 0) <= MAX_FILLED_LINE_POINTS
+                ? { areaStyle: { color: "#e8f0f6" } }
+                : {}),
             },
+        ...(evidenceSeries ? [evidenceSeries] : []),
       ],
     };
   }
@@ -333,15 +405,25 @@ function plotOption({
             fontSize: 10,
           },
         },
+        sparseBarSeries(bars.values, vertical),
       ],
     };
   }
   const ordered = sortGroups(groups, options.groupOrder);
   const outliers = distributionOutliers(ordered);
   const showOutliers = options.showOutliers ?? true;
+  const observations = groupObservations(ordered);
+  const outlierSeries = showOutliers && outliers.values.length > 0;
   const category = categoryAxis(
     xTitle,
     ordered.map((group) => group.label),
+  );
+  const tooltipDistribution = distributionTooltip(
+    ordered,
+    outliers.values,
+    yFormat,
+    showOutliers,
+    kind === "box" ? (options.whiskers ?? "iqr") : "iqr",
   );
   return {
     ...base,
@@ -350,13 +432,12 @@ function plotOption({
     yAxis: valueAxis(yTitle, yFormatter, data.yUnit),
     tooltip: {
       ...tooltip,
-      formatter: distributionTooltip(
-        ordered,
-        outliers.values,
-        yFormat,
-        showOutliers,
-        kind === "box" ? (options.whiskers ?? "iqr") : "iqr",
-      ),
+      formatter: (params: Parameters<typeof tooltipDistribution>[0]) => {
+        const item = firstDatum(params);
+        if (item?.seriesIndex === (outlierSeries ? 2 : 1) && observations.values.length)
+          return observations.tooltip(item.dataIndex, yFormat);
+        return tooltipDistribution(params);
+      },
     },
     series: [
       kind === "violin"
@@ -372,7 +453,8 @@ function plotOption({
             }),
             itemStyle: { color: "#e6ddef", borderColor: PURPLE },
           },
-      ...(showOutliers && outliers.values.length ? [outliers.series] : []),
+      ...(outlierSeries ? [outliers.series] : []),
+      ...(observations.values.length ? [observations.series] : []),
     ],
   };
 }
@@ -393,11 +475,23 @@ export default function ChartPlot({
   scatterLabel,
   barAggregate,
   imageRequest,
+  overview,
+  backend,
+  scheduler,
+  detailCache,
+  inspectRanges,
   captureImage,
   onCaptureReady,
+  onExactScatterDetail,
 }: ChartPlotProps) {
   const surface = useRef<HTMLDivElement>(null);
   const chart = useRef<EChartsType | null>(null);
+  const exportTitle = useRef(title);
+  const fullDomain = useRef<{ key: string; extent: ChartExtent } | null>(null);
+  const [range, setRange] = useState<{
+    key: string;
+    value: Extract<ChartDetailRequest, { kind: "range" }>;
+  } | null>(null);
   const [error, setError] = useState(false);
   const zoomKey = JSON.stringify([
     viewKey ?? kind,
@@ -405,8 +499,46 @@ export default function ChartPlot({
     kind === "histogram" ? (options?.histogramNormalization ?? "count") : null,
     kind === "violin" || kind === "box" ? (options?.groupOrder ?? "label") : null,
   ]);
-  const zoom = usePlotZoom(chart, zoomCache, cardId, zoomKey);
+  const refine =
+    inspectRanges &&
+    (((kind === "scatter" || kind === "line") && data.sampled) ||
+      (kind === "histogram" && imageRequest.histogram?.mode !== "width"));
+  const onViewChange = useCallback(
+    (view: PlotView | null) => {
+      const domain = fullDomain.current;
+      const value =
+        view && domain?.key === zoomKey
+          ? chartDetailRange(view, domain.extent, kind === "scatter")
+          : null;
+      setRange((old) => {
+        if (!value) return null;
+        if (old?.key === zoomKey && JSON.stringify(old.value) === JSON.stringify(value)) return old;
+        return { key: zoomKey, value };
+      });
+    },
+    [kind, zoomKey],
+  );
+  const zoom = usePlotZoom(chart, zoomCache, cardId, zoomKey, onViewChange);
   const { onNativeZoom, restore, currentView } = zoom;
+  const detail = useChartDetail({
+    detail: refine && range?.key === zoomKey ? range.value : null,
+    overview,
+    active: refine,
+    backend,
+    scheduler,
+    cache: detailCache,
+  });
+  const exactScatterDetail =
+    kind === "scatter" && detail.data !== undefined && !detail.data.scatterTiles?.length;
+
+  useEffect(() => {
+    onExactScatterDetail?.(exactScatterDetail);
+    return () => onExactScatterDetail?.(false);
+  }, [exactScatterDetail, onExactScatterDetail]);
+
+  useLayoutEffect(() => {
+    exportTitle.current = title;
+  }, [title]);
 
   useEffect(() => {
     const element = surface.current;
@@ -416,7 +548,13 @@ export default function ChartPlot({
       chart.current = instance;
       instance.on("datazoom", onNativeZoom);
       const observer = new ResizeObserver(() => {
-        if (element.clientWidth > 0 && element.clientHeight > 0) instance.resize();
+        const { clientWidth: width, clientHeight: height } = element;
+        if (
+          width > 0 &&
+          height > 0 &&
+          (width !== instance.getWidth() || height !== instance.getHeight())
+        )
+          instance.resize({ width, height });
       });
       observer.observe(element);
       return () => {
@@ -435,20 +573,56 @@ export default function ChartPlot({
     try {
       const instance = chart.current;
       if (!instance) return;
-      const option = plotOption({
-        data,
-        kind,
-        title,
-        x,
-        y,
-        xScale,
-        yScale,
-        markSize,
-        options,
-        scatterLabel,
-        barAggregate,
-      });
+      const plot = (plotData: ChartData) =>
+        plotOption({
+          data: plotData,
+          kind,
+          x,
+          y,
+          xScale,
+          yScale,
+          markSize,
+          options,
+          scatterLabel,
+          barAggregate,
+        });
+      const withDomain = (option: EChartsCoreOption, extent: ChartExtent, refined = false) => {
+        const axisDomain = (value: unknown, min: number, max: number) => {
+          const axis = value as { axisLabel?: object };
+          return {
+            ...axis,
+            min,
+            max,
+            ...(refined && {
+              axisLabel: { ...axis.axisLabel, showMinLabel: false, showMaxLabel: false },
+            }),
+          };
+        };
+        return {
+          ...option,
+          xAxis: axisDomain(option.xAxis, extent[0], extent[1]),
+          yAxis: axisDomain(option.yAxis, extent[2], extent[3]),
+        };
+      };
+      let overviewOption = plot(data);
+      let option = detail.data ? plot(detail.data) : overviewOption;
+      const domain = fullDomain.current;
+      if (refine && domain?.key === zoomKey) {
+        option = withDomain(option, domain.extent, detail.data !== undefined);
+        overviewOption = withDomain(overviewOption, domain.extent);
+      }
       instance.setOption(option, { notMerge: true });
+      if (refine && domain?.key !== zoomKey) {
+        try {
+          const extent = readNumericPlotGrid(instance).extent;
+          fullDomain.current = { key: zoomKey, extent };
+          option = withDomain(option, extent, detail.data !== undefined);
+          overviewOption = withDomain(overviewOption, extent);
+          instance.setOption({ xAxis: option.xAxis, yAxis: option.yAxis });
+        } catch {
+          // A temporarily undersized plot can still render its overview.
+        }
+      }
       restore(instance);
       if (captureImage) {
         captureImage.current = () => {
@@ -458,13 +632,14 @@ export default function ChartPlot({
             throw new Error("The chart has no visible area to export.");
           const view = currentView();
           return {
-            title,
+            title: exportTitle.current,
             kind,
             request: imageRequest,
             width,
             height,
             totalRows: data.totalRows,
             option,
+            overviewOption,
             view,
             scatterExtent: data.scatterExtent,
             scatterView:
@@ -484,7 +659,6 @@ export default function ChartPlot({
   }, [
     data,
     kind,
-    title,
     x,
     y,
     xScale,
@@ -498,6 +672,9 @@ export default function ChartPlot({
     captureImage,
     onCaptureReady,
     currentView,
+    detail.data,
+    refine,
+    zoomKey,
   ]);
 
   return (
@@ -511,9 +688,43 @@ export default function ChartPlot({
       }}
     >
       <div className="chart-zoom-toolbar" role="group" aria-label="Chart zoom">
-        <span className="chart-zoom-hint" title="Drag to zoom · Shift+drag to pan">
-          Drag to zoom · Shift+drag to pan
-        </span>
+        {detail.status ? (
+          <span className="chart-zoom-hint" role="status" title={detail.error}>
+            {detail.status === "loading"
+              ? "Preparing detail…"
+              : detail.status === "cancelled"
+                ? "Detail cancelled · Showing overview"
+                : detail.status === "error"
+                  ? "Detail unavailable · Showing overview"
+                  : detail.data?.validRows === 0
+                    ? "No observations in view"
+                    : `${numberFormat.format(detail.data?.validRows ?? 0)} ${detail.data?.validRows === 1 ? "row" : "rows"} in view${detail.data?.sampled ? " · Aggregated" : ""}`}
+          </span>
+        ) : (
+          <span className="chart-zoom-hint" title="Drag to zoom · Shift+drag to pan">
+            Drag to zoom · Shift+drag to pan
+          </span>
+        )}
+        {detail.status === "loading" && (
+          <button
+            type="button"
+            aria-label="Cancel detail"
+            title="Cancel detail"
+            onClick={detail.cancel}
+          >
+            <X aria-hidden="true" />
+          </button>
+        )}
+        {(detail.status === "cancelled" || detail.status === "error") && (
+          <button
+            type="button"
+            aria-label="Retry detail"
+            title="Retry detail"
+            onClick={detail.retry}
+          >
+            <RotateCcw aria-hidden="true" />
+          </button>
+        )}
         <button
           type="button"
           aria-label="Zoom in"

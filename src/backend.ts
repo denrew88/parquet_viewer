@@ -16,6 +16,11 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { defaultAppSettings, parseAppSettings, type AppSettings } from "./settings/model";
+import {
+  isStorageFolderKind,
+  parseStorageLocations,
+  type StorageFolderBackend,
+} from "./settings/storageFolders";
 import type { QueryPlan } from "./query/model";
 
 export interface HealthCheckResponse {
@@ -629,6 +634,7 @@ export type OpenRequestErrorHandler = (error: DataViewerError) => void;
 
 export interface BackendAdapter extends ColumnValuesBackend, CacheManagementBackend {
   sqlWorkspace?: SqlWorkspaceBackend;
+  storageFolders?: StorageFolderBackend;
   healthCheck(): Promise<HealthCheckResponse>;
   listSupportedFormats(): Promise<FormatDescriptor[]>;
   getSettings(): Promise<AppSettings>;
@@ -2844,6 +2850,25 @@ async function validatedInvoke<T>(
 
 export const tauriBackend: BackendAdapter = {
   sqlWorkspace: createSqlWorkspaceTransport(),
+  storageFolders: {
+    getLocations() {
+      return validatedInvoke("get_storage_locations", undefined, (value) => {
+        try {
+          return parseStorageLocations(value);
+        } catch {
+          throw new DataViewerError("InvalidResponse", "Storage locations could not be read.");
+        }
+      });
+    },
+    openFolder(kind) {
+      if (!isStorageFolderKind(kind))
+        return Promise.reject(new DataViewerError("InvalidRequest", "Unknown storage folder."));
+      return validatedInvoke("open_storage_folder", { kind }, (value) => {
+        if (value !== null && value !== undefined)
+          throw new DataViewerError("InvalidResponse", "The folder could not be opened.");
+      });
+    },
+  },
   ...createColumnValuesTransport(parseCopyOperationStatus),
   async healthCheck() {
     return validatedInvoke("health_check", undefined, (response) => {
@@ -3901,6 +3926,21 @@ function browserOpenedDataFile(path: string, itemIndex: number): OpenedDataFile 
 }
 
 export const browserMockBackend: BackendAdapter = {
+  storageFolders: {
+    async getLocations() {
+      return {
+        csvCache: {
+          path: browserSettings.csvCacheDirectory ?? "C:\\Data Viewer\\csv-cache-v1",
+          available: true,
+        },
+        queryTemp: { path: "C:\\Data Viewer\\query-temp", available: true },
+      };
+    },
+    async openFolder(kind) {
+      if (!isStorageFolderKind(kind))
+        throw new DataViewerError("InvalidRequest", "Unknown storage folder.");
+    },
+  },
   sqlWorkspace: createSqlWorkspaceMock(
     (status) => browserCopyOperations.set(status.operationId, status),
     waitForBrowserBoundaryNavigation,

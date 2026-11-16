@@ -6,6 +6,7 @@ import type {
   ChartSeed,
   ChartSourceOption,
   ChartSqlSource,
+  SqlReference,
 } from "./contract";
 
 export type ChartKind = ChartRequest["kind"];
@@ -77,6 +78,7 @@ export type ChartBinding =
       name: string;
       source: ChartSqlSource;
       columns: ChartColumn[];
+      sqlReference?: SqlReference;
     }
   | { kind: "block"; block: Block };
 

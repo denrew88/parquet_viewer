@@ -1,0 +1,21 @@
+[
+  {"value":"csvCache","valid":true},
+  {"value":"queryTemp","valid":true},
+  {"value":"","valid":false},
+  {"value":"CSVCache","valid":false},
+  {"value":"querytemp","valid":false},
+  {"value":"cache","valid":false},
+  {"value":"query-temp","valid":false},
+  {"value":"../query-temp","valid":false},
+  {"value":"C:\\Users\\test\\private","valid":false},
+  {"value":"\\\\server\\share","valid":false},
+  {"value":"csvCache\u0000queryTemp","valid":false},
+  {"value":null,"valid":false},
+  {"value":false,"valid":false},
+  {"value":0,"valid":false},
+  {"value":[],"valid":false},
+  {"value":["csvCache"],"valid":false},
+  {"value":{},"valid":false},
+  {"value":{"kind":"csvCache"},"valid":false},
+  {"value":{"kind":"queryTemp","path":"C:\\private"},"valid":false}
+]

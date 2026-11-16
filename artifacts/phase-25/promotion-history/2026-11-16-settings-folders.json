@@ -1,0 +1,57 @@
+{
+  "promotedOn": "2026-11-16",
+  "phase": 25,
+  "version": "0.25.0",
+  "scope": "Settings redesign and managed-folder opening",
+  "binary": "src-tauri/target/release/data-viewer.exe",
+  "bytes": 62542848,
+  "sha256": "041AD9484900D7D274A0F6D40E508EA5723F4A498F247458BC6D595C5FF575D5",
+  "previousSha256": "F303CC4808A98724088529B7A546C4EF249117481E5AD7CBFB826FC6D0CE5D59",
+  "previousReceipt": "artifacts/phase-25/promotion-history/2026-11-16-sql-scale-ctrl-a.json",
+  "operation": "User-approved byte-identical copy of verified candidate; no rebuild",
+  "testedSource": "src-tauri/target/release/candidates/phase-25-settings/data-viewer.exe",
+  "settingsReview": "artifacts/phase-25/settings/90-review.md",
+  "frontend": {
+    "static": "pass",
+    "finalSettingsUnitPassed": 50,
+    "failedCopyCategoryTestRetriedAndPassed": true,
+    "fullRunPassed": 979
+  },
+  "rust": {
+    "clippy": "pass",
+    "format": "pass",
+    "ignored": 19,
+    "folderUnitPassed": 9,
+    "passed": 491
+  },
+  "browser": {
+    "failedCancellationCaseRetriedWithoutChanges": "passed in all 3 viewports",
+    "skipped": 4,
+    "uniqueCasesVerified": 359,
+    "fullRunPassed": 358
+  },
+  "nativeVerification": {
+    "automaticAttempts": "Retained as failures: observer normalization and legitimate reused HWND rejected by strict new-window test",
+    "evidence": "artifacts/phase-25/settings/native/manual-results.json",
+    "queryTemp": {
+      "state": "pass",
+      "hwnd": 787624,
+      "actualPath": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-phase25-acceptance\\query-temp",
+      "source": "Explorer address bar after physical Viewer Open folder click; Ctrl+L read only"
+    },
+    "method": "Physical Viewer button clicks and exact Explorer address bar read",
+    "state": "pass",
+    "csvCache": {
+      "state": "pass",
+      "hwnd": 1968666,
+      "actualPath": "C:\\Users\\denrew\\AppData\\Local\\com.denrew88.data-viewer-phase25-acceptance\\csv-cache-v1",
+      "source": "Explorer address bar after physical Viewer Open folder click; Ctrl+L read only"
+    }
+  },
+  "formalGuiLaunch": {
+    "state": "interrupted",
+    "reason": "User pressed physical Escape during optional formal-path launch; no further computer use performed"
+  },
+  "phaseStatus": "in progress; unrelated real OS file-drop gate remains separate",
+  "distribution": "Local EXE promotion only; no installer or external publication"
+}

@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { expectInsideViewport, expectNoHorizontalPageOverflow, openMockFile } from "./helpers";
 
@@ -239,6 +240,7 @@ test("display formats expose primary controls and one inline detail accordion", 
   if (!artifactName) throw new Error(`Unexpected Playwright project: ${testInfo.project.name}`);
   await page.getByRole("button", { name: "Settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings" });
+  await selectSettingsCategory(dialog, "Display");
   const title = dialog.getByRole("heading", { name: "Settings", exact: true });
   const section = dialog.getByRole("heading", { name: "Value display formats" });
   await expect(title).toBeVisible();
@@ -318,10 +320,10 @@ test("display formats expose primary controls and one inline detail accordion", 
       bodyClientWidth: document.body.clientWidth,
     };
   });
-  expect(typography.title).toBe("16px");
-  expect(typography.section).toBe("13px");
-  expect(typography.type).toBe("12px");
-  expect(typography.preview).toBe("11px");
+  expect(typography.title).toBe("18px");
+  expect(typography.section).toBe("14px");
+  expect(typography.type).toBe("13px");
+  expect(typography.preview).toBe("13px");
   expect(typography.bodyScrollWidth).toBeLessThanOrEqual(typography.bodyClientWidth + 1);
   await expectInsideViewport(dialog);
   await capture(page, "settings-accordion", testInfo);
@@ -359,9 +361,16 @@ test("column drag floats mounted cells, live-reflows peers, and restores source 
   await expect(page.locator(".virtual-grid__column-header.is-insert-before")).toHaveCount(0);
   await expect(page.locator(".virtual-grid__column-header.is-insert-after")).toHaveCount(0);
 
+  const expectedRowIdX = before[0].x + before[1].width;
+  await expect
+    .poll(async () => {
+      const header = await rowId.boundingBox();
+      return header ? Math.abs(header.x - expectedRowIdX) : Infinity;
+    })
+    .toBeLessThanOrEqual(1);
   const duringRowId = await rowId.boundingBox();
   if (!duringRowId) throw new Error("Reflowed row_id header has no geometry.");
-  expect(Math.abs(duringRowId.x - (before[0].x + before[1].width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(duringRowId.x - expectedRowIdX)).toBeLessThanOrEqual(1);
   expect((await probe(page)).readPage).toBe(readsBefore);
   await capture(page, "column-live-drag", testInfo);
   await page.mouse.up();

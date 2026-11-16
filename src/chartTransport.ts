@@ -7,6 +7,7 @@ import {
   type ChartImageCopy,
   type ChartImageProgress,
   type ChartLiveSource,
+  type ChartSource,
   type ChartRequest,
   type ChartScale,
   type ChartTransport,
@@ -25,8 +26,11 @@ async function call<T>(command: string, args: Record<string, unknown>): Promise<
 export function createChartTransport(backend: BackendAdapter): ChartTransport {
   if (!isTauri()) return browserCharts(backend);
   return {
-    compute: (request) => call("compute_chart", { request }),
+    compute: ({ detail, ...request }) =>
+      call("compute_chart", { request, ...(detail === undefined ? {} : { detail }) }),
     capture: (request) => call("capture_chart_selection", { request }),
+    readBlockPreview: (blockId, limit, columns) =>
+      call("read_chart_block_preview", { blockId, limit, columns }),
     cancel: (requestId) => call("cancel_chart", { requestId }),
     releaseBlock: (blockId) => call("release_chart_block", { blockId }),
     retainResult: ({ runId, resultId }) => call("retain_chart_sql_result", { runId, resultId }),
@@ -44,10 +48,53 @@ export function createChartTransport(backend: BackendAdapter): ChartTransport {
 // statistics, numeric precision, sampling and quotas are exercised in Rust.
 function browserCharts(backend: BackendAdapter): ChartTransport {
   type Block = { columns: string[]; rows: DataValue[][]; start: number };
-  const blocks = new Map<string, Block>();
+  type ReferenceBlock = {
+    columns: string[];
+    source: Extract<ChartLiveSource, { kind: "sql" }>;
+    start: number;
+    end: number;
+  };
+  const mockDetailRows = 64_000;
+  const blocks = new Map<string, Block | ReferenceBlock>();
+  const detailInputs = new Map<string, Block>();
   const jobs = new Map<string, AbortController>();
 
-  async function read(source: ChartLiveSource, offset: number, limit: number, columns: string[]) {
+  function remember(key: string, input: Block) {
+    detailInputs.delete(key);
+    detailInputs.set(key, input);
+    if (detailInputs.size > 2) detailInputs.delete(detailInputs.keys().next().value!);
+  }
+
+  async function read(
+    source: ChartSource,
+    offset: number,
+    limit: number,
+    columns: string[],
+  ): Promise<import("./backend").DataPage> {
+    if (source.kind === "block") {
+      const block = blocks.get(source.blockId);
+      if (!block || columns.some((id) => !block.columns.includes(id)))
+        throw new Error("The chart selection is unavailable.");
+      const totalRows = "rows" in block ? block.rows.length : block.end - block.start;
+      const count = Math.max(0, Math.min(limit, totalRows - offset));
+      const values =
+        "rows" in block
+          ? block.rows
+              .slice(offset, offset + count)
+              .map((row) => columns.map((id) => row[block.columns.indexOf(id)]!))
+          : count
+            ? (await read(block.source, block.start + offset, count, columns)).rows
+            : [];
+      return {
+        sessionId: source.blockId,
+        offset,
+        limit,
+        columns,
+        totalRows,
+        hasMore: offset + values.length < totalRows,
+        rows: values,
+      };
+    }
     if (source.kind === "sql") {
       if (!backend.sqlWorkspace) throw new Error("SQL is unavailable.");
       return backend.sqlWorkspace.readPage({
@@ -72,7 +119,7 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
   }
 
   async function visitRows(
-    source: ChartLiveSource,
+    source: ChartSource,
     columns: string[],
     signal: AbortSignal,
     visit: (batch: DataValue[][], offset: number) => void,
@@ -84,14 +131,15 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
       const page = await read(source, offset, Math.min(100, end - offset), columns);
       signal.throwIfAborted();
       if (!page.rows.length) break;
-      visit(page.rows, offset);
+      const block = source.kind === "block" ? blocks.get(source.blockId) : undefined;
+      visit(page.rows, offset + (block?.start ?? 0));
       offset += page.rows.length;
       if (!page.hasMore) break;
     }
   }
 
   async function rows(
-    source: ChartLiveSource,
+    source: ChartSource,
     columns: string[],
     signal: AbortSignal,
     start = 0,
@@ -100,7 +148,8 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
     const values: DataValue[][] = [];
     await visitRows(source, columns, signal, (batch) => values.push(...batch), start, end);
     signal.throwIfAborted();
-    return { columns, rows: values, start };
+    const block = source.kind === "block" ? blocks.get(source.blockId) : undefined;
+    return { columns, rows: values, start: start + (block?.start ?? 0) };
   }
 
   async function run<T>(id: string, work: (signal: AbortSignal) => Promise<T>) {
@@ -119,7 +168,8 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
         if (request.source.kind === "block") {
           const block = blocks.get(request.source.blockId);
           if (!block) throw new Error("The chart selection is unavailable.");
-          return summarizeMock(request, block.columns, block.rows, block.start);
+          if ("rows" in block)
+            return summarizeMock(request, block.columns, block.rows, block.start);
         }
         const columns = [
           ...new Set(
@@ -128,6 +178,17 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
             ),
           ),
         ];
+        const key = JSON.stringify({ ...request, requestId: undefined, detail: undefined });
+        if (request.detail) {
+          let input = detailInputs.get(key);
+          if (!input) {
+            input = await rows(request.source, columns, signal, 0, mockDetailRows + 1);
+            if (input.rows.length > mockDetailRows)
+              throw new Error("The browser detail fixture exceeds its row limit.");
+            remember(key, input);
+          }
+          return summarizeMock(request, input.columns, input.rows, input.start);
+        }
         if (request.kind === "scatter") {
           const output: ChartData = {
             totalRows: 0,
@@ -139,10 +200,19 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
           };
           const points: NonNullable<ChartData["points"]> = [];
           const details: NonNullable<ChartData["pointDetails"]> = [];
+          let retained: DataValue[][] | undefined = [];
+          let coordinates: [number, number][] | undefined = [];
           let seen = 0;
           let state = 1;
           await visitRows(request.source, columns, signal, (batch, offset) => {
             const page = summarizeMock(request, columns, batch, offset);
+            if (retained && retained.length + batch.length <= mockDetailRows) {
+              retained.push(...batch);
+              coordinates?.push(...(page.points ?? []));
+            } else {
+              retained = undefined;
+              coordinates = undefined;
+            }
             output.totalRows += page.totalRows;
             output.validRows += page.validRows;
             output.excludedRows += page.excludedRows;
@@ -173,21 +243,59 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
           output.sampled = seen > points.length;
           output.points = points;
           output.pointDetails = details;
+          if (retained) remember(key, { columns, rows: retained, start: 0 });
+          if (output.sampled && coordinates && output.scatterExtent)
+            output.scatterTiles = mockScatterTiles(coordinates, output.scatterExtent);
           return output;
         }
-        const input = await rows(request.source, columns, signal);
+        const limit = request.kind === "line" ? mockDetailRows : 20_000;
+        const input = await rows(request.source, columns, signal, 0, limit);
+        if (input.rows.length < limit) remember(key, input);
         return summarizeMock(request, columns, input.rows);
       });
     },
     async capture({ requestId, source, selection }) {
       const length = selection.rowEndExclusive - selection.rowStart;
       if (
+        !Number.isSafeInteger(selection.rowStart) ||
+        selection.rowStart < 0 ||
+        !Number.isSafeInteger(selection.rowEndExclusive) ||
         length < 1 ||
-        length * selection.columnIds.length > MAX_CHART_BLOCK_CELLS ||
+        selection.columnIds.length < 1 ||
+        selection.columnIds.length > 64 ||
+        new Set(selection.columnIds).size !== selection.columnIds.length ||
+        (source.kind !== "sql" && length * selection.columnIds.length > MAX_CHART_BLOCK_CELLS) ||
+        blocks.has(requestId) ||
+        jobs.has(requestId) ||
         blocks.size >= 32
       )
         throw new Error("The chart selection exceeds the snapshot limit.");
       await run(requestId, async (signal) => {
+        if (source.kind === "sql") {
+          await backend.sqlWorkspace?.retainMockChartResult?.(
+            source.runId,
+            source.resultId,
+            source.viewId,
+            selection,
+          );
+          try {
+            signal.throwIfAborted();
+            blocks.set(requestId, {
+              columns: [...selection.columnIds],
+              source: { ...source },
+              start: selection.rowStart,
+              end: selection.rowEndExclusive,
+            });
+          } catch (error) {
+            await backend.sqlWorkspace?.releaseMockChartResult?.(
+              source.runId,
+              source.resultId,
+              source.viewId,
+            );
+            throw error;
+          }
+          return;
+        }
         const block = await rows(
           source,
           selection.columnIds,
@@ -206,7 +314,30 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
         ?.abort(new DataViewerError("TaskCancelled", "The data task was cancelled."));
     },
     async releaseBlock(blockId) {
+      const block = blocks.get(blockId);
       blocks.delete(blockId);
+      if (block && !("rows" in block))
+        await backend.sqlWorkspace?.releaseMockChartResult?.(
+          block.source.runId,
+          block.source.resultId,
+          block.source.viewId,
+        );
+    },
+    async readBlockPreview(blockId, limit, columns) {
+      const block = blocks.get(blockId);
+      if (!block) throw new Error("The chart selection is unavailable.");
+      const positions = columns.map((id) => block.columns.indexOf(id));
+      if (
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 6 ||
+        columns.length < 1 ||
+        columns.length > 8 ||
+        new Set(columns).size !== columns.length ||
+        positions.some((position) => position < 0)
+      )
+        throw new Error("Invalid chart selection preview request.");
+      return read({ kind: "block", blockId }, 0, limit, columns);
     },
     async retainResult({ runId, resultId }) {
       await backend.sqlWorkspace?.retainMockChartResult?.(runId, resultId);
@@ -254,16 +385,7 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
           parts.push(circles.join(""));
           onProgress?.({ scannedRows, writtenPoints });
         }
-        if (source.kind === "block") {
-          const block = blocks.get(source.blockId);
-          if (!block) throw new Error("The chart selection is unavailable.");
-          for (let offset = 0; offset < block.rows.length; offset += 100) {
-            signal.throwIfAborted();
-            append(block.rows.slice(offset, offset + 100), block.columns);
-          }
-        } else {
-          await visitRows(source, columns, signal, (batch) => append(batch, columns));
-        }
+        await visitRows(source, columns, signal, (batch) => append(batch, columns));
         signal.throwIfAborted();
         parts.push("</g></svg>");
         downloadMockImage(title, "svg", parts);
@@ -271,6 +393,27 @@ function browserCharts(backend: BackendAdapter): ChartTransport {
       });
     },
   };
+}
+
+function mockScatterTiles(
+  points: readonly [number, number][],
+  [xMin, xMax, yMin, yMax]: NonNullable<ChartData["scatterExtent"]>,
+): NonNullable<ChartData["scatterTiles"]> {
+  const side = 32;
+  const dx = (xMax - xMin) / side;
+  const dy = (yMax - yMin) / side;
+  const counts = new Map<number, number>();
+  for (const [x, y] of points) {
+    const col = dx > 0 ? Math.min(side - 1, Math.floor((x - xMin) / dx)) : 0;
+    const row = dy > 0 ? Math.min(side - 1, Math.floor((y - yMin) / dy)) : 0;
+    const index = row * side + col;
+    counts.set(index, (counts.get(index) ?? 0) + 1);
+  }
+  return Array.from(counts, ([index, count]) => {
+    const col = index % side;
+    const row = Math.floor(index / side);
+    return [xMin + col * dx, xMin + (col + 1) * dx, yMin + row * dy, yMin + (row + 1) * dy, count];
+  });
 }
 
 function decodeBase64(value: string) {
@@ -388,6 +531,13 @@ function summarizeMock(
   const histogramOutside = { below: 0, above: 0 };
   const samples: number[] = [];
   const groups = new Map<string, number[]>();
+  const detail = request.detail;
+  const range = detail?.kind === "range" ? detail : undefined;
+  const inRange = (x: number, y?: number) =>
+    !range ||
+    (x >= range.x[0] &&
+      x <= range.x[1] &&
+      (!range.y || (y !== undefined && y >= range.y[0] && y <= range.y[1])));
   let temporalOrigin: number | undefined;
   const aggregateLine =
     request.kind === "line" &&
@@ -419,6 +569,7 @@ function summarizeMock(
       continue;
     }
     if (request.kind === "scatter") {
+      if (!inRange(xv, yv)) continue;
       points.push([xv, yv]);
       const extent = data.scatterExtent ?? [xv, xv, yv, yv];
       data.scatterExtent = [
@@ -450,12 +601,15 @@ function summarizeMock(
       if (aggregateLine) {
         const interval = (request.line?.bucketSeconds ?? 0) * 1000;
         const key = toCoordinate(interval > 0 ? Math.floor(xv / interval) * interval : xv);
+        if (!inRange(key)) continue;
         const bucket = lineBuckets.get(key) ?? { sum: 0, count: 0 };
         bucket.sum += rawY;
         bucket.count++;
         lineBuckets.set(key, bucket);
       } else {
-        points.push([toCoordinate(xv), yv]);
+        const coordinate = toCoordinate(xv);
+        if (!inRange(coordinate)) continue;
+        points.push([coordinate, yv]);
       }
     } else if (request.kind === "histogram") {
       const range = request.histogramRange;
@@ -464,18 +618,14 @@ function summarizeMock(
         data.excludedRows++;
         continue;
       }
+      if (!inRange(xv) && request.histogram?.mode !== "width") continue;
       samples.push(xv);
     } else {
       const group = category!;
-      if (!request.bar && !groups.has(group) && groups.size >= 32) {
-        data.groupsTruncated = true;
-        data.excludedRows++;
-        continue;
-      } else {
-        const values = groups.get(group) ?? [];
-        values.push(yv);
-        groups.set(group, values);
-      }
+      if (detail?.kind === "group" && detail.label !== group) continue;
+      const values = groups.get(group) ?? [];
+      values.push(yv);
+      groups.set(group, values);
     }
     data.validRows++;
   }
@@ -492,12 +642,26 @@ function summarizeMock(
         data.scaleExcludedRows = (data.scaleExcludedRows ?? 0) + count;
       }
     }
-    data.points = points.sort((a, b) => a[0] - b[0]);
+    const ordered = points.sort((a, b) => a[0] - b[0]);
+    data.points = ordered;
+    if (ordered.length > 20_000) summarizeMockLine(ordered, data);
   } else if (request.kind === "scatter") {
-    data.points = points;
-    data.pointDetails = pointDetails;
+    if (points.length > 20_000 && data.scatterExtent) {
+      data.sampled = true;
+      data.scatterTiles = mockScatterTiles(points, data.scatterExtent);
+    }
+    data.points = points.slice(0, 20_000);
+    data.pointDetails = pointDetails.slice(0, 20_000);
   } else if (request.kind === "histogram") {
-    data.bins = mockHistogram(samples, request.histogram, request.histogramRange);
+    const binRange =
+      range && request.histogram?.mode !== "width"
+        ? { min: range.x[0], max: range.x[1] }
+        : request.histogramRange;
+    data.bins = mockHistogram(samples, request.histogram, binRange);
+    if (range && request.histogram?.mode === "width") {
+      data.validRows = samples.filter((value) => inRange(value)).length;
+      data.bins = data.bins.filter(({ start, end }) => start <= range.x[1] && end >= range.x[0]);
+    }
     if (request.histogramRange) data.histogramOutside = histogramOutside;
   } else if (request.kind === "bar") {
     const result = [...groups].map(([label, values]) => {
@@ -508,9 +672,9 @@ function summarizeMock(
         value: request.bar?.aggregate === "mean" ? sum / values.length : sum,
       };
     });
+    data.groupCount = result.length;
     if (request.bar) {
       const { aggregate, sort, limit } = request.bar;
-      data.groupCount = result.length;
       if (aggregate !== "mean") data.barTotal = result.reduce((sum, group) => sum + group.value, 0);
       result.sort((a, b) => {
         const byValue =
@@ -518,12 +682,69 @@ function summarizeMock(
         return byValue || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
       });
       data.groups = result.slice(0, limit);
-    } else data.groups = result;
+    } else data.groups = result.slice(0, 32);
+    data.groupDirectory = mockGroupDirectory(result, detail);
+    data.groupsTruncated = result.length > data.groups.length;
   } else {
-    data.groups = [...groups].map(([label, values]) => mockDistribution(request, label, values));
+    data.groupCount = groups.size;
+    data.groupDirectory = mockGroupDirectory(
+      [...groups].map(([label, values]) => ({ label, count: values.length })),
+      detail,
+    );
+    if (detail?.kind === "groups") return data;
+    data.groups = [...groups]
+      .slice(0, 32)
+      .map(([label, values]) => mockDistribution(request, label, values));
+    data.groupsTruncated = groups.size > data.groups.length;
     data.sampled = data.groups.some((group) => (group.sampleCount ?? 0) < group.count);
   }
   return data;
+}
+
+function summarizeMockLine(ordered: [number, number][], data: ChartData) {
+  const xMin = ordered[0][0];
+  const xMax = ordered[ordered.length - 1][0];
+  const width = (xMax - xMin) / 5_000;
+  type Point = [number, number];
+  const buckets = new Map<
+    number,
+    { first: Point; last: Point; min: Point; max: Point; count: number }
+  >();
+  for (const point of ordered) {
+    const key = width === 0 ? 0 : Math.min(4_999, Math.floor((point[0] - xMin) / width));
+    const bucket = buckets.get(key);
+    if (!bucket) {
+      buckets.set(key, { first: point, last: point, min: point, max: point, count: 1 });
+      continue;
+    }
+    bucket.last = point;
+    if (point[1] < bucket.min[1]) bucket.min = point;
+    if (point[1] > bucket.max[1]) bucket.max = point;
+    bucket.count++;
+  }
+  data.sampled = true;
+  data.lineBuckets = Array.from(buckets, ([key, bucket]) => [
+    xMin + key * width,
+    xMin + (key + 1) * width,
+    bucket.min[1],
+    bucket.max[1],
+    bucket.count,
+  ]);
+  data.points = [...buckets.values()]
+    .flatMap(({ first, last, min, max }) => [...new Set([first, last, min, max])])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+function mockGroupDirectory(
+  entries: NonNullable<ChartData["groupDirectory"]>["entries"],
+  detail: ChartRequest["detail"],
+): NonNullable<ChartData["groupDirectory"]> {
+  const search = detail?.kind === "groups" ? detail.search?.trim().toLowerCase() : undefined;
+  const matches = search
+    ? entries.filter(({ label }) => label.toLowerCase().includes(search))
+    : entries;
+  const offset = detail?.kind === "groups" ? detail.offset : 0;
+  return { total: matches.length, offset, entries: matches.slice(offset, offset + 32) };
 }
 
 function mockDistribution(request: ChartRequest, label: string, values: number[]) {
@@ -571,6 +792,10 @@ function mockDistribution(request: ChartRequest, label: string, values: number[]
     density,
     whiskers,
     outlierCount: outliers.length,
-    outliers: outliers.slice(0, 128),
+    outliers:
+      outliers.length > 128
+        ? [...outliers.slice(0, 127), outliers[outliers.length - 1]!]
+        : outliers,
+    ...(count <= 128 ? { observations: values } : {}),
   };
 }

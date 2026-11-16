@@ -39,6 +39,35 @@ const status = (): SqlStatus => ({
   error: null,
 });
 describe("SQL DTO boundaries and transport", () => {
+  it("accepts large exact SQL counts and offsets without relaxing transport bounds", () => {
+    for (const count of [1_000_001, 10_000_257, Number.MAX_SAFE_INTEGER]) {
+      expect(parseSqlStatus({ ...status(), rowsProduced: count, rowCount: count }).rowCount).toBe(
+        count,
+      );
+      expect(
+        validateSqlPage({
+          runId: "run",
+          resultId: "result",
+          offset: count,
+          limit: 1,
+          columns: ["r0"],
+        }).offset,
+      ).toBe(count);
+    }
+    for (const count of [-1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => parseSqlStatus({ ...status(), rowsProduced: count })).toThrow();
+      expect(() => parseSqlStatus({ ...status(), rowCount: count })).toThrow();
+      expect(() =>
+        validateSqlPage({
+          runId: "run",
+          resultId: "result",
+          offset: count,
+          limit: 1,
+          columns: ["r0"],
+        }),
+      ).toThrow();
+    }
+  });
   const pageRequest = {
     runId: "sql-run",
     resultId: "result-1",

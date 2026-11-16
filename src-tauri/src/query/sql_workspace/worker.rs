@@ -336,9 +336,9 @@ fn execute(job: &WorkerJob) -> Result<WorkerOutput, DataError> {
         if bytes > MAX_BATCH_BYTES {
             return Err(invalid("A SQL result batch exceeds the 16MiB decoded limit; reduce selected columns or value sizes."));
         }
-        if rows.saturating_add(batch.num_rows() as u64) > SQL_MAX_ROWS {
+        if rows.saturating_add(batch.num_rows() as u64) > SQL_MAX_SAFE_ROWS {
             return Err(invalid(
-                "SQL result exceeds 1000000 rows; add a condition or LIMIT.",
+                "SQL result row count cannot be represented exactly by the viewer.",
             ));
         }
         if let Some(chunk) = pending.take() {

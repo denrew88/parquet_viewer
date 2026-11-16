@@ -43,6 +43,8 @@ use super::sql::{find_matches_sql, materialize_sql, scalar_lower_sql, SCALAR_LOW
 
 #[path = "column_values.rs"]
 pub(crate) mod column_values;
+#[path = "prepared_chart.rs"]
+mod prepared_chart;
 #[path = "sql_workspace/mod.rs"]
 pub(crate) mod sql_workspace;
 
@@ -693,6 +695,10 @@ impl QueryService {
 
     pub fn set_temp_limit(&self, limit: u64) {
         self.temp.set_limit(limit);
+    }
+
+    pub(crate) fn chart_detail_temp(&self) -> &QueryTempManager {
+        &self.temp
     }
 
     pub fn copy_staging_directory(&self) -> std::path::PathBuf {

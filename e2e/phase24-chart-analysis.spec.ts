@@ -208,6 +208,8 @@ interface ChartView {
     dataZoom?: unknown[];
   };
   tooltip: string;
+  visibleTooltip?: string;
+  optionWrites?: number;
 }
 
 interface AxisOption {
@@ -218,8 +220,10 @@ interface AxisOption {
 
 interface SeriesOption {
   type?: string;
+  name?: string;
   data?: unknown[];
   connectNulls?: boolean;
+  areaStyle?: { color?: string };
   label?: { show?: boolean; text?: string };
   widths?: number[];
 }
@@ -231,157 +235,185 @@ interface HoverTarget {
   seriesIndex?: number;
 }
 
-function renderer(locator: Locator, hoverTarget?: HoverTarget) {
-  return locator.evaluate(async (element, hoverTarget): Promise<ChartView | null> => {
-    const url = performance
-      .getEntriesByType("resource")
-      .map((entry) => entry.name)
-      .find(
-        (name) =>
-          /\/(?:echarts_core|core)\.js$/.test(new URL(name).pathname) && name.includes("echarts"),
-      );
-    if (!url) return null;
-    const echarts = (await (0, eval)(
-      `import(${JSON.stringify(url)})`,
-    )) as typeof import("echarts/core");
-    const instance = echarts.getInstanceByDom(element as HTMLElement);
-    if (!instance) return null;
-    const option = instance.getOption() as Omit<ChartView["option"], "series"> & {
-      series: (Omit<SeriesOption, "label"> & {
-        label?: {
-          show?: boolean;
-          formatter?: (params: { dataIndex: number; value: unknown; name: string }) => string;
-        };
-        renderItem?: (
-          params: { dataIndex: number },
-          api: { coord: (position: [number, number]) => [number, number] },
-        ) => { children?: { type: string; shape?: { points?: [number, number][] } }[] } | null;
-      })[];
-      tooltip?: { formatter?: (params: unknown) => string }[];
-    };
-    const model = (
-      instance as unknown as {
-        getModel(): {
-          getComponent(
-            kind: string,
-            index: number,
-          ): {
-            coordinateSystem: {
-              getRect(): { x: number; y: number; width: number; height: number };
+function renderer(locator: Locator, hoverTarget?: HoverTarget, trackOptions = false) {
+  return locator.evaluate(
+    async (element, { hoverTarget, trackOptions }): Promise<ChartView | null> => {
+      const url = performance
+        .getEntriesByType("resource")
+        .map((entry) => entry.name)
+        .find(
+          (name) =>
+            /\/(?:echarts_core|core)\.js$/.test(new URL(name).pathname) && name.includes("echarts"),
+        );
+      if (!url) return null;
+      const echarts = (await (0, eval)(
+        `import(${JSON.stringify(url)})`,
+      )) as typeof import("echarts/core");
+      const instance = echarts.getInstanceByDom(element as HTMLElement);
+      if (!instance) return null;
+      const countKey = "readPhase24OptionWrites";
+      if (trackOptions && !Reflect.has(element, countKey)) {
+        let count = 0;
+        instance.setOption = new Proxy(instance.setOption, {
+          apply(target, thisArg, args) {
+            count++;
+            return Reflect.apply(target, thisArg, args);
+          },
+        });
+        Reflect.set(element, countKey, () => count);
+      }
+      const readOptionWrites = Reflect.get(element, countKey) as (() => number) | undefined;
+      const option = instance.getOption() as Omit<ChartView["option"], "series"> & {
+        series: (Omit<SeriesOption, "label"> & {
+          label?: {
+            show?: boolean;
+            formatter?: (params: { dataIndex: number; value: unknown; name: string }) => string;
+          };
+          renderItem?: (
+            params: { dataIndex: number },
+            api: { coord: (position: [number, number]) => [number, number] },
+          ) => { children?: { type: string; shape?: { points?: [number, number][] } }[] } | null;
+        })[];
+        tooltip?: { formatter?: (params: unknown) => string }[];
+      };
+      const model = (
+        instance as unknown as {
+          getModel(): {
+            getComponent(
+              kind: string,
+              index: number,
+            ): {
+              coordinateSystem: {
+                getRect(): { x: number; y: number; width: number; height: number };
+              };
             };
           };
-        };
-      }
-    ).getModel();
-    const grid = model.getComponent("grid", 0)?.coordinateSystem?.getRect();
-    if (!grid || !option.xAxis?.length || !option.yAxis?.length || !option.series?.length)
-      return null;
-    const bounds = element.getBoundingClientRect();
-    const left = bounds.left + grid.x,
-      top = bounds.top + grid.y;
-    const box = { left, top, width: grid.width, height: grid.height };
-    const target = {
-      left: Math.round(left + grid.width * 0.2),
-      top: Math.round(top + grid.height * 0.22),
-      width: 0,
-      height: 0,
-    };
-    target.width = Math.round(left + grid.width * 0.78) - target.left;
-    target.height = Math.round(top + grid.height * 0.82) - target.top;
-    const convert = (x: number, y: number) =>
-      instance.convertFromPixel({ gridIndex: 0 }, [x - bounds.left, y - bounds.top]) as [
-        number,
-        number,
-      ];
-    const [xMin, yMin] = convert(left, top + grid.height);
-    const [xMax, yMax] = convert(left + grid.width, top);
-    const [targetXMin, targetYMin] = convert(target.left, target.top + target.height);
-    const [targetXMax, targetYMax] = convert(target.left + target.width, target.top);
-    const hover = hoverTarget
-      ? (instance.convertToPixel({ gridIndex: 0 }, hoverTarget.point) as [number, number])
-      : ([0, 0] as [number, number]);
-    const format = option.tooltip?.[0]?.formatter;
-    const item = hoverTarget
-      ? option.series[hoverTarget.seriesIndex ?? 0]?.data?.[hoverTarget.index]
-      : undefined;
-    let tooltip = "";
-    if (hoverTarget && typeof format === "function" && item !== undefined) {
-      const params = {
-        dataIndex: hoverTarget.index,
-        seriesIndex: hoverTarget.seriesIndex ?? 0,
-        value: typeof item === "object" && item !== null && "value" in item ? item.value : item,
-        data: item,
-        seriesType: hoverTarget.kind,
-        axisValue: hoverTarget.point[0],
-        marker: "",
+        }
+      ).getModel();
+      const grid = model.getComponent("grid", 0)?.coordinateSystem?.getRect();
+      if (!grid || !option.xAxis?.length || !option.yAxis?.length || !option.series?.length)
+        return null;
+      const bounds = element.getBoundingClientRect();
+      const left = bounds.left + grid.x,
+        top = bounds.top + grid.y;
+      const box = { left, top, width: grid.width, height: grid.height };
+      const target = {
+        left: Math.round(left + grid.width * 0.2),
+        top: Math.round(top + grid.height * 0.22),
+        width: 0,
+        height: 0,
       };
-      tooltip = format(hoverTarget.kind === "line" ? [params] : params);
-    }
-    return {
-      x: [xMin, xMax],
-      y: [yMin, yMax],
-      box,
-      target,
-      targetX: [targetXMin, targetXMax],
-      targetY: [targetYMin, targetYMax],
-      hover: [bounds.left + hover[0], bounds.top + hover[1]],
-      option: {
-        xAxis: option.xAxis.map(({ type, data, axisLabel }) => ({
-          type,
-          data,
-          axisLabel: axisLabel
-            ? {
-                interval: axisLabel.interval,
-                hideOverlap: axisLabel.hideOverlap,
-                rotate: axisLabel.rotate,
-              }
-            : undefined,
-        })),
-        yAxis: option.yAxis.map(({ type, data, axisLabel }) => ({
-          type,
-          data,
-          axisLabel: axisLabel
-            ? {
-                interval: axisLabel.interval,
-                hideOverlap: axisLabel.hideOverlap,
-                rotate: axisLabel.rotate,
-              }
-            : undefined,
-        })),
-        series: option.series.map(({ type, data, connectNulls, label, renderItem }, i) => ({
-          type,
-          data,
-          connectNulls,
-          widths:
-            type === "custom" && option.xAxis[0]?.type === "category" && renderItem
-              ? data?.map((_, dataIndex) => {
-                  const polygon = renderItem(
-                    { dataIndex },
-                    { coord: ([x, y]) => [x * 100, y] },
-                  )?.children?.find(({ type }) => type === "polygon");
-                  const xs = polygon?.shape?.points?.map(([x]) => x);
-                  return xs?.length ? Math.max(...xs) - Math.min(...xs) : 0;
-                })
+      target.width = Math.round(left + grid.width * 0.78) - target.left;
+      target.height = Math.round(top + grid.height * 0.82) - target.top;
+      const convert = (x: number, y: number) =>
+        instance.convertFromPixel({ gridIndex: 0 }, [x - bounds.left, y - bounds.top]) as [
+          number,
+          number,
+        ];
+      const [xMin, yMin] = convert(left, top + grid.height);
+      const [xMax, yMax] = convert(left + grid.width, top);
+      const [targetXMin, targetYMin] = convert(target.left, target.top + target.height);
+      const [targetXMax, targetYMax] = convert(target.left + target.width, target.top);
+      const hover = hoverTarget
+        ? (instance.convertToPixel({ gridIndex: 0 }, hoverTarget.point) as [number, number])
+        : ([0, 0] as [number, number]);
+      const format = option.tooltip?.[0]?.formatter;
+      const item = hoverTarget
+        ? option.series[hoverTarget.seriesIndex ?? 0]?.data?.[hoverTarget.index]
+        : undefined;
+      let tooltip = "";
+      if (hoverTarget && typeof format === "function" && item !== undefined) {
+        const params = {
+          dataIndex: hoverTarget.index,
+          seriesIndex: hoverTarget.seriesIndex ?? 0,
+          value: typeof item === "object" && item !== null && "value" in item ? item.value : item,
+          data: item,
+          seriesType: hoverTarget.kind,
+          axisValue: hoverTarget.point[0],
+          marker: "",
+        };
+        tooltip = format(hoverTarget.kind === "line" ? [params] : params);
+      }
+      return {
+        x: [xMin, xMax],
+        y: [yMin, yMax],
+        box,
+        target,
+        targetX: [targetXMin, targetXMax],
+        targetY: [targetYMin, targetYMax],
+        hover: [bounds.left + hover[0], bounds.top + hover[1]],
+        option: {
+          xAxis: option.xAxis.map(({ type, data, axisLabel }) => ({
+            type,
+            data,
+            axisLabel: axisLabel
+              ? {
+                  interval: axisLabel.interval,
+                  hideOverlap: axisLabel.hideOverlap,
+                  rotate: axisLabel.rotate,
+                }
               : undefined,
-          label: label
-            ? {
-                show: label.show,
-                text:
-                  type === "bar" && label.show && typeof label.formatter === "function"
-                    ? label.formatter({
-                        dataIndex: 0,
-                        name: (option.yAxis[0]?.data ?? option.xAxis[0]?.data)?.[0] ?? "",
-                        value: option.series[i]?.data?.[0],
-                      })
-                    : undefined,
-              }
-            : undefined,
-        })),
-        dataZoom: option.dataZoom,
-      },
-      tooltip,
-    };
-  }, hoverTarget);
+          })),
+          yAxis: option.yAxis.map(({ type, data, axisLabel }) => ({
+            type,
+            data,
+            axisLabel: axisLabel
+              ? {
+                  interval: axisLabel.interval,
+                  hideOverlap: axisLabel.hideOverlap,
+                  rotate: axisLabel.rotate,
+                }
+              : undefined,
+          })),
+          series: option.series.map(
+            ({ type, name, data, connectNulls, areaStyle, label, renderItem }, i) => ({
+              type,
+              name,
+              data,
+              connectNulls,
+              areaStyle,
+              widths:
+                i === 0 && type === "custom" && option.xAxis[0]?.type === "category" && renderItem
+                  ? data?.map((_, dataIndex) => {
+                      const polygon = renderItem(
+                        { dataIndex },
+                        { coord: ([x, y]) => [x * 100, y] },
+                      )?.children?.find(({ type }) => type === "polygon");
+                      const xs = polygon?.shape?.points?.map(([x]) => x);
+                      return xs?.length ? Math.max(...xs) - Math.min(...xs) : 0;
+                    })
+                  : undefined,
+              label: label
+                ? {
+                    show: label.show,
+                    text:
+                      type === "bar" && label.show && typeof label.formatter === "function"
+                        ? label.formatter({
+                            dataIndex: 0,
+                            name: (option.yAxis[0]?.data ?? option.xAxis[0]?.data)?.[0] ?? "",
+                            value: option.series[i]?.data?.[0],
+                          })
+                        : undefined,
+                  }
+                : undefined,
+            }),
+          ),
+          dataZoom: option.dataZoom,
+        },
+        tooltip,
+        visibleTooltip: hoverTarget
+          ? instance
+              .getZr()
+              .storage.getRoots()
+              .filter((node) => node.type === "text" && !node.ignore)
+              .map((node) => (node as unknown as { style: { text?: string } }).style.text)
+              .join("\n")
+          : undefined,
+        optionWrites: readOptionWrites?.(),
+      };
+    },
+    { hoverTarget, trackOptions },
+  );
 }
 
 async function view(page: Page, title: string, hoverTarget?: HoverTarget) {
@@ -389,12 +421,6 @@ async function view(page: Page, title: string, hoverTarget?: HoverTarget) {
   const value = await renderer(plot(page, title), hoverTarget);
   if (!value) throw new Error("ECharts plot disappeared.");
   return value;
-}
-
-function pixels(locator: Locator) {
-  return locator
-    .locator("canvas")
-    .evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).toDataURL()).join(""));
 }
 
 async function drag(page: Page, bounds: Bounds, modifier?: "Shift", reverse = false) {
@@ -440,9 +466,11 @@ test("Phase 24 chart analysis T-P24-016/017/021 applies and restores rectangle z
   await expect(scatter).toContainText("12 valid rows");
   const before = await view(page, "Scatter zoom", { point: [35, 17], index: 8, kind: "scatter" });
   const reads = await readCount(page);
-  const beforeHover = await pixels(plot(page, "Scatter zoom"));
   await page.mouse.move(...before.hover);
-  await expect.poll(() => pixels(plot(page, "Scatter zoom"))).not.toBe(beforeHover);
+  const tooltip = plot(page, "Scatter zoom").locator(".chart-point-tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText("Row nine");
+  await expect(tooltip).toContainText("Source row: 9");
   expect(before.tooltip).toContain("Row nine");
   expect(before.tooltip).toContain("Source row: 9");
   expect(before.tooltip).toContain("35");
@@ -639,6 +667,9 @@ test("Phase 24 chart analysis T-P24-017/021 dense progressive scatter preserves 
         .storage.getRoots()
         .filter((node) => node.type === "text" && !node.ignore)
         .map((node) => (node as unknown as { style: { text?: string } }).style.text)
+        .concat(
+          (element.querySelector(".chart-point-tooltip") as HTMLElement | null)?.innerText ?? "",
+        )
         .join("\n"),
     }));
     const { series } = instance.getOption() as {
@@ -780,6 +811,7 @@ test("Phase 24 chart analysis T-P24-018 applies elapsed-time buckets and visible
   const raw = await view(page, "Timed analysis");
   const rawPoints = seriesValues(raw.option.series[0]) as [number, number][];
   expect(rawPoints).toHaveLength(6);
+  expect(raw.option.series[0]?.areaStyle?.color).toBe("#e8f0f6");
   const hovered = await view(page, "Timed analysis", {
     point: rawPoints[3]!,
     index: 3,
@@ -815,6 +847,49 @@ test("Phase 24 chart analysis T-P24-018 applies elapsed-time buckets and visible
     [expect.any(Number), 24],
     [expect.any(Number), 20],
   ]);
+});
+
+test("Phase 24 chart analysis T-P24-039 keeps dense line data and zoom without the area fill", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "desktop-wide", "The dense line contract uses one desktop run.");
+  const pointCount = 4_101;
+  const index = 2_050;
+  const target: HoverTarget = { point: [5_000, 52], index, kind: "line" };
+  const title = "Dense line";
+  const rows = Array.from({ length: pointCount }, (_, row): Row =>
+    row === index
+      ? [target.point[0], "Isolated line point", target.point[1]]
+      : [row < index ? row : row + 6_000, `Point ${row + 1}`, row % 2 ? 10 : 90],
+  );
+  await setup(page, rows);
+  await addCard(page, title, "Line", { "X axis": /^coordinate$/, "Y axis": /^amount$/ });
+  const base = await view(page, title);
+  expect(base.option.series[0]?.areaStyle?.color).toBeUndefined();
+  expect(seriesValues(base.option.series[0])).toEqual(rows.map(([x, , y]) => [x, y]));
+
+  const reads = await readCount(page);
+  await drag(page, base.target);
+  const zoomed = await renderer(plot(page, title), target, true);
+  if (!zoomed) throw new Error("The dense line disappeared after zoom.");
+  expectRange(zoomed, base.targetX, base.targetY, base);
+  expect(zoomed.option.series[0]?.data).toHaveLength(pointCount);
+  expect(zoomed.optionWrites).toBe(0);
+  await page.mouse.move(...zoomed.hover);
+  await expect
+    .poll(async () => (await renderer(plot(page, title), target))?.visibleTooltip)
+    .toContain("coordinate: 5,000\namount: 52");
+
+  const name = settings(page).getByRole("textbox", { name: "Chart title", exact: true });
+  const renamedTitle = "Renamed dense line";
+  await name.fill(renamedTitle);
+  await name.blur();
+  await ready(page, renamedTitle);
+  const renamed = await view(page, renamedTitle);
+  expect(renamed.optionWrites).toBe(0);
+  expect(renamed.option.dataZoom).toEqual(zoomed.option.dataZoom);
+  expect(renamed.option.series[0]?.data).toHaveLength(pointCount);
+  expect(await readCount(page)).toBe(reads);
 });
 
 test("Phase 24 chart analysis T-P24-017/019 ranks late groups and switches bar orientation", async ({
@@ -894,9 +969,15 @@ test("Phase 24 chart analysis T-P24-017/020 shows bounded outlier points on box 
   const readBefore = await readCount(page);
   const show = settings(page).getByRole("checkbox", { name: "Show outlier points", exact: true });
   const outliers = (value: ChartView) =>
-    seriesValues(value.option.series.find(({ type }) => type === "scatter"));
+    seriesValues(value.option.series.find(({ name }) => name === "Outlier"));
   await show.uncheck();
   await expect.poll(async () => outliers(await view(page, "Eight groups"))).toHaveLength(0);
+  const withoutOutliers = await view(page, "Eight groups");
+  const observations = seriesValues(
+    withoutOutliers.option.series.find(({ name }) => name === "Observation"),
+  ) as number[][];
+  expect(observations.some(([, value]) => value === 9)).toBe(true);
+  expect(observations.some(([, value]) => value === 100)).toBe(false);
   await show.check();
   const box = await view(page, "Eight groups");
   expect(await readCount(page)).toBe(readBefore);
@@ -930,7 +1011,7 @@ test("Phase 24 chart analysis T-P24-017/020 shows bounded outlier points on box 
   const outlier = await view(page, "Eight groups", {
     point: [0, 100],
     index: 0,
-    seriesIndex: 1,
+    seriesIndex: median.option.series.findIndex(({ name }) => name === "Outlier"),
     kind: "scatter",
   });
   expect(outlier.tooltip).toContain("Outlier: 100");

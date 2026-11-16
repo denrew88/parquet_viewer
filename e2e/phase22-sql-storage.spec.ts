@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { expect, test, type Page } from "@playwright/test";
 import { expectInsideViewport, expectNoHorizontalPageOverflow } from "./helpers";
 
@@ -20,7 +21,9 @@ async function settings(page: Page) {
 
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  return page.getByRole("dialog", { name: "Application settings", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(dialog, "Storage");
+  return dialog;
 }
 
 test("T-P22-SQLSTORE-003 rejects invalid SQL disk caps and cancels without applying", async ({

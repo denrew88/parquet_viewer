@@ -2,6 +2,8 @@
 
 mod axis;
 mod bar;
+mod detail;
+mod detail_index;
 mod line;
 mod scatter_svg;
 mod statistics;
@@ -22,12 +24,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     copy::CopyRowReader,
     domain::{
-        CopySelectionSnapshot, DataError, DataErrorCode, DataValue, COPY_MAX_BATCH_CELLS,
+        CopySelectionSnapshot, DataError, DataErrorCode, DataPage, DataValue, COPY_MAX_BATCH_CELLS,
         COPY_MAX_BATCH_ESTIMATED_BYTES,
     },
+    storage::QueryTempManager,
 };
-
-use statistics::compute_chart;
 
 const MAX_BATCH_ROWS: usize = 4_096;
 const MAX_JOBS: usize = 4;
@@ -38,8 +39,34 @@ const MAX_BLOCK_BYTES: usize = 16 * 1024 * 1024;
 const MAX_STORED_BLOCK_BYTES: usize = 64 * 1024 * 1024;
 const MAX_BINS: usize = 48;
 const MAX_GROUPS: usize = 32;
+const MAX_PREVIEW_ROWS: usize = 6;
+const MAX_PREVIEW_COLUMNS: usize = 8;
+const MAX_PREVIEW_TEXT_BYTES: usize = 200;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Copy)]
+pub(crate) enum ChartCell<'a> {
+    Legacy(&'a DataValue),
+    Integer(i128),
+    Float(f64),
+    Text(&'a str),
+    Boolean(bool),
+    Missing,
+}
+
+pub(crate) type ChartRowVisitor<'a> = dyn FnMut(&[ChartCell<'_>]) -> Result<(), DataError> + 'a;
+
+pub(crate) trait ProjectedChartSource: Send + Sync {
+    /// Returns false only if this projection is unsupported and no row was visited.
+    fn visit(
+        &self,
+        columns: &[String],
+        requires_exact_text: &[bool],
+        check: &dyn Fn() -> Result<(), DataError>,
+        visit: &mut ChartRowVisitor<'_>,
+    ) -> Result<bool, DataError>;
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -62,7 +89,7 @@ pub enum ChartSource {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChartKind {
     Scatter,
@@ -73,7 +100,7 @@ pub enum ChartKind {
     Bar,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChartScale {
     #[default]
@@ -83,21 +110,21 @@ pub enum ChartScale {
     Log1p,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(tag = "mode", rename_all = "camelCase", deny_unknown_fields)]
 pub enum HistogramOptions {
     Count { count: usize },
     Width { width: f64 },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HistogramRange {
     pub min: f64,
     pub max: f64,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LineAggregate {
     #[default]
@@ -106,21 +133,21 @@ pub enum LineAggregate {
     Sum,
 }
 
-#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LineOptions {
     pub aggregate: LineAggregate,
     pub bucket_seconds: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WhiskerMode {
     Iqr,
     Minmax,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BarAggregate {
     Count,
@@ -128,7 +155,7 @@ pub enum BarAggregate {
     Mean,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BarSort {
     Category,
@@ -136,7 +163,7 @@ pub enum BarSort {
     Desc,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BarOptions {
     pub aggregate: BarAggregate,
@@ -144,16 +171,17 @@ pub struct BarOptions {
     pub limit: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChartFilter {
     pub column_id: String,
     pub equals: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChartRequest {
+    #[serde(skip_serializing)]
     pub request_id: String,
     pub source: ChartSource,
     pub kind: ChartKind,
@@ -171,6 +199,22 @@ pub struct ChartRequest {
     pub histogram_range: Option<HistogramRange>,
     pub whiskers: Option<WhiskerMode>,
     pub bar: Option<BarOptions>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ChartDetail {
+    Range {
+        x: [f64; 2],
+        y: Option<[f64; 2]>,
+    },
+    Groups {
+        offset: usize,
+        search: Option<String>,
+    },
+    Group {
+        label: String,
+    },
 }
 
 #[derive(Debug, Default, PartialEq, Serialize)]
@@ -197,6 +241,10 @@ pub struct ChartData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scatter_extent: Option<[f64; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub scatter_tiles: Option<Vec<[f64; 5]>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_buckets: Option<Vec<[f64; 5]>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub point_details: Option<Vec<ChartPointDetails>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bins: Option<Vec<ChartBin>>,
@@ -207,6 +255,10 @@ pub struct ChartData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_directory: Option<ChartGroupDirectory>,
+    #[serde(skip)]
+    pub(crate) all_groups: Option<Vec<ChartGroupEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bar_total: Option<f64>,
 }
 
@@ -214,7 +266,7 @@ fn is_zero(value: &u64) -> bool {
     *value == 0
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChartBin {
     pub start: f64,
@@ -258,6 +310,25 @@ pub struct ChartGroup {
     pub outlier_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outliers: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observations: Option<Vec<f64>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartGroupEntry {
+    pub label: String,
+    pub count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartGroupDirectory {
+    pub total: usize,
+    pub offset: usize,
+    pub entries: Vec<ChartGroupEntry>,
 }
 
 struct Projection {
@@ -265,6 +336,26 @@ struct Projection {
     y: Option<usize>,
     filter: Option<usize>,
     scatter_label: Option<usize>,
+}
+
+impl Projection {
+    fn exact_text(&self, kind: ChartKind) -> Vec<bool> {
+        let mut required = vec![false; self.columns.len()];
+        if let Some(filter) = self.filter {
+            required[filter] = true;
+        }
+        match kind {
+            ChartKind::Bar | ChartKind::Box | ChartKind::Violin => required[0] = true,
+            ChartKind::Scatter => {
+                required[0] = true;
+                for slot in [self.y, self.scatter_label].into_iter().flatten() {
+                    required[slot] = true;
+                }
+            }
+            ChartKind::Histogram | ChartKind::Line => {}
+        }
+        required
+    }
 }
 
 impl ChartRequest {
@@ -409,6 +500,7 @@ impl ChartRequest {
 #[derive(Default)]
 pub struct ChartStore {
     state: Mutex<StoreState>,
+    detail: detail::DetailCache,
 }
 
 #[derive(Default)]
@@ -423,6 +515,9 @@ struct StoreState {
 struct Block {
     columns: Vec<String>,
     rows: Vec<Vec<DataValue>>,
+    // SQL selections retain their immutable disk-backed reader instead of cells.
+    reference: Option<Arc<dyn CopyRowReader>>,
+    row_count: u64,
     bytes: usize,
     row_start: u64,
 }
@@ -452,6 +547,78 @@ impl Drop for Job<'_> {
 }
 
 impl ChartStore {
+    pub fn preview_block(
+        &self,
+        block_id: &str,
+        limit: usize,
+        columns: &[String],
+    ) -> Result<DataPage, DataError> {
+        validate_id(block_id)?;
+        if !(1..=MAX_PREVIEW_ROWS).contains(&limit)
+            || columns.is_empty()
+            || columns.len() > MAX_PREVIEW_COLUMNS
+        {
+            return Err(invalid(
+                "A chart preview supports 1–6 rows and 1–8 columns.",
+            ));
+        }
+        validate_columns(columns)?;
+        let block = self
+            .lock()?
+            .blocks
+            .get(block_id)
+            .cloned()
+            .ok_or_else(|| invalid("The selected chart range is no longer available."))?;
+        let indices = columns
+            .iter()
+            .map(|column| {
+                block
+                    .columns
+                    .iter()
+                    .position(|name| name == column)
+                    .ok_or_else(|| invalid("A chart column is outside the selected range."))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let rows: Vec<_> = if let Some(reader) = &block.reference {
+            reader.validate_current()?;
+            let page = reader.read_rows(
+                block.row_start,
+                limit.min(block.row_count as usize),
+                columns,
+            )?;
+            if page.offset != block.row_start || page.columns != columns || page.rows.len() > limit
+            {
+                return Err(invalid(
+                    "The selected SQL preview returned an invalid page.",
+                ));
+            }
+            page.rows
+                .iter()
+                .map(|row| row.iter().map(preview_value).collect())
+                .collect()
+        } else {
+            block
+                .rows
+                .iter()
+                .take(limit)
+                .map(|row| {
+                    indices
+                        .iter()
+                        .map(|index| preview_value(&row[*index]))
+                        .collect()
+                })
+                .collect()
+        };
+        Ok(DataPage {
+            offset: 0,
+            limit,
+            total_rows: Some(block.row_count),
+            has_more: (rows.len() as u64) < block.row_count,
+            columns: columns.to_owned(),
+            rows,
+        })
+    }
+
     pub fn capture(
         &self,
         request_id: &str,
@@ -475,20 +642,22 @@ impl ChartStore {
         let job = self.begin(request_id, true)?;
         let mut rows = Vec::new();
         let mut bytes = selection.column_ids.iter().map(String::len).sum::<usize>();
-        visit_live(
+        visit_live_batches(
             reader.as_ref(),
             &selection.column_ids,
             selection.row_start,
             Some(selection.row_end_exclusive),
             &job,
-            |row| {
-                bytes = bytes.saturating_add(row_bytes(&row));
-                if bytes > MAX_BLOCK_BYTES {
-                    return Err(invalid(
-                        "A chart selection exceeds the 16 MiB snapshot limit.",
-                    ));
+            |batch| {
+                for row in batch {
+                    bytes = bytes.saturating_add(row_bytes(&row));
+                    if bytes > MAX_BLOCK_BYTES {
+                        return Err(invalid(
+                            "A chart selection exceeds the 16 MiB snapshot limit.",
+                        ));
+                    }
+                    rows.push(row);
                 }
-                rows.push(row);
                 Ok(())
             },
         )?;
@@ -510,6 +679,56 @@ impl ChartStore {
             Arc::new(Block {
                 columns: selection.column_ids.clone(),
                 rows,
+                reference: None,
+                row_count,
+                bytes,
+                row_start: selection.row_start,
+            }),
+        );
+        Ok(())
+    }
+
+    pub(crate) fn capture_reference(
+        &self,
+        request_id: &str,
+        reader: Arc<dyn CopyRowReader>,
+        selection: &CopySelectionSnapshot,
+    ) -> Result<(), DataError> {
+        let row_count = selection
+            .row_end_exclusive
+            .checked_sub(selection.row_start)
+            .filter(|rows| *rows != 0)
+            .ok_or_else(|| invalid("The selected SQL row range is empty or reversed."))?;
+        if selection.column_ids.is_empty()
+            || selection.column_ids.len() > 64
+            || selection.row_end_exclusive > crate::domain::SQL_MAX_SAFE_ROWS
+        {
+            return Err(invalid(
+                "A SQL chart selection requires exact row coordinates and 1–64 columns.",
+            ));
+        }
+        validate_columns(&selection.column_ids)?;
+        let job = self.begin(request_id, true)?;
+        reader.validate_current()?;
+        let bytes = std::mem::size_of::<Block>()
+            + selection.column_ids.iter().map(String::len).sum::<usize>();
+        let mut state = self.lock()?;
+        job.check()?;
+        if state.blocks.len() >= MAX_BLOCKS
+            || state.block_bytes.saturating_add(bytes) > MAX_STORED_BLOCK_BYTES
+        {
+            return Err(invalid(
+                "The chart selection storage is full. Remove another selected-range chart.",
+            ));
+        }
+        state.block_bytes += bytes;
+        state.blocks.insert(
+            request_id.to_owned(),
+            Arc::new(Block {
+                columns: selection.column_ids.clone(),
+                rows: Vec::new(),
+                reference: Some(reader),
+                row_count,
                 bytes,
                 row_start: selection.row_start,
             }),
@@ -522,10 +741,38 @@ impl ChartStore {
         request: &ChartRequest,
         reader: Option<Arc<dyn CopyRowReader>>,
     ) -> Result<ChartData, DataError> {
+        self.compute_with_stream(request, reader, None)
+    }
+
+    pub(crate) fn compute_with_stream(
+        &self,
+        request: &ChartRequest,
+        reader: Option<Arc<dyn CopyRowReader>>,
+        stream: Option<Arc<dyn ProjectedChartSource>>,
+    ) -> Result<ChartData, DataError> {
+        self.compute_with_detail(request, reader, stream, None, None)
+    }
+
+    pub(crate) fn compute_with_detail(
+        &self,
+        request: &ChartRequest,
+        reader: Option<Arc<dyn CopyRowReader>>,
+        stream: Option<Arc<dyn ProjectedChartSource>>,
+        detail: Option<&ChartDetail>,
+        temp: Option<&QueryTempManager>,
+    ) -> Result<ChartData, DataError> {
         let projection = request.projection()?;
         let job = self.begin(&request.request_id, false)?;
-        let input = self.input(&request.source, &projection, reader)?;
-        let output = compute_chart(request, &projection, &input, &job)?;
+        let mut input = self.input(&request.source, &projection, reader)?;
+        if let Input::Live { projected, .. } = &mut input {
+            *projected = stream.map(|source| (source, projection.exact_text(request.kind)));
+        }
+        let output = match detail {
+            Some(detail) => self
+                .detail
+                .compute(request, &projection, &input, &job, detail, temp),
+            None => self.detail.overview(request, &projection, &input, &job),
+        }?;
         job.check()?;
         Ok(output)
     }
@@ -557,7 +804,10 @@ impl ChartStore {
                 Ok(Input::Block { block, indices })
             }
             ChartSource::File { .. } | ChartSource::Sql { .. } => reader
-                .map(Input::Live)
+                .map(|reader| Input::Live {
+                    reader,
+                    projected: None,
+                })
                 .ok_or_else(|| invalid("The chart source is unavailable.")),
         }
     }
@@ -565,11 +815,15 @@ impl ChartStore {
     pub fn release(&self, block_id: &str) -> Result<(), DataError> {
         validate_id(block_id)?;
         let mut state = self.lock()?;
-        if let Some(block) = state.blocks.remove(block_id) {
+        let block = state.blocks.remove(block_id);
+        if let Some(block) = &block {
             state.block_bytes -= block.bytes;
         } else {
             state.mark_cancelled(block_id);
         }
+        drop(state);
+        self.detail.invalidate_block(block_id);
+        drop(block);
         Ok(())
     }
 
@@ -580,14 +834,42 @@ impl ChartStore {
     }
 
     pub fn cancel_all(&self) {
-        if let Ok(mut state) = self.lock() {
+        let blocks = if let Ok(mut state) = self.lock() {
             state.closed = true;
             for job in state.jobs.values() {
                 job.store(true, Ordering::Release);
             }
-            state.blocks.clear();
             state.block_bytes = 0;
-        }
+            std::mem::take(&mut state.blocks)
+        } else {
+            HashMap::new()
+        };
+        self.detail.clear();
+        // SQL reference destructors may close query sessions. Do not hold the
+        // chart-store mutex while releasing those result/view leases.
+        drop(blocks);
+    }
+
+    pub(crate) fn invalidate_file_detail(&self, document: &str, session: &str) {
+        self.detail.invalidate(|source| {
+            matches!(source, ChartSource::File { document_id, session_id, .. }
+                if document_id == document && session_id == session)
+        });
+    }
+
+    pub(crate) fn invalidate_sql_detail(
+        &self,
+        run: &str,
+        result: &str,
+        view: Option<&str>,
+        keep_base: bool,
+    ) {
+        self.detail.invalidate(|source| {
+            matches!(source, ChartSource::Sql { run_id, result_id, view_id }
+                if run_id == run && result_id == result
+                && view.is_none_or(|view| view_id.as_deref() == Some(view))
+                && (!keep_base || view_id.is_some()))
+        });
     }
 
     fn begin<'a>(&'a self, id: &'a str, capture: bool) -> Result<Job<'a>, DataError> {
@@ -646,7 +928,10 @@ impl StoreState {
 }
 
 enum Input {
-    Live(Arc<dyn CopyRowReader>),
+    Live {
+        reader: Arc<dyn CopyRowReader>,
+        projected: Option<(Arc<dyn ProjectedChartSource>, Vec<bool>)>,
+    },
     Block {
         block: Arc<Block>,
         indices: Vec<usize>,
@@ -656,8 +941,18 @@ enum Input {
 impl Input {
     fn row_start(&self) -> u64 {
         match self {
-            Self::Live(_) => 0,
+            Self::Live { .. } => 0,
             Self::Block { block, .. } => block.row_start,
+        }
+    }
+
+    fn validate_current(&self) -> Result<(), DataError> {
+        match self {
+            Self::Live { reader, .. } => reader.validate_current(),
+            Self::Block { block, .. } => match &block.reference {
+                Some(reader) => reader.validate_current(),
+                None => Ok(()),
+            },
         }
     }
 
@@ -665,20 +960,56 @@ impl Input {
         &self,
         columns: &[String],
         job: &Job<'_>,
-        mut visit: impl FnMut(&[DataValue], &[usize]) -> Result<(), DataError>,
+        mut visit: impl FnMut(&[ChartCell<'_>]) -> Result<(), DataError>,
     ) -> Result<(), DataError> {
         match self {
-            Self::Live(reader) => {
-                let indices = (0..columns.len()).collect::<Vec<_>>();
-                visit_live(reader.as_ref(), columns, 0, None, job, |row| {
-                    visit(&row, &indices)
+            Self::Live { reader, projected } => {
+                if let Some((stream, requires_exact_text)) = projected {
+                    let check = || {
+                        job.check()?;
+                        reader.validate_current()
+                    };
+                    check()?;
+                    if stream.visit(columns, requires_exact_text, &check, &mut visit)? {
+                        return check();
+                    }
+                }
+                visit_live_batches(reader.as_ref(), columns, 0, None, job, |rows| {
+                    let mut cells = Vec::with_capacity(columns.len());
+                    for row in &rows {
+                        cells.clear();
+                        cells.extend(row.iter().map(ChartCell::Legacy));
+                        visit(&cells)?;
+                    }
+                    Ok(())
                 })
             }
             Self::Block { block, indices } => {
+                if let Some(reader) = &block.reference {
+                    return visit_live_batches(
+                        reader.as_ref(),
+                        columns,
+                        block.row_start,
+                        Some(block.row_start + block.row_count),
+                        job,
+                        |rows| {
+                            let mut cells = Vec::with_capacity(columns.len());
+                            for row in &rows {
+                                cells.clear();
+                                cells.extend(row.iter().map(ChartCell::Legacy));
+                                visit(&cells)?;
+                            }
+                            Ok(())
+                        },
+                    );
+                }
                 for rows in block.rows.chunks(MAX_BATCH_ROWS) {
                     job.check()?;
+                    let mut cells = Vec::with_capacity(indices.len());
                     for row in rows {
-                        visit(row, indices)?;
+                        cells.clear();
+                        cells.extend(indices.iter().map(|&index| ChartCell::Legacy(&row[index])));
+                        visit(&cells)?;
                     }
                 }
                 Ok(())
@@ -687,13 +1018,13 @@ impl Input {
     }
 }
 
-fn visit_live(
+fn visit_live_batches(
     reader: &dyn CopyRowReader,
     columns: &[String],
     mut offset: u64,
     end: Option<u64>,
     job: &Job<'_>,
-    mut visit: impl FnMut(Vec<DataValue>) -> Result<(), DataError>,
+    mut visit: impl FnMut(Vec<Vec<DataValue>>) -> Result<(), DataError>,
 ) -> Result<(), DataError> {
     let max_rows = MAX_BATCH_ROWS.min(COPY_MAX_BATCH_CELLS / columns.len());
     // Probe the projected row width before asking the provider for large batches.
@@ -743,9 +1074,7 @@ fn visit_live(
                 .clamp(1, max_rows)
                 .min(batch_rows * 4);
         }
-        for row in page.rows {
-            visit(row)?;
-        }
+        visit(page.rows)?;
         offset = next;
         if !page.has_more {
             break;
@@ -775,6 +1104,32 @@ fn row_bytes(row: &[DataValue]) -> usize {
     size_of::<Vec<DataValue>>() + size_of_val(row) + strings.sum::<usize>()
 }
 
+fn preview_value(value: &DataValue) -> DataValue {
+    DataValue {
+        kind: value.kind,
+        state: value.state,
+        display: value.display.as_deref().map(preview_text),
+        source_display: value.source_display.as_deref().map(preview_text),
+        raw_display: value.raw_display.as_deref().map(preview_text),
+        unit: value.unit.as_deref().map(preview_text),
+        timezone: value.timezone.as_deref().map(preview_text),
+        diagnostic: value.diagnostic.as_ref().map(|diagnostic| {
+            let mut preview = diagnostic.clone();
+            preview.code = preview_text(&diagnostic.code);
+            preview.message = preview_text(&diagnostic.message);
+            preview
+        }),
+    }
+}
+
+fn preview_text(text: &str) -> String {
+    if text.len() <= MAX_PREVIEW_TEXT_BYTES {
+        return text.to_owned();
+    }
+    let end = text.floor_char_boundary(MAX_PREVIEW_TEXT_BYTES - '…'.len_utf8());
+    format!("{}…", &text[..end])
+}
+
 fn validate_id(id: &str) -> Result<(), DataError> {
     if id.is_empty()
         || id.len() > 128
@@ -802,5 +1157,7 @@ fn invalid(message: &str) -> DataError {
     DataError::invalid_request(message)
 }
 
+#[cfg(test)]
+mod reference_tests;
 #[cfg(test)]
 mod tests;

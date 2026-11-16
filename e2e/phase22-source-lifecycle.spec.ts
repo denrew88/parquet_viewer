@@ -207,7 +207,9 @@ test("T-P22-LIFE-002/005 unrelated close keeps run, SQL, completion refresh and 
   await editor(workspace).fill(authored);
   await workspace.getByRole("button", { name: "Run", exact: true }).click();
   await expect(workspace.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Data workspace", exact: true }).click();
   await page.getByRole("button", { name: "Close customers.parquet", exact: true }).click();
+  await page.getByRole("button", { name: "SQL workspace", exact: true }).click();
   await expect(table(workspace, "customers")).toHaveCount(0);
   await expect(workspace.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
   expect(await sqlText(workspace)).toBe(authored);
@@ -241,7 +243,9 @@ test("T-P22-LIFE-003/004/005 explicit mock source-close reason keeps authored SQ
   await editor(workspace).fill(authored);
   await workspace.getByRole("button", { name: "Run", exact: true }).click();
   await expect(workspace.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Data workspace", exact: true }).click();
   await page.getByRole("button", { name: "Close customers.parquet", exact: true }).click();
+  await page.getByRole("button", { name: "SQL workspace", exact: true }).click();
   await expect(
     workspace.getByRole("status").filter({ hasText: "input customers was closed" }),
   ).toBeVisible();
@@ -253,7 +257,9 @@ test("T-P22-LIFE-003/004/005 explicit mock source-close reason keeps authored SQ
   await expect(workspace.getByRole("tabpanel", { name: "Messages", exact: true })).toContainText(
     "input customers was closed",
   );
+  await page.getByRole("button", { name: "Data workspace", exact: true }).click();
   await page.getByRole("button", { name: "Close orders.csv (sales)", exact: true }).click();
+  await page.getByRole("button", { name: "SQL workspace", exact: true }).click();
   await expect(table(workspace, "orders")).toHaveCount(0);
   expect(await sqlText(workspace)).toBe(authored);
   await workspace.getByRole("tab", { name: "Results", exact: true }).click();

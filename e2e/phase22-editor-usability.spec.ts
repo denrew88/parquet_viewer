@@ -296,10 +296,11 @@ test("T-P22-USE-005/006 running edits, cancellation, failure and page retry pres
   await expect(resultContext(workspace)).toHaveAttribute("data-current", "false");
   const lastRun = await page.evaluate(() => Reflect.get(window, "__editorUsability").starts.at(-1));
   expect(lastRun.sql).toBe(submitted);
-  await expect(workspace.getByRole("grid", { name: "Data preview", exact: true })).toHaveAttribute(
-    "data-query-id",
-    lastRun.runId,
-  );
+  await expect(
+    workspace
+      .getByRole("tabpanel", { name: "Results", exact: true })
+      .getByRole("grid", { name: "Data preview", exact: true }),
+  ).toHaveAttribute("data-query-id", lastRun.runId);
   await editor(workspace).fill(submitted);
   await expect(resultContext(workspace)).toHaveAttribute("data-current", "true");
 });
@@ -309,23 +310,34 @@ test("T-P22-USE-004 help visibility survives reload without changing SQL or back
 }) => {
   let workspace = await setup(page);
   const help = () => workspace.getByRole("button", { name: "Examples & help", exact: true });
+  const exposeHelpPreference = async () => {
+    const source = workspace.getByRole("button", { name: "Source Data", exact: true });
+    await expect(source).toHaveAttribute("aria-expanded", "true");
+    await source.click();
+    await expect(source).toHaveAttribute("aria-expanded", "false");
+  };
+  await exposeHelpPreference();
   await expect(help()).toHaveAttribute("aria-expanded", "true");
   await editor(workspace).fill(sqlA);
   await help().click();
   await expect(help()).toHaveAttribute("aria-expanded", "false");
   expect(await text(workspace)).toBe(sqlA);
   expect(await page.evaluate((key) => localStorage.getItem(key), helpKey)).toBe("false");
+  await page.getByRole("button", { name: "Data workspace", exact: true }).click();
   await page.getByRole("tab", { name: "orders.csv (sales)", exact: true }).click();
   await page.getByRole("button", { name: "SQL workspace", exact: true }).click();
   await expect(help()).toHaveAttribute("aria-expanded", "false");
   expect(await text(workspace)).toBe(sqlA);
   workspace = await setup(page);
+  await exposeHelpPreference();
   await expect(help()).toHaveAttribute("aria-expanded", "false");
   await help().click();
   expect(await page.evaluate((key) => localStorage.getItem(key), helpKey)).toBe("true");
   workspace = await setup(page);
+  await exposeHelpPreference();
   await expect(help()).toHaveAttribute("aria-expanded", "true");
   await page.evaluate((key) => localStorage.setItem(key, "invalid-preference"), helpKey);
   workspace = await setup(page);
+  await exposeHelpPreference();
   await expect(help()).toHaveAttribute("aria-expanded", "true");
 });

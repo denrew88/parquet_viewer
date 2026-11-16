@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { ChartNoAxesCombined, PanelRight, Plus } from "lucide-react";
 import type { ChartSeed, ChartWorkspaceProps } from "./contract";
 import { ChartCard } from "./ChartCard";
+import { ChartCardMenu } from "./ChartCardMenu";
+import type { ChartDetailCache } from "./useChartDetail";
 import { ChartInspector } from "./ChartInspector";
+import { relatedCharts, sameRelatedWork } from "./relatedWork";
 import {
   bindSource,
   columnBinding,
   configureChartKind,
   defaultAxes,
   newChart,
+  planChart,
   rebindAxes,
   resolveSource,
   sourceIdentity,
@@ -182,13 +186,33 @@ export default function ChartWorkspace({
   seed,
   backend,
   onSeedHandled,
+  navigation,
+  onNavigationHandled,
+  onRelatedChartsChange,
+  renderChartReference,
 }: ChartWorkspaceProps) {
   const [state, setState] = useState(firstSheet);
   const latest = useRef(state);
+  const latestSources = useRef(sources);
+  latestSources.current = sources;
+  const publishedLinks = useRef<{
+    sheets: ChartSheet[];
+    sources: typeof sources;
+    listener: typeof onRelatedChartsChange;
+  } | null>(null);
   const [scheduler] = useState(() => new ChartScheduler());
   const [cache] = useState(() => new Map<string, RenderedChart>());
+  const [detailCache] = useState<ChartDetailCache>(() => new Map());
   const zoomCache = useRef<PlotZoomCache>(new Map());
   const [showSettings, setShowSettings] = useState(true);
+  const [showReference, setShowReference] = useState(false);
+  const [cardMenu, setCardMenu] = useState<{
+    cardId: string;
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -197,6 +221,8 @@ export default function ChartWorkspace({
   const sheetCounter = useRef(1);
   const cardCounter = useRef(0);
   const tabs = useRef<HTMLDivElement>(null);
+  const sheetCanvas = useRef<HTMLDivElement>(null);
+  const handledNavigation = useRef<number | null>(null);
 
   const commit = useCallback(
     (update: (previous: WorkspaceState) => WorkspaceState) => {
@@ -267,6 +293,76 @@ export default function ChartWorkspace({
   const selected =
     sheet.cards.find((card) => card.id === state.selected[sheet.id]) ?? sheet.cards[0];
   const selectedSource = selected ? resolveSource(selected.binding, sources) : null;
+  const menuCard = cardMenu && sheet.cards.find((card) => card.id === cardMenu.cardId);
+  const focusCard = useCallback((id?: string) => {
+    const canvas = sheetCanvas.current;
+    const card = Array.from(canvas?.querySelectorAll<HTMLElement>("[data-card-id]") ?? []).find(
+      (element) => element.dataset.cardId === id,
+    );
+    (card ?? canvas)?.focus({ preventScroll: true });
+  }, []);
+  const closeCardMenu = useCallback(
+    (restoreFocus: boolean) => {
+      if (restoreFocus) focusCard(cardMenu?.cardId);
+      setCardMenu(null);
+    },
+    [cardMenu?.cardId, focusCard],
+  );
+  const referencePlan =
+    showReference && selected && selectedSource ? planChart(selected, selectedSource) : null;
+  const referenceColumns =
+    referencePlan && "request" in referencePlan
+      ? [referencePlan.x, referencePlan.y, referencePlan.scatterLabel].flatMap((column) =>
+          column ? [column.id] : [],
+        )
+      : [];
+
+  useEffect(() => {
+    if (!onRelatedChartsChange) return;
+    const previous = publishedLinks.current;
+    if (
+      previous?.sources === sources &&
+      previous.listener === onRelatedChartsChange &&
+      sameRelatedWork(previous.sheets, state.sheets)
+    )
+      return;
+    publishedLinks.current = { sheets: state.sheets, sources, listener: onRelatedChartsChange };
+    onRelatedChartsChange(
+      relatedCharts(state.sheets, sources).map((link) => ({
+        ...link,
+        getPreview: () => {
+          const cached = cache.get(link.cardId);
+          const card = findCard(latest.current, link.cardId);
+          if (!cached || !card) return;
+          const plan = planChart(card, resolveSource(card.binding, latestSources.current));
+          if ("request" in plan && cached.key === JSON.stringify(plan)) return cached;
+        },
+      })),
+    );
+  }, [cache, onRelatedChartsChange, sources, state.sheets]);
+
+  useEffect(() => {
+    if (!active || !navigation || handledNavigation.current === navigation.id) return;
+    handledNavigation.current = navigation.id;
+    const target = latest.current.sheets.find((candidate) => candidate.id === navigation.sheetId);
+    if (target?.cards.some((card) => card.id === navigation.cardId)) {
+      commit((previous) => ({
+        ...previous,
+        active: navigation.sheetId,
+        selected: { ...previous.selected, [navigation.sheetId]: navigation.cardId },
+      }));
+      setEditingName(false);
+      setShowSettings(true);
+      requestAnimationFrame(() => {
+        const card = sheetCanvas.current?.querySelector(`[data-card-id="${navigation.cardId}"]`);
+        card?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+        card
+          ?.querySelector<HTMLButtonElement>(".chart-card-select")
+          ?.focus({ preventScroll: true });
+      });
+    }
+    onNavigationHandled?.(navigation.id);
+  }, [active, commit, navigation, onNavigationHandled]);
 
   function makeSheet(): ChartSheet {
     const number = ++sheetCounter.current;
@@ -348,6 +444,7 @@ export default function ChartWorkspace({
       ),
     );
     setShowSettings(true);
+    setShowReference(false);
     return true;
   }
 
@@ -381,9 +478,30 @@ export default function ChartWorkspace({
     onSeedHandled();
   }
 
-  function selectCard(id: string) {
-    commit((previous) => ({ ...previous, selected: { ...previous.selected, [sheet.id]: id } }));
-    setShowSettings(true);
+  function selectCard(id: string, edit = false) {
+    if (selected?.id !== id)
+      commit((previous) => ({ ...previous, selected: { ...previous.selected, [sheet.id]: id } }));
+    if (edit) {
+      setShowSettings(true);
+      setShowReference(false);
+    }
+  }
+
+  function removeCard(id: string) {
+    const currentSheet = latest.current.sheets.find((candidate) => candidate.id === sheet.id);
+    const index = currentSheet?.cards.findIndex((card) => card.id === id) ?? -1;
+    if (!currentSheet || index < 0) return;
+    const remaining = currentSheet.cards.filter((card) => card.id !== id);
+    const nextId = remaining[Math.min(index, remaining.length - 1)]?.id;
+    setCardMenu(null);
+    commit((previous) => ({
+      ...previous,
+      selected: { ...previous.selected, [sheet.id]: nextId },
+      sheets: previous.sheets.map((candidate) =>
+        candidate.id === sheet.id ? { ...candidate, cards: remaining } : candidate,
+      ),
+    }));
+    requestAnimationFrame(() => focusCard(nextId));
   }
 
   function reorder(movedId: string, targetId: string) {
@@ -441,14 +559,16 @@ export default function ChartWorkspace({
       return;
     }
     if (card.binding?.kind !== "follow" || mode !== "pin") return;
+    const { sourceId } = card.binding;
     const source = resolveSource(card.binding, sources);
     if (source.status !== "ready" || source.source.kind !== "sql") return;
     const binding: ChartBinding = {
       kind: "pinned",
-      sourceId: card.binding.sourceId,
+      sourceId,
       name: source.name,
       source: source.source,
       columns: source.columns,
+      sqlReference: sources.find((candidate) => candidate.id === sourceId)?.sqlReference,
     };
     void withRetainedResult(card.id, source.source, () => {
       const live = findCard(latest.current, card.id);
@@ -476,6 +596,13 @@ export default function ChartWorkspace({
         title: `${source.title} copy`.slice(0, 120),
       };
       commit((previous) => addToSheet(previous, destination.id, copy));
+      requestAnimationFrame(() => {
+        if (
+          latest.current.active === destination.id &&
+          latest.current.selected[destination.id] === copy.id
+        )
+          focusCard(copy.id);
+      });
       return true;
     };
     if (card.binding?.kind === "pinned") void withRetainedResult(card.id, card.binding.source, add);
@@ -523,7 +650,19 @@ export default function ChartWorkspace({
         className="chart-sheet-layout"
         data-settings={Boolean(showSettings && selected)}
       >
-        <div className="chart-sheet-scroll">
+        <div
+          className="chart-sheet-scroll"
+          ref={sheetCanvas}
+          tabIndex={-1}
+          onScroll={(event) => {
+            if (
+              cardMenu &&
+              (event.currentTarget.scrollLeft !== cardMenu.scrollLeft ||
+                event.currentTarget.scrollTop !== cardMenu.scrollTop)
+            )
+              setCardMenu(null);
+          }}
+        >
           <header className="chart-sheet-heading">
             <div className="chart-sheet-title">
               {editingName ? (
@@ -604,13 +743,28 @@ export default function ChartWorkspace({
                   key={card.id}
                   card={card}
                   source={resolveSource(card.binding, sources)}
-                  selected={showSettings && selected?.id === card.id}
+                  selected={selected?.id === card.id}
+                  referenceOpen={Boolean(showSettings && showReference && selected?.id === card.id)}
+                  settingsOpen={Boolean(showSettings && !showReference && selected?.id === card.id)}
                   active={active}
                   backend={backend}
                   scheduler={scheduler}
                   cache={cache}
+                  detailCache={detailCache}
                   zoomCache={zoomCache.current}
                   onSelect={() => selectCard(card.id)}
+                  onEdit={() => selectCard(card.id, true)}
+                  onDelete={() => removeCard(card.id)}
+                  onContextMenu={(x, y) => {
+                    selectCard(card.id);
+                    setCardMenu({
+                      cardId: card.id,
+                      x,
+                      y,
+                      scrollLeft: sheetCanvas.current?.scrollLeft ?? 0,
+                      scrollTop: sheetCanvas.current?.scrollTop ?? 0,
+                    });
+                  }}
                   onMove={(direction) => {
                     const target = sheet.cards[index + direction];
                     if (target) reorder(card.id, target.id);
@@ -635,6 +789,25 @@ export default function ChartWorkspace({
             source={selectedSource}
             sources={sources}
             busy={pending.has(selected.id)}
+            reference={
+              renderChartReference
+                ? {
+                    visible: showReference,
+                    onChange: setShowReference,
+                    render: () =>
+                      selected.binding ? (
+                        renderChartReference(
+                          selected.binding,
+                          selectedSource,
+                          active,
+                          referenceColumns,
+                        )
+                      ) : (
+                        <p>Choose a data source in Chart Settings.</p>
+                      ),
+                  }
+                : undefined
+            }
             onTitle={(title) => patchCard(selected.id, (card) => ({ ...card, title }))}
             onSource={(id) => {
               const option = sources.find((candidate) => candidate.id === id);
@@ -684,22 +857,27 @@ export default function ChartWorkspace({
             onRefresh={(mode) => setRefresh(selected, mode)}
             onClose={() => setShowSettings(false)}
             onDuplicate={() => duplicate(selected)}
-            onRemove={() =>
-              commit((previous) => ({
-                ...previous,
-                sheets: previous.sheets.map((candidate) =>
-                  candidate.id === sheet.id
-                    ? {
-                        ...candidate,
-                        cards: candidate.cards.filter((card) => card.id !== selected.id),
-                      }
-                    : candidate,
-                ),
-              }))
-            }
+            onRemove={() => removeCard(selected.id)}
           />
         )}
       </div>
+      {active && cardMenu && menuCard && (
+        <ChartCardMenu
+          x={cardMenu.x}
+          y={cardMenu.y}
+          duplicateDisabled={pending.has(menuCard.id) || sheet.cards.length >= MAX_CARDS_PER_SHEET}
+          onClose={closeCardMenu}
+          onSettings={() => {
+            closeCardMenu(false);
+            selectCard(menuCard.id, true);
+          }}
+          onDuplicate={() => {
+            closeCardMenu(true);
+            duplicate(menuCard);
+          }}
+          onDelete={() => removeCard(menuCard.id)}
+        />
+      )}
       {active && seed && (
         <DestinationDialog
           key={seed.id}

@@ -14,11 +14,19 @@ const binary = path.resolve(
   process.env.P24_BINARY ?? "src-tauri/target/release/candidates/phase-24-native/data-viewer.exe",
 );
 const requireProduct = process.env.P24_REQUIRE_PRODUCT === "1";
+const phase25CardInteractions = process.env.P25_CARD_INTERACTIONS === "1";
+const phase25ScatterTooltip = process.env.P25_SCATTER_TOOLTIP === "1";
+const phase25SqlScale = process.env.P25_SQL_SCALE === "1";
+const phase25Settings = process.env.P25_SETTINGS === "1";
+const phase25Workspaces = process.env.P25_WORKSPACES === "1" || phase25CardInteractions;
+const phase25ChartFidelity = process.env.P25_CHART_FIDELITY === "1";
 const commerceOnly = process.env.P24_COMMERCE_ONLY === "1";
 const chartFollowup = process.env.P24_CHART_FOLLOWUP === "1";
 const chartSourceOnly = process.env.P24_CHART_SOURCE_ONLY === "1";
 const chartOptions = process.env.P24_CHART_OPTIONS === "1";
 const chartAnalysis = process.env.P24_CHART_ANALYSIS === "1";
+const chartPerformance = process.env.P24_CHART_PERFORMANCE === "1";
+const chartPerformanceUiOnly = process.argv.includes("--performance-ui-only");
 const cteCompletion = process.env.P24_CTE_COMPLETION === "1";
 const sqlGridNavigation = process.env.P24_SQL_GRID_NAVIGATION === "1";
 const chartImageExport = process.env.P24_CHART_IMAGE_EXPORT === "1";
@@ -27,14 +35,15 @@ const launchOnly = process.env.P24_LAUNCH_ONLY === "1";
 const directProduct = binary === path.join(root, "src-tauri/target/release/data-viewer.exe");
 const rebuiltProduct = binary === path.join(root, "src-tauri/target/chart-image-rebuild/release/data-viewer.exe");
 const imageSmoke = directProduct ? "direct-native" : rebuiltProduct ? "rebuild-native" : requireProduct ? "product-native" : "native";
-const scratch = path.join(root, ".tmp", sqlGridNavigation ? "sql-grid-navigation/native" : launchOnly ? "chart-image-export/baseline-native" : chartImageExport ? `chart-image-export/${imageSmoke}${chartTransactionOnly ? "-transaction" : ""}` : cteCompletion ? "sql-cte-completion" : chartAnalysis ? "phase24-chart-analysis" : requireProduct
+const scratch = path.join(root, ".tmp", phase25Settings ? "phase-25/settings/native" : phase25SqlScale ? "phase-25/sql-scale/native" : phase25ScatterTooltip ? (directProduct ? "phase-25/direct-release/tooltip-opacity-native" : "phase-25/tooltip-opacity-native") : phase25CardInteractions ? "phase-25/card-native" : phase25ChartFidelity ? "phase-25/fidelity-native" : phase25Workspaces ? (directProduct ? "phase-25/direct-release/native" : "phase-25/ui") : chartPerformance ? (chartPerformanceUiOnly ? "chart-performance/native-ui" : "chart-performance/native") : sqlGridNavigation ? "sql-grid-navigation/native" : launchOnly ? "chart-image-export/baseline-native" : chartImageExport ? `chart-image-export/${imageSmoke}${chartTransactionOnly ? "-transaction" : ""}` : cteCompletion ? "sql-cte-completion" : chartAnalysis ? "phase24-chart-analysis" : requireProduct
   ? "phase24-product-smoke" : commerceOnly ? "phase24-native-commerce"
     : chartFollowup ? "phase24-chart-followup" : chartSourceOnly ? "phase24-chart-source"
       : chartOptions ? "phase24-chart-options" : "phase24-native");
-const fixtureDir = path.join(root, ".tmp", "phase24-fixtures");
+const fixtureDir = phase25SqlScale ? path.join(root, ".tmp", "phase-25", "sql-scale", "fixtures") : path.join(root, ".tmp", "phase24-fixtures");
 const orderItems = path.join(root, "fixtures/phase-22/commerce/order_items.parquet");
+const commerceOrders = path.join(root, "fixtures/phase-22/commerce/orders.csv");
 const runFile = promisify(execFile);
-const port = sqlGridNavigation ? 9520 : chartImageExport ? 9519 : cteCompletion ? 9518 : chartAnalysis ? 9517 : chartOptions ? 9516 : chartFollowup || chartSourceOnly ? 9515 : 9514;
+const port = phase25Settings ? 9525 : phase25SqlScale ? 9524 : phase25ChartFidelity ? 9523 : phase25Workspaces ? 9522 : chartPerformance ? 9521 : sqlGridNavigation ? 9520 : chartImageExport ? 9519 : cteCompletion ? 9518 : chartAnalysis ? 9517 : chartOptions ? 9516 : chartFollowup || chartSourceOnly ? 9515 : 9514;
 const appVersion = process.env.P24_EXPECT_VERSION ?? "0.24.0";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const check = expect.configure({ timeout: 20_000 });
@@ -60,7 +69,7 @@ async function poll(read, done, timeout = 45_000) {
     if (done(value)) return value;
     await sleep(75);
   }
-  throw new Error("Timed out waiting for the Phase 24 native candidate.");
+  throw new Error("Timed out waiting for the native candidate.");
 }
 
 async function invoke(command, args = {}) {
@@ -78,7 +87,7 @@ async function invoke(command, args = {}) {
 async function launch(paths) {
   owned = JSON.parse(await powershell(`
 $arguments=@((ConvertFrom-Json $env:P24_FIXTURES) | ForEach-Object { '"'+$_+'"' })
-$p=Start-Process -FilePath $env:P24_BINARY -WorkingDirectory $env:P24_ROOT -ArgumentList $arguments -WindowStyle Hidden -PassThru
+$p=if($arguments.Count -gt 0){Start-Process -FilePath $env:P24_BINARY -WorkingDirectory $env:P24_ROOT -ArgumentList $arguments -WindowStyle Hidden -PassThru}else{Start-Process -FilePath $env:P24_BINARY -WorkingDirectory $env:P24_ROOT -WindowStyle Hidden -PassThru}
 [pscustomobject]@{pid=$p.Id;path=$p.Path;ticks=$p.StartTime.Ticks.ToString()} | ConvertTo-Json -Compress
 `, {
     P24_BINARY: binary,
@@ -202,7 +211,7 @@ async function sqlEditorFeatures() {
   await field.press("Control+Enter");
   await check(sqlGrid()).toHaveAttribute("aria-rowcount", "1");
 
-  await page.getByRole("button", { name: "Rename tab", exact: true }).click();
+  await tab("Query 1").press("F2");
   const name = page.getByRole("textbox", { name: "SQL tab name", exact: true });
   await name.fill("주문 분류");
   await page.screenshot({ path: path.join(scratch, "sql-tab-rename.png") });
@@ -306,6 +315,44 @@ async function typeChart(title, type, axes, source) {
   await check(chart).toHaveAttribute("data-state", "ready");
   await check(chart.locator("canvas").first()).toBeVisible();
   return chart;
+}
+
+async function chartPerformanceUi() {
+  const [identity] = await openSources([commerceOrders]);
+  const preparation = await poll(
+    () => invoke("get_csv_preparation_status", identity),
+    (status) => ["ready", "failed", "cancelled"].includes(status?.state),
+    120_000,
+  );
+  assert.equal(preparation.state, "ready", JSON.stringify(preparation));
+  await openWorkspace("Charts");
+  await charts().getByRole("button", { name: "New sheet", exact: true }).click();
+  const amount = "order_total_krw";
+  const cases = [
+    ["Histogram", { Value: amount }],
+    ["Scatter", { "X axis": amount, "Y axis": "shipping_fee_krw" }],
+    ["Line", { "X axis": "order_id", "Y axis": amount }],
+    ["Bar", { Group: "status", Value: amount }],
+    ["Box plot", { Group: "channel", Value: amount }],
+    ["Violin", { Group: "shipping_region", Value: amount }],
+  ];
+  const measured = [];
+  for (const [kind, axes] of cases) {
+    const title = `Orders ${kind}`;
+    const start = performance.now();
+    const chart = await typeChart(title, kind, axes, /^File\s+·\s+orders\.csv$/i);
+    await check(chart).toContainText("1,000,000 valid rows");
+    const canvas = chart.locator("canvas").first();
+    const size = await canvas.evaluate((element) => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        resolve({ width: element.width, height: element.height });
+      }));
+    }));
+    assert.ok(size.width > 0 && size.height > 0);
+    measured.push({ kind, configureToCanvasMs: Math.round(performance.now() - start), ...size });
+    await page.screenshot({ path: path.join(scratch, `orders-${kind.toLowerCase().replaceAll(" ", "-")}.png`) });
+  }
+  return { rows: preparation.totalRows, charts: measured };
 }
 
 async function chartFollowupScenario() {
@@ -966,6 +1013,36 @@ async function chartAnalysisUi() {
   await page.screenshot({ path: path.join(scratch, "native-desktop.png") });
 }
 
+async function scatterTooltipUi() {
+  await openWorkspace("SQL");
+  const label = 'Premium yoga mat';
+  await run(`SELECT i % 100 AS x, floor(i / 100) AS y, '${label}' AS label FROM range(12000) t(i);`, 12000);
+  await openWorkspace("Charts");
+  const scatter = await typeChart("Dense tooltip", "Scatter", { "X axis": "x", "Y axis": "y", "Point label": "label" }, /Query 1/);
+  const plot = scatter.getByRole("img", { name: "Dense tooltip plot", exact: true });
+  const bounds = await plot.boundingBox();
+  assert.ok(bounds);
+  const tooltip = plot.locator(".chart-point-tooltip");
+  for (const ratio of [0.4, 0.5, 0.6]) {
+    await page.mouse.move(bounds.x + bounds.width * ratio, bounds.y + bounds.height * 0.45);
+    if (await tooltip.isVisible()) break;
+  }
+  await check(tooltip).toBeVisible();
+  await check(tooltip).toContainText("Source row:");
+  await check(tooltip).toContainText(label);
+  await check(tooltip.locator("img")).toHaveCount(0);
+  const overlay = await tooltip.evaluate((element) => ({
+    pointerEvents: getComputedStyle(element).pointerEvents,
+    zIndex: Number(getComputedStyle(element).zIndex),
+    background: getComputedStyle(element).backgroundColor,
+  }));
+  assert.equal(overlay.pointerEvents, "none");
+  assert.ok(overlay.zIndex > 0);
+  assert.equal(overlay.background, "rgba(255, 255, 255, 0.85)");
+  await page.screenshot({ path: path.join(scratch, "native-dense-scatter-tooltip.png") });
+  return { points: 12000, ...overlay };
+}
+
 async function analyticalScatterScale(rowCount) {
   const fileName = `scale-${rowCount}.parquet`;
   const [identity] = await openSources([path.join(fixtureDir, fileName)]);
@@ -1244,8 +1321,8 @@ async function fileScale(rowCount) {
 
 try {
   await fs.mkdir(scratch, { recursive: true });
-  const golden = JSON.parse(await fs.readFile(path.join(fixtureDir, "golden.json"), "utf8"));
-  const fileNames = ["orders.parquet", "precision.parquet"];
+  const golden = phase25Settings ? {} : JSON.parse(await fs.readFile(path.join(fixtureDir, "golden.json"), "utf8"));
+  const fileNames = phase25Settings ? [] : phase25SqlScale ? [golden.file] : ["orders.parquet", "precision.parquet"];
   if (process.env.P24_SCALE === "1") {
     fileNames.push("scale-10000.parquet", "scale-100000.parquet", "scale-1000000.parquet");
   } else if (chartAnalysis) {
@@ -1254,12 +1331,47 @@ try {
   const files = fileNames.map((name) => path.join(fixtureDir, name));
   for (const file of files) {
     const hash = createHash("sha256").update(await fs.readFile(file)).digest("hex");
-    assert.equal(hash, golden.files[path.basename(file)].sha256, `Fixture changed: ${file}`);
+    assert.equal(hash, phase25SqlScale ? golden.sha256 : golden.files[path.basename(file)].sha256, `Fixture changed: ${file}`);
   }
-  await launch(chartFollowup || chartSourceOnly ? [orderItems] : files);
+  await launch(chartFollowup || chartSourceOnly ? [orderItems] : chartPerformance ? [...files, commerceOrders] : files);
   const bytes = await fs.readFile(binary);
   report.executable = { bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
-  if (sqlGridNavigation) {
+  if (phase25Workspaces || phase25ChartFidelity || phase25ScatterTooltip || phase25SqlScale || phase25Settings) {
+    const index = await fs.readFile(path.join(root, "dist", "index.html"), "utf8");
+    const expectedScript = index.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
+    assert.ok(expectedScript, "No module script in the verified frontend build.");
+    assert.equal(await page.locator('script[type="module"][src]').first().getAttribute("src"), expectedScript,
+      "The candidate does not embed the verified frontend build.");
+    if (phase25Settings) {
+      const { verifyPhase25Settings } = await import("./native_phase25_settings.mjs");
+      await record("T-P25-S12 Settings and managed storage folders in Windows", () =>
+        verifyPhase25Settings({ page, check, scratch, invoke, powershell, root }));
+    } else if (phase25SqlScale) {
+      const { verifyPhase25SqlScale } = await import("./native_phase25_sql_scale.mjs");
+      await record("T-P25-101/104/108/112/114/117/120 SQL source and large selection", () =>
+        verifyPhase25SqlScale({ page, check, scratch, invoke, openSources, sampleProcess, fixtureDir }));
+    } else if (phase25ScatterTooltip) {
+      await record("T-P25-025 dense scatter tooltip in WebView2", scatterTooltipUi);
+    } else if (phase25ChartFidelity) {
+      const { verifyPhase25ChartFidelity } = await import("./native_phase25_chart_fidelity.mjs");
+      const fixtureDir = path.join(root, ".tmp", "phase-25", "fidelity-fixtures");
+      await record("T-P25-012/013/014/015/016/017 native sparse chart detail", () =>
+        verifyPhase25ChartFidelity({ fixtureDir, openSources, invoke }));
+      await record("T-P25-019 inline SQL tab naming in WebView2", sqlEditorFeatures);
+    } else {
+      const { verifyPhase25Workspaces, verifyPhase25CardActions } = await import("./native_phase25_workspaces.mjs");
+      await record("T-P25-010 workspaces in WebView2", () => verifyPhase25Workspaces({ page, check, scratch }));
+      if (phase25CardInteractions)
+        await record("T-P25-021/022/023/024 captured preview and card actions in WebView2", () => verifyPhase25CardActions({ page, check, scratch }));
+    }
+  } else if (chartPerformance) {
+    if (!chartPerformanceUiOnly) {
+      await record("T-P24-035 exact filtered file block", () => fileViewSnapshot(golden.sqlSelection));
+      await record("T-P24-035 chart image and all SVG points", chartImageExportUi);
+      await record("T-P24-035 image cancellation and destination safety", chartImageNativeTransaction);
+    }
+    await record("T-P24-040 six million-row CSV charts in WebView2", chartPerformanceUi);
+  } else if (sqlGridNavigation) {
     await record("T-P24-030 SQL result keyboard and Tables tooltip in WebView2", sqlGridKeyboard);
   } else if (chartImageExport) {
     if (!chartTransactionOnly) {

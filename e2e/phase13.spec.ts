@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { mkdir, writeFile } from "node:fs/promises";
 import {
   expectInsideViewport,
@@ -294,6 +295,7 @@ test("Settings exposes Timestamp and Duration detail with Date only controls hid
 }, testInfo) => {
   await page.getByRole("button", { name: "Settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings" });
+  await selectSettingsCategory(dialog, "Display");
   await expect(dialog.getByRole("heading", { name: "Value display formats" })).toBeVisible();
   const timestampRow = dialog.locator('[data-format-type="timestamp"]');
   await expect(

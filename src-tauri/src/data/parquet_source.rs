@@ -4,7 +4,7 @@ use crate::domain::{
     FormatDescriptor, FormatDetailsContent, FormatDetailsSection, RowCountState, RowCountStatus,
     RowGroupSummary, SourceCapability,
 };
-use arrow_array::{Array, LargeStringArray, RecordBatch, StringArray, StringViewArray};
+use arrow_array::{Array, LargeStringArray, StringArray, StringViewArray};
 use arrow_schema::DataType;
 use parquet::arrow::{
     arrow_reader::{ParquetRecordBatchReaderBuilder, RowSelection},
@@ -705,30 +705,35 @@ impl ParquetSource {
         let builder = ParquetRecordBatchReaderBuilder::try_new(file)
             .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
         let mask = ProjectionMask::roots(builder.parquet_schema(), projection.sorted_indices);
+        let row_group_offset = usize::try_from(offset.saturating_sub(first_row))
+            .map_err(|_| DataError::invalid_request("Parquet page offset is too large."))?;
+        // This offset is relative to the selected row groups. Let Parquet
+        // skip their prefix before creating Arrow arrays. Without a page
+        // index, the decoder can still need to read or decompress skipped
+        // pages, but those rows no longer become output record batches.
         let reader = builder
             .with_batch_size(batch_size)
             .with_row_groups(row_groups)
             .with_projection(mask)
+            .with_offset(row_group_offset)
+            .with_limit(limit)
             .build()
             .map_err(|error| DataError::invalid_parquet(&self.path, error))?;
 
         let mut rows = Vec::with_capacity(limit);
-        let mut selected_row = 0_u64;
-        let skip_rows = offset.saturating_sub(first_row);
         for batch in reader {
             let batch = batch.map_err(|error| DataError::invalid_parquet(&self.path, error))?;
             #[cfg(test)]
             self.record_decoded_batch(batch.num_rows(), batch.num_columns());
-            append_batch_rows(
-                &batch,
-                skip_rows,
-                limit,
-                &projection.batch_positions,
-                &mut selected_row,
-                &mut rows,
-            )?;
-            if rows.len() == limit {
-                break;
+            for row_index in 0..batch.num_rows() {
+                let row = projection
+                    .batch_positions
+                    .iter()
+                    .map(|&index| {
+                        super::value_format::value_at(batch.column(index).as_ref(), row_index)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                rows.push(row);
             }
         }
 
@@ -1433,39 +1438,13 @@ fn validate_page_request(limit: usize) -> Result<(), DataError> {
     Ok(())
 }
 
-fn append_batch_rows(
-    batch: &RecordBatch,
-    skip_rows: u64,
-    limit: usize,
-    batch_positions: &[usize],
-    selected_row: &mut u64,
-    rows: &mut Vec<Vec<DataValue>>,
-) -> Result<(), DataError> {
-    for row_index in 0..batch.num_rows() {
-        if *selected_row >= skip_rows && rows.len() < limit {
-            let row = batch_positions
-                .iter()
-                .map(|column_index| {
-                    super::value_format::value_at(batch.column(*column_index).as_ref(), row_index)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            rows.push(row);
-        }
-        *selected_row = selected_row.saturating_add(1);
-        if rows.len() == limit {
-            break;
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{DataErrorCode, ValueKind};
     use arrow_array::builder::StringDictionaryBuilder;
     use arrow_array::types::Int8Type;
-    use arrow_array::{ArrayRef, BooleanArray, Float64Array, Int32Array, StringArray};
+    use arrow_array::{ArrayRef, BooleanArray, Float64Array, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType, Field, Schema};
     use parquet::arrow::ArrowWriter;
 
@@ -2019,6 +1998,97 @@ mod tests {
             source.read_page(0, 201).unwrap_err().code,
             DataErrorCode::InvalidRequest
         );
+    }
+
+    #[test]
+    fn parquet_projected_pages_skip_large_row_group_prefixes() {
+        const GROUP_ROWS: usize = 16_384;
+        const TOTAL_ROWS: usize = GROUP_ROWS * 2 + 5;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("large-row-group.parquet");
+        let ids = Int32Array::from_iter_values(0..TOTAL_ROWS as i32);
+        let labels = StringArray::from_iter((0..TOTAL_ROWS).map(|row| match row % 3 {
+            0 => None,
+            1 => Some(""),
+            _ => Some("한글"),
+        }));
+        let batch = RecordBatch::try_from_iter([
+            ("id", Arc::new(ids) as ArrayRef),
+            ("label", Arc::new(labels) as ArrayRef),
+            (
+                "unused",
+                Arc::new(BooleanArray::from(vec![true; TOTAL_ROWS])) as ArrayRef,
+            ),
+        ])
+        .unwrap();
+        let properties = WriterProperties::builder()
+            .set_max_row_group_row_count(Some(GROUP_ROWS))
+            .build();
+        let mut writer = ArrowWriter::try_new(
+            File::create(&path).unwrap(),
+            batch.schema(),
+            Some(properties),
+        )
+        .unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+        let source = ParquetSource::open(path).unwrap();
+        let columns = ["label".to_owned(), "id".to_owned()];
+        let offset = (GROUP_ROWS - 2) as u64;
+        let crossing = source.read_copy_projected(offset, 5, &columns).unwrap();
+        assert_eq!(crossing.offset, offset);
+        assert_eq!(crossing.limit, 5);
+        assert_eq!(crossing.columns, columns);
+        assert_eq!(crossing.total_rows, Some(TOTAL_ROWS as u64));
+        assert!(crossing.has_more);
+        assert_eq!(crossing.rows.len(), 5);
+        for (index, row) in crossing.rows.iter().enumerate() {
+            assert_eq!(
+                row[1],
+                DataValue::displayed(ValueKind::Int, (offset + index as u64).to_string())
+            );
+        }
+        assert_eq!(
+            crossing.rows[0][0],
+            DataValue::displayed(ValueKind::String, "한글")
+        );
+        assert_eq!(crossing.rows[1][0], DataValue::null());
+        assert_eq!(
+            crossing.rows[2][0],
+            DataValue::displayed(ValueKind::String, "")
+        );
+        let audit = source.take_decode_audit();
+        assert_eq!(audit.reader_builds, 1);
+        assert_eq!(audit.selected_row_groups, [0, 1]);
+        assert_eq!(audit.projected_root_columns, 2);
+        assert_eq!(audit.decoded_rows, 5);
+        assert_eq!(audit.decoded_columns, 2);
+
+        let offset = (GROUP_ROWS * 2 - 2) as u64;
+        let tail = source
+            .read_page_projected(offset, 10, Some(&columns))
+            .unwrap();
+        assert_eq!(tail.rows.len(), 7);
+        assert_eq!(
+            tail.rows[0][1],
+            DataValue::displayed(ValueKind::Int, offset.to_string())
+        );
+        assert_eq!(
+            tail.rows[6][1],
+            DataValue::displayed(ValueKind::Int, (TOTAL_ROWS - 1).to_string())
+        );
+        assert!(!tail.has_more);
+        let audit = source.take_decode_audit();
+        assert_eq!(audit.selected_row_groups, [1, 2]);
+        assert_eq!(audit.decoded_rows, 7);
+
+        let eof = source
+            .read_page_projected(TOTAL_ROWS as u64, 10, Some(&columns))
+            .unwrap();
+        assert!(eof.rows.is_empty());
+        assert!(!eof.has_more);
+        assert_eq!(eof.total_rows, Some(TOTAL_ROWS as u64));
+        assert_eq!(source.take_decode_audit().reader_builds, 0);
     }
 
     #[test]

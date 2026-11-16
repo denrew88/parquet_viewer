@@ -1,10 +1,10 @@
-use std::cmp::Ordering;
+use std::{borrow::Cow, cmp::Ordering};
 
 use chrono::{DateTime, NaiveDateTime};
 
 use crate::domain::{DataError, DataValue, DataValueState, ValueKind};
 
-use super::{invalid, ChartScale};
+use super::{invalid, ChartCell, ChartScale};
 
 const MAX_DECIMAL_DIGITS: usize = 256;
 const EXACT_INTEGER_MAGNITUDE: i128 = 1 << 52;
@@ -55,34 +55,32 @@ pub(super) enum LineKey {
 impl Axis {
     pub(super) fn coordinate(
         &mut self,
-        cell: &DataValue,
+        cell: ChartCell<'_>,
         scale: ChartScale,
     ) -> Result<f64, AxisExclusion> {
-        let raw = canonical(cell).ok_or(AxisExclusion::Invalid)?;
-        let scalar = parse_scalar(cell, raw).ok_or(AxisExclusion::Invalid)?;
+        let scalar = scalar(cell).ok_or(AxisExclusion::Invalid)?;
         if scale == ChartScale::Linear {
-            self.linear_coordinate(cell, raw, scalar)
+            self.linear_coordinate(cell, scalar)
                 .ok_or(AxisExclusion::Invalid)
         } else {
             scalar.scaled(scale)
         }
     }
 
-    fn linear_coordinate(
-        &mut self,
-        cell: &DataValue,
-        raw: &str,
-        scalar: Scalar<'_>,
-    ) -> Option<f64> {
+    fn linear_coordinate(&mut self, cell: ChartCell<'_>, scalar: Scalar<'_>) -> Option<f64> {
         let origin = self.origin.get_or_insert_with(|| match &scalar {
             Scalar::Integer(value) if value.abs() >= EXACT_INTEGER_MAGNITUDE => Origin::Integer {
                 value: *value,
-                label: raw.to_owned(),
+                label: canonical(cell).unwrap_or_default().into_owned(),
             },
             Scalar::Decimal { raw, parts } if parts.significant_digits() > 15 => {
                 Origin::Decimal((*raw).to_owned())
             }
             Scalar::Temporal { value, zoned } => {
+                let ChartCell::Legacy(cell) = cell else {
+                    unreachable!("temporal scalars carry legacy metadata");
+                };
+                let raw = legacy_canonical(cell).unwrap_or_default();
                 let unit = if cell.kind == ValueKind::Date {
                     "days"
                 } else {
@@ -119,13 +117,16 @@ impl Axis {
             }
             (
                 Origin::Temporal {
-                    value, kind, zoned, ..
+                    value,
+                    kind: origin_kind,
+                    zoned,
+                    ..
                 },
                 Scalar::Temporal {
                     value: temporal,
                     zoned: temporal_zoned,
                 },
-            ) if *kind == cell.kind && *zoned == temporal_zoned => {
+            ) if Some(*origin_kind) == kind(cell) && *zoned == temporal_zoned => {
                 temporal.checked_sub(*value)? as f64
             }
             _ => return None,
@@ -149,20 +150,18 @@ impl Axis {
 
     pub(super) fn line_key(
         &self,
-        cell: &DataValue,
+        cell: ChartCell<'_>,
         coordinate: f64,
         bucket: Option<i128>,
     ) -> Result<(LineKey, f64), DataError> {
-        let scalar = canonical(cell)
-            .and_then(|raw| parse_scalar(cell, raw))
-            .ok_or_else(|| invalid("The line X value cannot be grouped."))?;
+        let scalar = scalar(cell).ok_or_else(|| invalid("The line X value cannot be grouped."))?;
         if let Some(bucket) = bucket {
             let (Scalar::Temporal { value, .. }, Some(Origin::Temporal { value: origin, .. })) =
                 (scalar, &self.origin)
             else {
                 return Err(invalid("Time buckets require a temporal X column."));
             };
-            let units = if cell.kind == ValueKind::Date {
+            let units = if kind(cell) == Some(ValueKind::Date) {
                 NANOS_PER_DAY
             } else {
                 1
@@ -252,11 +251,42 @@ impl Scalar<'_> {
     }
 }
 
-pub(super) fn absolute_number(cell: &DataValue) -> Option<f64> {
-    parse_scalar(cell, canonical(cell)?)?.absolute()
+pub(super) fn absolute_number(cell: ChartCell<'_>) -> Option<f64> {
+    scalar(cell)?.absolute()
 }
 
-pub(super) fn canonical(cell: &DataValue) -> Option<&str> {
+pub(super) fn kind(cell: ChartCell<'_>) -> Option<ValueKind> {
+    Some(match cell {
+        ChartCell::Legacy(cell) => cell.kind,
+        ChartCell::Integer(_) => ValueKind::Int,
+        ChartCell::Float(_) => ValueKind::Float,
+        ChartCell::Text(_) => ValueKind::String,
+        ChartCell::Boolean(_) => ValueKind::Boolean,
+        ChartCell::Missing => return None,
+    })
+}
+
+pub(super) fn has_value(cell: ChartCell<'_>) -> bool {
+    match cell {
+        ChartCell::Legacy(cell) => legacy_canonical(cell).is_some(),
+        ChartCell::Missing => false,
+        _ => true,
+    }
+}
+
+pub(super) fn canonical(cell: ChartCell<'_>) -> Option<Cow<'_, str>> {
+    match cell {
+        ChartCell::Legacy(cell) => legacy_canonical(cell).map(Cow::Borrowed),
+        ChartCell::Integer(value) => Some(Cow::Owned(value.to_string())),
+        ChartCell::Text(value) => Some(Cow::Borrowed(value)),
+        ChartCell::Boolean(value) => Some(Cow::Borrowed(if value { "true" } else { "false" })),
+        // Native floats are only projected for numeric roles. Their source
+        // canonical text is obtained through the legacy reader when needed.
+        ChartCell::Float(_) | ChartCell::Missing => None,
+    }
+}
+
+fn legacy_canonical(cell: &DataValue) -> Option<&str> {
     match cell.state {
         DataValueState::Valid => cell.source_display.as_deref().or(cell.display.as_deref()),
         DataValueState::Empty if cell.kind == ValueKind::String => Some(""),
@@ -264,16 +294,30 @@ pub(super) fn canonical(cell: &DataValue) -> Option<&str> {
     }
 }
 
-pub(super) fn group_label(cell: &DataValue) -> Option<&str> {
-    let value = canonical(cell)?;
-    match cell.kind {
+pub(super) fn group_label(cell: ChartCell<'_>) -> Option<Cow<'_, str>> {
+    match kind(cell)? {
         ValueKind::String
         | ValueKind::Boolean
         | ValueKind::Int
         | ValueKind::Decimal
-        | ValueKind::Date => Some(value),
-        ValueKind::Float => absolute_number(cell).map(|_| value),
-        ValueKind::Timestamp | ValueKind::Duration => cell.display.as_deref(),
+        | ValueKind::Date => canonical(cell),
+        ValueKind::Float => absolute_number(cell).and_then(|_| canonical(cell)),
+        ValueKind::Timestamp | ValueKind::Duration => {
+            let ChartCell::Legacy(cell) = cell else {
+                return None;
+            };
+            legacy_canonical(cell)?;
+            cell.display.as_deref().map(Cow::Borrowed)
+        }
+        _ => None,
+    }
+}
+
+fn scalar(cell: ChartCell<'_>) -> Option<Scalar<'_>> {
+    match cell {
+        ChartCell::Legacy(cell) => parse_scalar(cell, legacy_canonical(cell)?),
+        ChartCell::Integer(value) => Some(Scalar::Integer(value)),
+        ChartCell::Float(value) => value.is_finite().then_some(Scalar::Float(value)),
         _ => None,
     }
 }

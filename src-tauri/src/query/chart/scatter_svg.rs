@@ -121,11 +121,11 @@ impl ChartStore {
         let mut x_axis = Axis::default();
         let mut y_axis = Axis::default();
         progress(status);
-        input.visit(&projection.columns, &job, |row, indices| {
+        input.visit(&projection.columns, &job, |row| {
             status.scanned_rows += 1;
-            if matches_filter(request, &projection, row, indices) {
-                let x = &row[indices[0]];
-                let y = projection.y.map(|slot| &row[indices[slot]]);
+            if matches_filter(request, &projection, row) {
+                let x = row[0];
+                let y = projection.y.map(|slot| row[slot]);
                 if let Some([cx, cy]) = scatter_point(request, &mut x_axis, &mut y_axis, x, y)
                     .ok()
                     .and_then(|point| frame.project(point))

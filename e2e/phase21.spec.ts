@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { expectInsideViewport, expectNoHorizontalPageOverflow } from "./helpers";
 
@@ -241,6 +242,7 @@ test("T-P21-002/008 source and filtered scopes stay isolated and calculation can
   await panel.press("Escape");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(settings, "Storage");
   await expect(
     settings.getByRole("button", { name: "Choose cache location…", exact: true }),
   ).toBeDisabled();
@@ -253,6 +255,7 @@ test("T-P21-013/015/030/032 cache cap validates decimals, persists and shows eff
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(dialog, "Storage");
   const overall = dialog.getByRole("spinbutton", {
     name: "Overall managed storage limit",
     exact: true,
@@ -287,6 +290,7 @@ test("T-P21-013/015/030/032 cache cap validates decimals, persists and shows eff
   expect(settings.queryTempLimitBytes).toBe(322122547);
   expect(settings.csvCacheLimitBytes).toBe(536870912);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await selectSettingsCategory(dialog, "Storage");
   await expect(overall).toHaveValue("0.3");
   await expect(cache).toHaveValue("0.5");
 });
@@ -339,6 +343,7 @@ test("T-P21-018/024/025 migration preview, cancellation, failure and successful 
   });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(dialog, "Storage");
   const choose = dialog.getByRole("button", { name: "Choose cache location…", exact: true });
   await choose.click();
   await expect(dialog.getByRole("region", { name: "Cache migration preview" })).toContainText(
@@ -358,7 +363,11 @@ test("T-P21-018/024/025 migration preview, cancellation, failure and successful 
   await expect(dialog.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel cache move", exact: true }).click();
   await expect(dialog.getByText("Cache move cancelled", { exact: true })).toBeVisible();
-  await expect(dialog.locator(".storage-path")).toContainText("Browser mock (no persistent cache)");
+  await expect(
+    dialog
+      .getByRole("region", { name: "Reusable CSV cache", exact: true })
+      .locator(".storage-path"),
+  ).toContainText("C:\\Data Viewer\\csv-cache-v1");
   await page.evaluate(() => Reflect.set(window, "__phase21MigrationMode", "fail"));
   await choose.click();
   await dialog.getByRole("button", { name: "Move cache here", exact: true }).click();
@@ -366,12 +375,18 @@ test("T-P21-018/024/025 migration preview, cancellation, failure and successful 
   await expect(
     dialog.getByText("Destination is full; original cache retained.", { exact: true }),
   ).toBeVisible();
-  await expect(dialog.locator(".storage-path")).toContainText("Browser mock (no persistent cache)");
+  await expect(
+    dialog
+      .getByRole("region", { name: "Reusable CSV cache", exact: true })
+      .locator(".storage-path"),
+  ).toContainText("C:\\Data Viewer\\csv-cache-v1");
   await page.evaluate(() => Reflect.set(window, "__phase21MigrationMode", "success"));
   await choose.click();
   await dialog.getByRole("button", { name: "Move cache here", exact: true }).click();
   await expect(dialog.getByText("Cache moved successfully", { exact: true })).toBeVisible();
-  await expect(dialog.locator(".storage-path")).toContainText(
-    "D:\\Data Viewer Cache\\data-viewer-csv-cache",
-  );
+  await expect(
+    dialog
+      .getByRole("region", { name: "Reusable CSV cache", exact: true })
+      .locator(".storage-path"),
+  ).toContainText("D:\\Data Viewer Cache\\data-viewer-csv-cache");
 });

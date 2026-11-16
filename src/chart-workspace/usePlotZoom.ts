@@ -136,6 +136,7 @@ export function usePlotZoom(
   cache: PlotZoomCache | undefined,
   cardId: string | undefined,
   viewKey: string,
+  onViewChange?: (view: PlotView | null) => void,
 ) {
   const state = useRef<ViewState>({ key: viewKey, current: fullView, history: [] });
   const drag = useRef<Drag | null>(null);
@@ -145,9 +146,11 @@ export function usePlotZoom(
   const [zoomed, setZoomed] = useState(false);
 
   const refresh = useCallback(() => {
+    const view = state.current.current;
     setCanUndo(state.current.history.length > 0);
-    setZoomed(!isFull(state.current.current));
-  }, []);
+    setZoomed(!isFull(view));
+    onViewChange?.(isFull(view) ? null : view);
+  }, [onViewChange]);
   const currentView = useCallback(() => {
     const view = state.current.current;
     return isFull(view) ? null : view;

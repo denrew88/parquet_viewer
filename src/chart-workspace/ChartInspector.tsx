@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CopyPlus, Trash2, X } from "lucide-react";
 import { ChartParameters } from "./ChartParameters";
 import type { ChartColumn, ChartSourceOption } from "./contract";
@@ -21,6 +21,11 @@ interface Props {
   source: ResolvedSource;
   sources: readonly ChartSourceOption[];
   busy: boolean;
+  reference?: {
+    visible: boolean;
+    render(): ReactNode;
+    onChange(visible: boolean): void;
+  };
   onTitle(title: string): void;
   onSource(id: string): void;
   onKind(kind: ChartKind): void;
@@ -93,6 +98,7 @@ export function ChartInspector({
   source,
   sources,
   busy,
+  reference,
   onTitle,
   onSource,
   onKind,
@@ -115,9 +121,14 @@ export function ChartInspector({
   const configured = suggestedAxes(card, source);
   const filterColumn = card.filter && resolveColumn(card.filter.column, source);
   return (
-    <aside className="chart-inspector" aria-label="Chart settings">
+    <aside
+      className="chart-inspector"
+      aria-label={reference?.visible ? "Chart source reference" : "Chart settings"}
+    >
       <header>
-        <h3>Chart settings</h3>
+        <h3 title={reference ? card.title : undefined}>
+          {reference ? card.title : "Chart settings"}
+        </h3>
         <button
           type="button"
           className="chart-icon-button"
@@ -127,130 +138,154 @@ export function ChartInspector({
           <X aria-hidden="true" />
         </button>
       </header>
-      <label>
-        Chart title
-        <input
-          value={card.title}
-          maxLength={120}
-          onChange={(event) => onTitle(event.currentTarget.value)}
-          onBlur={() => {
-            if (!card.title.trim()) onTitle(defaultChartTitle(card.kind));
-          }}
-        />
-      </label>
-      <label>
-        Data source
-        <select
-          value={current}
-          disabled={busy}
-          onChange={(event) => onSource(event.currentTarget.value)}
-        >
-          <option value="">
-            {disconnected ? "Reconnect data source" : "Choose a data source"}
-          </option>
-          {detached && (
-            <option value="saved">
-              {selected.kind === "pinned" ? "Pinned SQL result" : "Selected cells"} · {source.name}
-            </option>
-          )}
-          {sources.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.kind === "file" ? "File" : "SQL"} · {candidate.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {(selected?.kind === "follow" || selected?.kind === "pinned") && (
-        <label>
-          Refresh mode
-          <select
-            value={selected.kind === "pinned" ? "pin" : "follow"}
-            disabled={busy || (source.status !== "ready" && selected.kind !== "pinned")}
-            onChange={(event) => onRefresh(event.currentTarget.value === "pin" ? "pin" : "follow")}
+      {reference && (
+        <div className="chart-inspector-modes" role="group" aria-label="Chart inspector view">
+          <button
+            type="button"
+            aria-pressed={!reference.visible}
+            onClick={() => reference.onChange(false)}
           >
-            <option value="follow">Follow latest successful run</option>
-            <option value="pin">Pin this result</option>
-          </select>
+            Chart Settings
+          </button>
+          <button
+            type="button"
+            aria-pressed={reference.visible}
+            onClick={() => reference.onChange(true)}
+          >
+            Source Reference
+          </button>
+        </div>
+      )}
+      {reference?.visible && reference.render()}
+      <div hidden={reference?.visible}>
+        <label>
+          Chart title
+          <input
+            value={card.title}
+            maxLength={120}
+            onChange={(event) => onTitle(event.currentTarget.value)}
+            onBlur={() => {
+              if (!card.title.trim()) onTitle(defaultChartTitle(card.kind));
+            }}
+          />
         </label>
-      )}
-      {source.status === "waiting" && selected?.kind === "follow" && (
-        <p className="chart-inspector-note">Run this SQL tab to get data.</p>
-      )}
-      {source.status === "disconnected" && (
-        <p className="chart-inspector-note">Choose a source to reconnect this chart.</p>
-      )}
-      <div className="chart-inspector-section">
-        <h4>Encoding</h4>
         <label>
-          Chart type
+          Data source
           <select
-            value={card.kind ?? ""}
-            onChange={(event) => onKind(event.currentTarget.value as ChartKind)}
+            value={current}
+            disabled={busy}
+            onChange={(event) => onSource(event.currentTarget.value)}
           >
-            <option value="" disabled>
-              Choose a chart type
+            <option value="">
+              {disconnected ? "Reconnect data source" : "Choose a data source"}
             </option>
-            {Object.entries(chartKinds).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
+            {detached && (
+              <option value="saved">
+                {selected.kind === "pinned" ? "Pinned SQL result" : "Selected cells"} ·{" "}
+                {source.name}
+              </option>
+            )}
+            {sources.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.kind === "file" ? "File" : "SQL"} · {candidate.name}
               </option>
             ))}
           </select>
         </label>
-        {(["x", "y"] as const).map((axis) => {
-          const config = axes?.[axis];
-          if (!config) return null;
-          const explicitBar =
-            card.kind === "bar" && axis === "y" ? card.options.bar?.aggregate : undefined;
-          const countOnly = explicitBar === "count";
-          const optional = config.optional && !explicitBar;
-          const choices = source.columns.filter((column) => acceptsColumn(column, config.role));
-          return (
-            <label key={axis}>
-              {config.label}
-              <select
-                value={countOnly ? "" : (resolveColumn(configured[axis], source)?.id ?? "")}
-                disabled={countOnly || source.status !== "ready" || choices.length === 0}
-                onChange={(event) => onAxis(axis, event.currentTarget.value)}
-              >
-                <option value="" disabled={!optional}>
-                  {countOnly ? "Unused for count" : optional ? "Count rows" : "Select a column"}
-                </option>
-                {options(choices)}
-              </select>
-            </label>
-          );
-        })}
-      </div>
-      <ChartParameters card={card} source={source} onOptions={onOptions} />
-      {source.status === "ready" && (
+        {(selected?.kind === "follow" || selected?.kind === "pinned") && (
+          <label>
+            Refresh mode
+            <select
+              value={selected.kind === "pinned" ? "pin" : "follow"}
+              disabled={busy || (source.status !== "ready" && selected.kind !== "pinned")}
+              onChange={(event) =>
+                onRefresh(event.currentTarget.value === "pin" ? "pin" : "follow")
+              }
+            >
+              <option value="follow">Follow latest successful run</option>
+              <option value="pin">Pin this result</option>
+            </select>
+          </label>
+        )}
+        {source.status === "waiting" && selected?.kind === "follow" && (
+          <p className="chart-inspector-note">Run this SQL tab to get data.</p>
+        )}
+        {source.status === "disconnected" && (
+          <p className="chart-inspector-note">Choose a source to reconnect this chart.</p>
+        )}
         <div className="chart-inspector-section">
-          <h4>Exact-match filter</h4>
-          {card.filter && !filterColumn && (
-            <button type="button" onClick={() => onFilter("", "")}>
-              Clear unavailable filter
-            </button>
-          )}
-          <ChartFilter
-            key={JSON.stringify([
-              sourceIdentity(source.source),
-              filterColumn?.id,
-              card.filter?.equals,
-            ])}
-            columns={source.columns}
-            columnId={filterColumn?.id ?? ""}
-            equals={card.filter?.equals ?? ""}
-            apply={onFilter}
-          />
+          <h4>Encoding</h4>
+          <label>
+            Chart type
+            <select
+              value={card.kind ?? ""}
+              onChange={(event) => onKind(event.currentTarget.value as ChartKind)}
+            >
+              <option value="" disabled>
+                Choose a chart type
+              </option>
+              {Object.entries(chartKinds).map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(["x", "y"] as const).map((axis) => {
+            const config = axes?.[axis];
+            if (!config) return null;
+            const explicitBar =
+              card.kind === "bar" && axis === "y" ? card.options.bar?.aggregate : undefined;
+            const countOnly = explicitBar === "count";
+            const optional = config.optional && !explicitBar;
+            const choices = source.columns.filter((column) => acceptsColumn(column, config.role));
+            return (
+              <label key={axis}>
+                {config.label}
+                <select
+                  value={countOnly ? "" : (resolveColumn(configured[axis], source)?.id ?? "")}
+                  disabled={countOnly || source.status !== "ready" || choices.length === 0}
+                  onChange={(event) => onAxis(axis, event.currentTarget.value)}
+                >
+                  <option value="" disabled={!optional}>
+                    {countOnly ? "Unused for count" : optional ? "Count rows" : "Select a column"}
+                  </option>
+                  {options(choices)}
+                </select>
+              </label>
+            );
+          })}
         </div>
-      )}
-      <div className="chart-inspector-actions">
-        <button type="button" onClick={onDuplicate} disabled={busy}>
-          <CopyPlus aria-hidden="true" /> Duplicate chart
-        </button>
-        <button type="button" onClick={onRemove}>
-          <Trash2 aria-hidden="true" /> Remove chart
-        </button>
+        <ChartParameters card={card} source={source} onOptions={onOptions} />
+        {source.status === "ready" && (
+          <div className="chart-inspector-section">
+            <h4>Exact-match filter</h4>
+            {card.filter && !filterColumn && (
+              <button type="button" onClick={() => onFilter("", "")}>
+                Clear unavailable filter
+              </button>
+            )}
+            <ChartFilter
+              key={JSON.stringify([
+                sourceIdentity(source.source),
+                filterColumn?.id,
+                card.filter?.equals,
+              ])}
+              columns={source.columns}
+              columnId={filterColumn?.id ?? ""}
+              equals={card.filter?.equals ?? ""}
+              apply={onFilter}
+            />
+          </div>
+        )}
+        <div className="chart-inspector-actions">
+          <button type="button" onClick={onDuplicate} disabled={busy}>
+            <CopyPlus aria-hidden="true" /> Duplicate chart
+          </button>
+          <button type="button" onClick={onRemove}>
+            <Trash2 aria-hidden="true" /> Remove chart
+          </button>
+        </div>
       </div>
     </aside>
   );

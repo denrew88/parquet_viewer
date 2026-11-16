@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { selectSettingsCategory } from "./settingsHelpers";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { expectInsideViewport, expectNoHorizontalPageOverflow } from "./helpers";
 
@@ -56,6 +57,7 @@ const calls = (page: Page) =>
 async function mode(page: Page, value: "contextual" | "automatic" | "manual") {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(dialog, "SQL");
   await dialog
     .getByRole("combobox", { name: "SQL suggestion mode", exact: true })
     .selectOption(value);
@@ -194,15 +196,18 @@ test("T-P22-JOIN-004/006/007 manual setting persists in UI and explicit Enter ac
   const workspace = await setup(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Application settings", exact: true });
+  await selectSettingsCategory(dialog, "SQL");
   const select = dialog.getByRole("combobox", { name: "SQL suggestion mode", exact: true });
   await expect(select).toHaveValue("contextual");
   await select.selectOption("manual");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await selectSettingsCategory(dialog, "SQL");
   await expect(select).toHaveValue("contextual");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await mode(page, "manual");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await selectSettingsCategory(dialog, "SQL");
   await expect(select).toHaveValue("manual");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await editor(workspace).fill("SELECT ");

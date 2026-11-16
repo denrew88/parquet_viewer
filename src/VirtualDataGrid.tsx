@@ -20,6 +20,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ChartNoAxesCombined,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -66,6 +67,7 @@ import {
   applyGridKey,
   createSelection,
   isSelected,
+  isSelectedColumn,
   selectionReducer,
   type GridBounds,
   type GridCoordinate,
@@ -106,11 +108,13 @@ import {
   type CopyLimits,
   type DisplayFormats,
 } from "./settings/model";
+import "./gridHeaderSelection.css";
 
 const EXCEL_WORKSHEET_MAX_ROWS = 1_048_576;
 import {
   GRID_COLUMN_OVERSCAN,
   GRID_BOTTOM_CLEARANCE,
+  GRID_RIGHT_CLEARANCE,
   GRID_DEFAULT_COLUMN_WIDTH,
   GRID_HEADER_HEIGHT,
   GRID_MAX_COLUMN_WIDTH,
@@ -189,6 +193,7 @@ export interface VirtualDataGridProps {
   onRetryQuery?(): void;
   onOpenCopySettings?(): void;
   onChartSelection?(selection: import("./chart-workspace/contract").ChartSelection): void;
+  showChartSelectionAction?: boolean;
   onCopyPresetChange?(preset: CopyPreset): void;
   onPageChange(offset: number): void;
   onQueryPlanChange?(plan: QueryPlan): void;
@@ -372,6 +377,7 @@ export function VirtualDataGrid({
   readCellValue,
   resultKey,
   resultClipboardRef,
+  showChartSelectionAction = false,
   summary,
   writeClipboardText = defaultWriteClipboardText,
 }: VirtualDataGridProps) {
@@ -495,6 +501,8 @@ export function VirtualDataGrid({
     coordinate: GridCoordinate;
     x: number;
     y: number;
+    scrollLeft: number;
+    scrollTop: number;
   } | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 });
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -502,6 +510,8 @@ export function VirtualDataGrid({
     columnId: string;
     left: number;
     top: number;
+    scrollLeft: number;
+    scrollTop: number;
   } | null>(null);
   const [filterPopoverPosition, setFilterPopoverPosition] = useState({ left: 8, top: 8 });
   const filterPopoverRef = useRef<HTMLDivElement>(null);
@@ -838,17 +848,29 @@ export function VirtualDataGrid({
 
   useEffect(() => {
     if (!contextMenu) return;
-    const close = (event?: Event) => {
-      if (event && contextMenuRef.current?.contains(event.target as Node)) return;
+    const close = (event: Event) => {
+      if (event.target instanceof Node && contextMenuRef.current?.contains(event.target)) return;
       setContextMenu(null);
+    };
+    const closeOnScroll = (event: Event) => {
+      const grid = gridRef.current;
+      // A pending grid scroll event can arrive after the menu opens.
+      if (
+        grid &&
+        event.target === grid &&
+        grid.scrollLeft === contextMenu.scrollLeft &&
+        grid.scrollTop === contextMenu.scrollTop
+      )
+        return;
+      close(event);
     };
     window.addEventListener("pointerdown", close, true);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", closeOnScroll, true);
     return () => {
       window.removeEventListener("pointerdown", close, true);
       window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", closeOnScroll, true);
     };
   }, [contextMenu]);
 
@@ -891,13 +913,25 @@ export function VirtualDataGrid({
       if (event && filterPopoverRef.current?.contains(event.target as Node)) return;
       closeFilterPopover(false);
     };
+    const closeOnScroll = (event: Event) => {
+      const grid = gridRef.current;
+      // Scroll-into-view may enqueue its event before the trigger opens this popover.
+      if (
+        grid &&
+        event.target === grid &&
+        grid.scrollLeft === filterPopover.scrollLeft &&
+        grid.scrollTop === filterPopover.scrollTop
+      )
+        return;
+      close(event);
+    };
     window.addEventListener("pointerdown", close, true);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", closeOnScroll, true);
     return () => {
       window.removeEventListener("pointerdown", close, true);
       window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", closeOnScroll, true);
     };
   }, [closeFilterPopover, filterPopover]);
 
@@ -969,8 +1003,13 @@ export function VirtualDataGrid({
   const finalLoadedPage = [...pages.values()].find((loaded) => !loaded.hasMore);
   const loadedRowCount = finalLoadedPage ? loadedEnd : loadedEnd + 1;
   const rowCount = knownCount ?? Math.max(resolvedRowCountHint ?? 0, loadedRowCount);
+  const selectionRowEnd = selection.wholeColumns ? rowCount : selection.rect.bottom + 1;
+  const selectedRowCount = Math.max(0, Math.min(selectionRowEnd, rowCount) - selection.rect.top);
+  const selectedColumnCount = visibleColumnIndexes.filter((column) =>
+    isSelectedColumn(selection, column),
+  ).length;
   const selectedExcelRows =
-    selection.rect.bottom - selection.rect.top + 1 + (copyOptions.includeHeaders ? 1 : 0);
+    selectionRowEnd - selection.rect.top + (copyOptions.includeHeaders ? 1 : 0);
   const excelRowLimitExceeded =
     copyOptions.preset === "excel" && selectedExcelRows > EXCEL_WORKSHEET_MAX_ROWS;
   const maxSegmentStart = Math.max(0, rowCount - GRID_MAX_SEGMENT_ROWS);
@@ -987,6 +1026,17 @@ export function VirtualDataGrid({
     () => ({ rowCount, columnCount: logicalColumnNames.length, pageStep }),
     [logicalColumnNames.length, pageStep, rowCount],
   );
+
+  function selectColumnHeader(column: number, extend: boolean, toggle: boolean): void {
+    dispatchSelection({
+      type: "column",
+      column,
+      visibleColumns: visibleColumnIndexes,
+      mode: extend ? "extend" : toggle ? "toggle" : "replace",
+      bounds: selectionBounds,
+    });
+    gridRef.current?.focus();
+  }
 
   function applyColumnOrder(nextOrder: readonly string[]): void {
     const next = normalizedIdOrder(sourceLogicalColumnNames, nextOrder);
@@ -1826,14 +1876,21 @@ export function VirtualDataGrid({
   }
 
   function captureSelection() {
-    const { top, left, bottom, right } = latestSelection.current.rect;
-    const selectedColumns = visibleColumns
-      .map((column) => column.id)
-      .filter((columnId) => {
-        const logicalIndex = logicalColumnNames.indexOf(columnId);
-        return logicalIndex >= left && logicalIndex <= right;
-      });
-    return { rowStart: top, rowEndExclusive: bottom + 1, columnIds: selectedColumns };
+    const current = latestSelection.current;
+    const columnIds = visibleColumnIndexes
+      .filter((column) => isSelectedColumn(current, column))
+      .map((column) => logicalColumnNames[column]);
+    return {
+      rowStart: current.rect.top,
+      rowEndExclusive: current.wholeColumns ? rowCount : current.rect.bottom + 1,
+      columnIds,
+    };
+  }
+
+  function createChartFromSelection() {
+    if (!onChartSelection || rowCount === 0) return;
+    const snapshot = captureSelection();
+    if (snapshot.columnIds.length) onChartSelection(snapshot);
   }
 
   useImperativeHandle(resultClipboardRef, () => ({
@@ -1898,24 +1955,35 @@ export function VirtualDataGrid({
 
   function openContextMenu(event: ReactMouseEvent<HTMLDivElement>, coordinate: GridCoordinate) {
     event.preventDefault();
-    if (!isSelected(selection, coordinate)) {
+    const grid = gridRef.current;
+    if (!grid) return;
+    if (!isSelected(selection, coordinate, rowCount)) {
       dispatchSelection({ type: "click", coordinate, bounds: selectionBounds });
     }
-    setContextMenu({ coordinate, x: event.clientX, y: event.clientY });
+    setContextMenu({
+      coordinate,
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: grid.scrollLeft,
+      scrollTop: grid.scrollTop,
+    });
   }
 
   function openKeyboardContextMenu() {
     const coordinate = selection.active;
     const open = () => {
-      const cell = gridRef.current?.querySelector<HTMLElement>(
+      const grid = gridRef.current;
+      if (!grid) return;
+      const cell = grid.querySelector<HTMLElement>(
         `[data-grid-row="${coordinate.row}"][data-grid-column="${coordinate.column}"]`,
       );
-      const rect = cell?.getBoundingClientRect() ?? gridRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const rect = cell?.getBoundingClientRect() ?? grid.getBoundingClientRect();
       setContextMenu({
         coordinate,
         x: Math.min(rect.right, window.innerWidth - 8),
         y: Math.min(rect.bottom, window.innerHeight - 8),
+        scrollLeft: grid.scrollLeft,
+        scrollTop: grid.scrollTop,
       });
     };
     scrollToCoordinate(coordinate);
@@ -2193,6 +2261,29 @@ export function VirtualDataGrid({
     scrollToCoordinate(next.active);
   }
 
+  function handleSelectAllKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (
+      !active ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      !(event.ctrlKey || event.metaKey) ||
+      event.altKey ||
+      event.key.toLocaleLowerCase() !== "a" ||
+      !(event.target instanceof Element) ||
+      event.target.closest(
+        "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='searchbox'], [role='dialog'], [role='menu']",
+      ) ||
+      selectionBounds.rowCount <= 0 ||
+      selectionBounds.columnCount <= 0
+    )
+      return;
+    event.preventDefault();
+    cancelPendingBoundaryNavigation();
+    const next = dispatchSelection({ type: "all", bounds: selectionBounds });
+    gridRef.current?.focus({ preventScroll: true });
+    scrollToCoordinate(next.active);
+  }
+
   function resizeColumn(
     event: ReactPointerEvent<HTMLDivElement>,
     columnId: string,
@@ -2319,15 +2410,24 @@ export function VirtualDataGrid({
     queryPlan && (queryPlan.filters.length > 0 || queryPlan.search?.text.trim()),
   );
   const activeCopyStatus = copyIsActive(copyStatus) ? copyStatus : null;
+  const chartSelectionAction = showChartSelectionAction;
 
   return (
     <div
       className="virtual-grid-shell"
+      onKeyDown={handleSelectAllKeyDown}
       style={
-        queryEnabled
+        queryEnabled || chartSelectionAction
           ? {
-              gridTemplateRows:
-                "var(--grid-query-toolbar-height, 38px) var(--grid-column-toolbar-height, 38px) minmax(0, 1fr) var(--grid-paging-height, 40px)",
+              gridTemplateRows: [
+                queryEnabled && "var(--grid-query-toolbar-height, 38px)",
+                "var(--grid-column-toolbar-height, 38px)",
+                chartSelectionAction && "34px",
+                "minmax(0, 1fr)",
+                "var(--grid-paging-height, 40px)",
+              ]
+                .filter(Boolean)
+                .join(" "),
             }
           : undefined
       }
@@ -2686,9 +2786,28 @@ export function VirtualDataGrid({
         )}
       </div>
 
+      {chartSelectionAction && (
+        <div className="grid-chart-selection" aria-label="Chart selection">
+          <span>
+            {selectedRowCount.toLocaleString()} {selectedRowCount === 1 ? "row" : "rows"} ·{" "}
+            {selectedColumnCount.toLocaleString()}{" "}
+            {selectedColumnCount === 1 ? "column" : "columns"} selected
+          </span>
+          <button
+            disabled={!onChartSelection || rowCount === 0 || selectedColumnCount === 0}
+            onClick={createChartFromSelection}
+            type="button"
+          >
+            <ChartNoAxesCombined aria-hidden="true" />
+            Create Chart from Selection
+          </button>
+        </div>
+      )}
+
       <div
         aria-colcount={visibleColumns.length}
         aria-label="Data preview"
+        aria-multiselectable="true"
         aria-rowcount={knownCount ?? -1}
         className="virtual-grid"
         data-active-column={selection.active.column}
@@ -2701,7 +2820,8 @@ export function VirtualDataGrid({
         data-query-id={queryId ?? ""}
         data-scroll-mode={scrollMode}
         data-session-id={summary.sessionId}
-        data-selection-bottom={selection.rect.bottom}
+        data-selection-bottom={selectionRowEnd - 1}
+        data-selection-column-count={selectedColumnCount}
         data-selection-kind={selection.kind}
         data-selection-left={selection.rect.left}
         data-selection-right={selection.rect.right}
@@ -2748,7 +2868,7 @@ export function VirtualDataGrid({
             className="virtual-grid__canvas"
             style={{
               height: GRID_HEADER_HEIGHT + rowVirtualizer.getTotalSize() + GRID_BOTTOM_CLEARANCE,
-              width: GRID_ROW_NUMBER_WIDTH + totalColumnWidth,
+              width: GRID_ROW_NUMBER_WIDTH + totalColumnWidth + GRID_RIGHT_CLEARANCE,
             }}
           >
             <div className="virtual-grid__header" role="row">
@@ -2761,6 +2881,8 @@ export function VirtualDataGrid({
               {columnVirtualItems.map((virtualColumn) => {
                 const column = visibleColumns[virtualColumn.index];
                 const logicalColumn = visibleColumnIndexes[virtualColumn.index];
+                const selected = Boolean(selection.wholeColumns?.has(logicalColumn));
+                const reorderProps = columnReorder.getItemProps(column.id);
                 const controlLabel = queryColumnLabel(column.id);
                 const columnFilter = queryPlan?.filters.find(
                   (filter) => filter.columnId === column.id,
@@ -2772,15 +2894,16 @@ export function VirtualDataGrid({
                     : undefined;
                 return (
                   <div
-                    {...columnReorder.getItemProps(column.id)}
+                    {...reorderProps}
                     aria-colindex={virtualColumn.index + 1}
                     aria-label={
                       columnLabels
                         ? `${columnLabels[column.id] ?? column.id} (${column.id})`
                         : column.id
                     }
+                    aria-selected={selected}
                     data-column-id={column.id}
-                    className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.kind === "column" && logicalColumn >= selection.rect.left && logicalColumn <= selection.rect.right ? " is-selected" : ""}${columnReorder.state.movingId === column.id ? " is-reordering" : ""}${columnReorder.state.movingId && columnReorder.state.movingId !== column.id ? " is-live-reflowing" : ""}`}
+                    className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}${selected ? " is-selected" : ""}${columnReorder.state.movingId === column.id ? " is-reordering" : ""}${columnReorder.state.movingId && columnReorder.state.movingId !== column.id ? " is-live-reflowing" : ""}`}
                     data-column-index={logicalColumn}
                     key={column.id}
                     onClick={(event) => {
@@ -2791,14 +2914,28 @@ export function VirtualDataGrid({
                         )
                       )
                         return;
-                      dispatchSelection({
-                        type: "column",
-                        column: logicalColumn,
-                        bounds: selectionBounds,
-                      });
-                      gridRef.current?.focus();
+                      selectColumnHeader(
+                        logicalColumn,
+                        event.shiftKey,
+                        event.ctrlKey || event.metaKey,
+                      );
                     }}
                     onKeyDown={(event) => {
+                      if (
+                        event.target === event.currentTarget &&
+                        !event.nativeEvent.isComposing &&
+                        !event.altKey &&
+                        (event.key === "Enter" || event.key === " ")
+                      ) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        selectColumnHeader(
+                          logicalColumn,
+                          event.shiftKey,
+                          event.ctrlKey || event.metaKey,
+                        );
+                        return;
+                      }
                       if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey)
                         return;
                       const direction =
@@ -2815,6 +2952,11 @@ export function VirtualDataGrid({
                           .find((header) => header.dataset.columnId === column.id)
                           ?.focus();
                       });
+                    }}
+                    onPointerDown={(event) => {
+                      if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
+                        reorderProps.onPointerDown(event);
+                      }
                     }}
                     role="columnheader"
                     style={{
@@ -2859,7 +3001,13 @@ export function VirtualDataGrid({
                             setFilterPopover((current) =>
                               current?.columnId === column.id
                                 ? null
-                                : { columnId: column.id, left: rect.left, top: rect.bottom + 4 },
+                                : {
+                                    columnId: column.id,
+                                    left: rect.left,
+                                    top: rect.bottom + 4,
+                                    scrollLeft: gridRef.current?.scrollLeft ?? 0,
+                                    scrollTop: gridRef.current?.scrollTop ?? 0,
+                                  },
                             );
                           }}
                           ref={
@@ -2973,7 +3121,7 @@ export function VirtualDataGrid({
                     const rawValue = projectedColumn >= 0 ? row?.[projectedColumn] : undefined;
                     const value = rawValue ? formatDataValue(rawValue, displayFormats) : undefined;
                     const coordinate = { row: virtualRow.index, column: logicalColumn };
-                    const selected = isSelected(selection, coordinate);
+                    const selected = isSelected(selection, coordinate, rowCount);
                     const active =
                       selection.active.row === coordinate.row &&
                       selection.active.column === coordinate.column;
@@ -3234,7 +3382,7 @@ export function VirtualDataGrid({
                 }}
               >
                 <div
-                  className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}`}
+                  className={`virtual-grid__column-header virtual-grid__column-header--ordered${queryEnabled ? " virtual-grid__column-header--query" : ""}${selection.wholeColumns?.has(logicalColumn) ? " is-selected" : ""}`}
                   style={{ left: 0, width }}
                 >
                   <span>{movingId}</span>
@@ -3262,7 +3410,7 @@ export function VirtualDataGrid({
                     return null;
                   const value = valueAt(virtualRow.index, logicalColumn);
                   const coordinate = { row: virtualRow.index, column: logicalColumn };
-                  const selected = isSelected(selection, coordinate);
+                  const selected = isSelected(selection, coordinate, rowCount);
                   const active =
                     selection.active.row === coordinate.row &&
                     selection.active.column === coordinate.column;
@@ -3339,11 +3487,10 @@ export function VirtualDataGrid({
             </button>
             {onChartSelection && (
               <button
-                disabled={rowCount === 0}
+                disabled={rowCount === 0 || selectedColumnCount === 0}
                 onClick={() => {
-                  const snapshot = captureSelection();
                   closeContextMenu();
-                  if (snapshot.columnIds.length) onChartSelection(snapshot);
+                  createChartFromSelection();
                 }}
                 role="menuitem"
                 type="button"

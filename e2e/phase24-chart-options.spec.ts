@@ -210,6 +210,7 @@ test("Phase 24 chart options T-P24-010/013/014 applies histogram bins to one car
   await selectCard(page, "Histogram options");
   const image = await readyPlot(page, "Histogram options");
   const article = card(page, "Histogram options");
+  const metrics = article.getByText(/^\d+ valid rows? · /);
   const before = await reads(page);
   await choose(combo(page, "Histogram bins"), /^Number of bins$/);
   const count = number(page, "Bin count");
@@ -221,7 +222,7 @@ test("Phase 24 chart options T-P24-010/013/014 applies histogram bins to one car
   await count.fill("2");
   await count.press("Enter");
   await expect.poll(() => reads(page)).toBe(before + 1);
-  await expect(article).toContainText(/· 2 bins\b/);
+  await expect(metrics).toContainText(/· 2 bins\b/);
   await expect
     .poll(async () => (await readRenderer(image))?.data?.map((bin) => (bin as number[])[3]))
     .toEqual([2, 2]);
@@ -250,8 +251,8 @@ test("Phase 24 chart options T-P24-010/013/014 applies histogram bins to one car
   await choose(combo(page, "X scale"), /^Log10$/);
   await expect(image).toHaveAttribute("data-x-scale", "log10");
   await expect(inspector(page).getByText(/bin width uses transformed log10 units/i)).toBeVisible();
-  await expect(article).toContainText(/· 1 bins?\b/);
-  await expect(article).toContainText("1 excluded by scale");
+  await expect(metrics).toContainText(/· 1 bins?\b/);
+  await expect(metrics).toContainText("1 excluded by scale");
 
   const panel = inspector(page);
   for (const control of [

@@ -215,6 +215,7 @@ export function SqlResults({
                 )
             : undefined
         }
+        showChartSelectionAction
         findTarget={view.findTarget ?? undefined}
         onFindNext={() => void view.find("next")}
         onFindPrevious={() => void view.find("previous")}

@@ -101,12 +101,14 @@ fn sql_chart_pins_keep_one_snapshot_after_its_tab_releases_it() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     };
-    let path = service
-        .sql_result(run, &result)
-        .unwrap()
-        ._lease
-        .path()
-        .to_path_buf();
+    let snapshot = service.sql_result(run, &result).unwrap();
+    assert_eq!(
+        Arc::strong_count(&snapshot._lease),
+        1,
+        "Complete transfers the lease to the published result without a worker owner."
+    );
+    let path = snapshot._lease.path().to_path_buf();
+    drop(snapshot);
     assert!(service
         .retain_chart_sql_result("wrong-run", &result)
         .is_err());
@@ -259,6 +261,16 @@ fn sql_workspace_source_close_cancels_only_referenced_queued_task() {
         .unwrap();
     let task = service.sql_workspace.tasks.lock().unwrap()["close-source"].clone();
     assert_eq!(task.request.tables.len(), 1);
+    assert_eq!(
+        service
+            .sql_status("close-source")
+            .unwrap()
+            .referenced_sources,
+        vec![SqlSourceIdentity {
+            document_id: "document-a".into(),
+            session_id: "session-a".into(),
+        }]
+    );
     assert!(!task.cancel.load(Ordering::Acquire));
     service.cancel_source_sql("document-b", "session-b");
     assert!(!task.cancel.load(Ordering::Acquire));
@@ -856,7 +868,7 @@ fn sql_workspace_id_unicode_and_page_offset_parity() {
     let mut page = SqlPageRequest {
         run_id: "r".into(),
         result_id: "result".into(),
-        offset: SQL_MAX_ROWS,
+        offset: SQL_MAX_SAFE_ROWS,
         limit: 1,
         columns: vec!["r0".into()],
     };

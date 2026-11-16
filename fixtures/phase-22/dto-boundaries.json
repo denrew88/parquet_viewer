@@ -65,8 +65,10 @@
     { "value": 0, "expectedValid": true },
     { "value": 999999, "expectedValid": true },
     { "value": 1000000, "expectedValid": true },
-    { "value": 1000001, "expectedValid": false },
-    { "value": 9007199254740991, "expectedValid": false }
+    { "value": 1000001, "expectedValid": true },
+    { "value": 10000257, "expectedValid": true },
+    { "value": 9007199254740991, "expectedValid": true },
+    { "value": 9007199254740992, "expectedValid": false }
   ],
   "pageLimits": [
     { "value": 0, "expectedValid": false },

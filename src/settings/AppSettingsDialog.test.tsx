@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "./model";
 import { AppSettingsDialog } from "./AppSettingsDialog";
+import type { StorageLocations } from "./storageFolders";
+
+function selectCategory(name: "CSV" | "SQL" | "Copy" | "Display" | "Storage") {
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
 
 function renderDialog(overrides: Partial<React.ComponentProps<typeof AppSettingsDialog>> = {}) {
   const onApply = vi.fn();
@@ -23,9 +28,410 @@ function renderDialog(overrides: Partial<React.ComponentProps<typeof AppSettings
 }
 
 describe("AppSettingsDialog", () => {
+  it("keeps all category drafts mounted and applies them together", () => {
+    const { onApply } = renderDialog();
+    expect(screen.getByRole("tabpanel", { name: "CSV" })).toBeVisible();
+    expect(screen.getAllByRole("tabpanel", { hidden: true })).toHaveLength(5);
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "All Text" }));
+    const csv = screen.getByRole("tab", { name: "CSV" });
+    fireEvent.keyDown(csv, { key: "ArrowDown" });
+    expect(screen.getByRole("tab", { name: "SQL" })).toHaveFocus();
+    fireEvent.change(screen.getByRole("combobox", { name: "SQL suggestion mode" }), {
+      target: { value: "manual" },
+    });
+    selectCategory("Copy");
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Maximum cells" }), {
+      target: { value: "2000" },
+    });
+    selectCategory("Display");
+    fireEvent.change(screen.getByRole("combobox", { name: "Integer grouping" }), {
+      target: { value: "comma" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show Timestamp details" }));
+    selectCategory("Storage");
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CSV cache maximum size" }), {
+      target: { value: "1" },
+    });
+    selectCategory("Display");
+    expect(screen.getByRole("button", { name: "Hide Timestamp details" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    selectCategory("CSV");
+    expect(screen.getByRole("button", { name: "All Text" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onApply).toHaveBeenCalledOnce();
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        csvDefaultParsingMode: "allText",
+        sqlCompletionMode: "manual",
+        csvCacheLimitBytes: 1024 ** 3,
+        copyLimits: expect.objectContaining({ maxCells: 2000 }),
+        displayFormats: expect.objectContaining({ integer: { grouping: "comma" } }),
+      }),
+    );
+  });
+
+  it("keeps hidden invalid drafts discoverable and excludes inactive tabs from focus", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    selectCategory("Copy");
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Maximum cells" }), {
+      target: { value: "999" },
+    });
+    selectCategory("CSV");
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(screen.queryByRole("spinbutton", { name: "Maximum cells" })).not.toBeInTheDocument();
+    expect(screen.getByText("Fix invalid values in")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(screen.getByRole("spinbutton", { name: "Maximum cells" })).toHaveValue(999);
+    selectCategory("CSV");
+    const close = screen.getByRole("button", { name: "Close settings" });
+    close.focus();
+    await user.tab();
+    expect(screen.getByRole("tab", { name: "CSV" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Auto" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "CSV" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "Storage" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Storage" }), { key: "Home" });
+    expect(screen.getByRole("tab", { name: "CSV" })).toHaveFocus();
+  });
+
+  it("resets formats only in Display and preserves drafts from other categories", () => {
+    const defaults = defaultAppSettings();
+    const initialSettings = {
+      ...defaults,
+      displayFormats: {
+        ...defaults.displayFormats,
+        integer: { ...defaults.displayFormats.integer, grouping: "comma" as const },
+      },
+    };
+    const { onApply } = renderDialog({ initialSettings });
+    expect(screen.queryByRole("button", { name: "Reset display formats" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All Text" }));
+    selectCategory("Display");
+    fireEvent.click(screen.getByRole("button", { name: "Reset display formats" }));
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onApply).toHaveBeenCalledWith({
+      ...initialSettings,
+      csvDefaultParsingMode: "allText",
+      displayFormats: defaultAppSettings().displayFormats,
+    });
+  });
+
+  it("does not restore operation focus to controls in a hidden Storage panel", () => {
+    const props = {
+      initialSettings: defaultAppSettings(),
+      onApply: vi.fn(),
+      onCancel: vi.fn(),
+      onOpenCopySettings: vi.fn(),
+    };
+    const view = render(<AppSettingsDialog {...props} csvCacheClearing queryTempClearing />);
+    selectCategory("CSV");
+    const auto = screen.getByRole("button", { name: "Auto" });
+    auto.focus();
+    view.rerender(
+      <AppSettingsDialog {...props} csvCacheClearing={false} queryTempClearing={false} />,
+    );
+    expect(auto).toHaveFocus();
+  });
+
+  it("uses independent authoritative paths, opens kinds only and reports launch failures", async () => {
+    let finishOpen: (() => void) | undefined;
+    const locations: StorageLocations = {
+      csvCache: { path: "D:/한글 cache & logs", available: true },
+      queryTemp: { path: "C:/App data/query-temp", available: false },
+    };
+    const storageFolders = {
+      getLocations: vi.fn().mockResolvedValue(locations),
+      openFolder: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Explorer could not open this folder."))
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishOpen = resolve;
+            }),
+        ),
+    };
+    renderDialog({ storageFolders, tempUsageError: "Usage could not be read" });
+    selectCategory("Storage");
+    await screen.findByText(locations.csvCache.path);
+    const csvSection = screen.getByRole("region", { name: "Reusable CSV cache" });
+    const querySection = screen.getByRole("region", { name: "Query temporary data" });
+    expect(within(querySection).getByText(locations.queryTemp.path)).toBeVisible();
+    expect(within(querySection).getByRole("button", { name: "Open folder" })).toBeDisabled();
+    expect(storageFolders.openFolder).not.toHaveBeenCalled();
+    selectCategory("CSV");
+    selectCategory("Storage");
+    expect(storageFolders.openFolder).not.toHaveBeenCalled();
+    fireEvent.click(within(csvSection).getByRole("button", { name: "Open folder" }));
+    await screen.findByText("Explorer could not open this folder.");
+    expect(storageFolders.openFolder).toHaveBeenCalledWith("csvCache");
+    expect(storageFolders.openFolder.mock.calls[0]).toEqual(["csvCache"]);
+    fireEvent.click(within(csvSection).getByRole("button", { name: "Open folder" }));
+    expect(within(csvSection).getByRole("button", { name: "Opening…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    await act(async () => finishOpen?.());
+    expect(within(csvSection).getByRole("button", { name: "Open folder" })).toBeEnabled();
+  });
+
+  it("ignores old folder responses after backend replacement", async () => {
+    let resolveOld: ((value: StorageLocations) => void) | undefined;
+    const oldBackend = {
+      getLocations: vi.fn(
+        () =>
+          new Promise<StorageLocations>((resolve) => {
+            resolveOld = resolve;
+          }),
+      ),
+      openFolder: vi.fn(),
+    };
+    const current = {
+      csvCache: { path: "D:/current-cache", available: true },
+      queryTemp: { path: "C:/current-query-temp", available: true },
+    };
+    const newBackend = {
+      getLocations: vi.fn().mockResolvedValue(current),
+      openFolder: vi.fn().mockResolvedValue(undefined),
+    };
+    const props = {
+      initialSettings: defaultAppSettings(),
+      onApply: vi.fn(),
+      onCancel: vi.fn(),
+      onOpenCopySettings: vi.fn(),
+    };
+    const view = render(<AppSettingsDialog {...props} storageFolders={oldBackend} />);
+    selectCategory("Storage");
+    expect(screen.getByText("Reading folder locations…")).toBeVisible();
+    view.rerender(<AppSettingsDialog {...props} storageFolders={newBackend} />);
+    await screen.findByText(current.csvCache.path);
+    await act(async () =>
+      resolveOld?.({
+        csvCache: { path: "E:/stale-cache", available: true },
+        queryTemp: { path: "E:/stale-query", available: true },
+      }),
+    );
+    expect(screen.queryByText("E:/stale-cache")).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Query temporary data" })).getByRole("button", {
+        name: "Open folder",
+      }),
+    );
+    await waitFor(() => expect(newBackend.openFolder).toHaveBeenCalledWith("queryTemp"));
+    expect(oldBackend.openFolder).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "failure"] as const)(
+    "restores the folder trigger after async %s so Escape still closes settings",
+    async (outcome) => {
+      const user = userEvent.setup();
+      let finish: (() => void) | undefined;
+      const storageFolders = {
+        getLocations: vi.fn().mockResolvedValue({
+          csvCache: { path: "C:/cache", available: true },
+          queryTemp: { path: "C:/query-temp", available: true },
+        }),
+        openFolder: vi.fn(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finish = outcome === "success" ? resolve : () => reject(new Error("Open failed"));
+            }),
+        ),
+      };
+      const { onCancel } = renderDialog({ storageFolders });
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Close settings" })).toHaveFocus(),
+      );
+      selectCategory("Storage");
+      const group = screen.getByRole("region", { name: "Reusable CSV cache" });
+      const trigger = within(group).getByRole("button", { name: "Open folder" });
+      await user.click(trigger);
+      expect(screen.getByRole("dialog", { name: "Application settings" })).toHaveFocus();
+      expect(within(group).getByRole("button", { name: "Opening…" })).toBeDisabled();
+      await act(async () => finish?.());
+      expect(trigger).toHaveFocus();
+      if (outcome === "failure") expect(screen.getByText("Open failed")).toBeVisible();
+      await user.keyboard("{Escape}");
+      expect(onCancel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["control", "category"] as const)(
+    "does not steal focus after folder completion when a different %s is selected",
+    async (destination) => {
+      const user = userEvent.setup();
+      let finish: (() => void) | undefined;
+      const storageFolders = {
+        getLocations: vi.fn().mockResolvedValue({
+          csvCache: { path: "C:/cache", available: true },
+          queryTemp: { path: "C:/query-temp", available: true },
+        }),
+        openFolder: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        ),
+      };
+      renderDialog({ storageFolders });
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Close settings" })).toHaveFocus(),
+      );
+      selectCategory("Storage");
+      await user.click(
+        within(screen.getByRole("region", { name: "Reusable CSV cache" })).getByRole("button", {
+          name: "Open folder",
+        }),
+      );
+      const target =
+        destination === "control"
+          ? screen.getByRole("spinbutton", { name: "Overall managed storage limit" })
+          : screen.getByRole("tab", { name: "CSV" });
+      await user.click(target);
+      await act(async () => finish?.());
+      expect(target).toHaveFocus();
+      if (destination === "category")
+        expect(screen.getByRole("tabpanel", { name: "CSV" })).toBeVisible();
+    },
+  );
+
+  it("traps backward Tab on the dialog fallback while a folder is opening", async () => {
+    const user = userEvent.setup();
+    let finish: (() => void) | undefined;
+    const storageFolders = {
+      getLocations: vi.fn().mockResolvedValue({
+        csvCache: { path: "C:/cache", available: true },
+        queryTemp: { path: "C:/query-temp", available: true },
+      }),
+      openFolder: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    };
+    renderDialog({ storageFolders });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Close settings" })).toHaveFocus(),
+    );
+    selectCategory("Storage");
+    await user.click(
+      within(screen.getByRole("region", { name: "Reusable CSV cache" })).getByRole("button", {
+        name: "Open folder",
+      }),
+    );
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Apply" })).toHaveFocus();
+    await act(async () => finish?.());
+    expect(screen.getByRole("button", { name: "Apply" })).toHaveFocus();
+  });
+
+  it("refreshes folder metadata after a location move even if usage refresh fails", async () => {
+    const original = {
+      csvCache: { path: "C:/old-cache", available: true },
+      queryTemp: { path: "C:/app/query-temp", available: true },
+    };
+    const moved = { ...original, csvCache: { path: "D:/new-cache", available: true } };
+    const storageFolders = {
+      getLocations: vi.fn().mockResolvedValueOnce(original).mockResolvedValue(moved),
+      openFolder: vi.fn(),
+    };
+    const preview = {
+      sourcePath: original.csvCache.path,
+      targetPath: moved.csvCache.path,
+      bytes: 0,
+      entries: 0,
+      activeEntries: 0,
+      availableBytes: 10 * 1024 ** 3,
+      requiredFreeBytes: 5 * 1024 ** 3,
+    };
+    const cacheBackend = {
+      chooseCsvCacheLocation: vi.fn().mockResolvedValue({ selectionId: "selection-1", preview }),
+      startCsvCacheMigration: vi.fn().mockResolvedValue({
+        operationId: "move-1",
+        state: "complete",
+        progress: {
+          copiedBytes: 0,
+          totalBytes: 0,
+          copiedEntries: 0,
+          totalEntries: 0,
+          phase: "complete",
+        },
+        sourcePath: preview.sourcePath,
+        targetPath: preview.targetPath,
+        error: null,
+        result: {
+          sourcePath: preview.sourcePath,
+          targetPath: preview.targetPath,
+          movedBytes: 0,
+          movedEntries: 0,
+          cleanupFailures: [],
+        },
+      }),
+      getCsvCacheMigrationStatus: vi.fn(),
+      cancelCsvCacheMigration: vi.fn(),
+      getQueryTempUsage: vi.fn(),
+    };
+    renderDialog({
+      storageFolders,
+      cacheBackend,
+      onCacheLocationChanged: vi.fn().mockRejectedValue(new Error("Usage refresh failed")),
+    });
+    selectCategory("Storage");
+    await screen.findByText(original.csvCache.path);
+    fireEvent.click(screen.getByRole("button", { name: "Choose cache location…" }));
+    await screen.findByRole("button", { name: "Move cache here" });
+    selectCategory("CSV");
+    selectCategory("Storage");
+    fireEvent.click(screen.getByRole("button", { name: "Move cache here" }));
+    await waitFor(() => expect(storageFolders.getLocations).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(moved.csvCache.path, { selector: "code" })).toBeVisible();
+    expect(screen.getByText("Usage refresh failed")).toBeVisible();
+  });
+
+  it("retries metadata errors without creating or opening folders", async () => {
+    const locations = {
+      csvCache: { path: "X:/offline-cache", available: false },
+      queryTemp: { path: "C:/app/query-temp", available: true },
+    };
+    const storageFolders = {
+      getLocations: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Could not resolve saved locations"))
+        .mockResolvedValue(locations),
+      openFolder: vi.fn(),
+    };
+    renderDialog({ storageFolders });
+    selectCategory("Storage");
+    await screen.findByText("Could not resolve saved locations");
+    expect(
+      screen
+        .getAllByRole("button", { name: "Open folder" })
+        .every((button) => (button as HTMLButtonElement).disabled),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry folder locations" }));
+    await screen.findByText(locations.csvCache.path);
+    expect(screen.queryByText("Could not resolve saved locations")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Query temporary data" })).getByRole("button", {
+        name: "Open folder",
+      }),
+    ).toBeEnabled();
+    expect(storageFolders.openFolder).not.toHaveBeenCalled();
+  });
+
   it("applies SQL suggestion modes only when saved and preserves other settings", async () => {
     const original = { ...defaultAppSettings(), sqlTempLimitBytes: 322122547 };
     const { onApply, onCancel, view } = renderDialog({ initialSettings: original });
+    selectCategory("SQL");
     const field = screen.getByRole("combobox", { name: "SQL suggestion mode" });
     expect(field).toHaveValue("contextual");
     fireEvent.change(field, { target: { value: "manual" } });
@@ -37,6 +443,7 @@ describe("AppSettingsDialog", () => {
     expect(onApply).toHaveBeenCalledWith({ ...original, sqlCompletionMode: "manual" });
     view.unmount();
     renderDialog({ initialSettings: { ...original, sqlCompletionMode: "automatic" } });
+    selectCategory("SQL");
     expect(screen.getByRole("combobox", { name: "SQL suggestion mode" })).toHaveValue("automatic");
   });
   it("applies and reopens the SQL per-query cap independently of the overall cap", async () => {
@@ -46,6 +453,7 @@ describe("AppSettingsDialog", () => {
         queryTempLimitBytes: Math.round(0.3 * 1024 ** 3),
       },
     });
+    selectCategory("Storage");
     const input = screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" });
     expect(input).toHaveValue(0.5);
     fireEvent.change(input, { target: { value: "1" } });
@@ -58,6 +466,7 @@ describe("AppSettingsDialog", () => {
     });
     view.unmount();
     const reopened = renderDialog({ initialSettings: saved });
+    selectCategory("Storage");
     expect(
       screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" }),
     ).toHaveValue(1);
@@ -74,6 +483,7 @@ describe("AppSettingsDialog", () => {
     "rejects SQL cap %s before applying",
     (value) => {
       const { onApply } = renderDialog();
+      selectCategory("Storage");
       fireEvent.change(
         screen.getByRole("spinbutton", { name: "SQL temporary storage per query (GiB)" }),
         { target: { value } },
@@ -97,6 +507,7 @@ describe("AppSettingsDialog", () => {
       onCacheLocationChanged: vi.fn(),
       openDocumentCount: 0,
     });
+    selectCategory("Storage");
     expect(screen.getByText("Previous cache drive is unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose cache location…" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
@@ -109,6 +520,7 @@ describe("AppSettingsDialog", () => {
       const { onApply } = renderDialog({
         initialSettings: { ...defaultAppSettings(), csvCacheDirectory: "D:/existing-cache" },
       });
+      selectCategory("Storage");
       const input = screen.getByRole("spinbutton", { name: "CSV cache maximum size" });
       fireEvent.change(input, { target: { value } });
       await user.click(screen.getByRole("button", { name: "Apply" }));
@@ -124,6 +536,7 @@ describe("AppSettingsDialog", () => {
     "P21 rejects cache input %s before rounding",
     (value) => {
       renderDialog();
+      selectCategory("Storage");
       fireEvent.change(screen.getByRole("spinbutton", { name: "CSV cache maximum size" }), {
         target: { value },
       });
@@ -147,6 +560,7 @@ describe("AppSettingsDialog", () => {
   it("accepts the 64 MiB to 10 GiB query temporary-storage range", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
+    selectCategory("Storage");
     const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
 
     await user.clear(input);
@@ -162,6 +576,7 @@ describe("AppSettingsDialog", () => {
     async (value) => {
       const user = userEvent.setup();
       const { onApply, view } = renderDialog();
+      selectCategory("Storage");
       const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
       await user.clear(input);
       await user.type(input, value);
@@ -171,6 +586,7 @@ describe("AppSettingsDialog", () => {
       expect(saved.queryTempLimitBytes).toBe(Math.round(Number(value) * 1024 ** 3));
       view.unmount();
       const reopened = renderDialog({ initialSettings: saved });
+      selectCategory("Storage");
       expect(screen.getByRole("spinbutton", { name: "Overall managed storage limit" })).toHaveValue(
         Number(value),
       );
@@ -183,6 +599,7 @@ describe("AppSettingsDialog", () => {
     "rejects out-of-range %s GiB before rounding",
     (value) => {
       renderDialog();
+      selectCategory("Storage");
       fireEvent.change(screen.getByRole("spinbutton", { name: "Overall managed storage limit" }), {
         target: { value },
       });
@@ -193,6 +610,7 @@ describe("AppSettingsDialog", () => {
   it("blocks invalid storage limits and exposes the copy settings entry", async () => {
     const user = userEvent.setup();
     const { onApply, onOpenCopySettings } = renderDialog();
+    selectCategory("Storage");
     const input = screen.getByRole("spinbutton", { name: "Overall managed storage limit" });
 
     await user.clear(input);
@@ -201,6 +619,7 @@ describe("AppSettingsDialog", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(onApply).not.toHaveBeenCalled();
 
+    selectCategory("Copy");
     await user.click(screen.getByRole("button", { name: "Copy settings" }));
     expect(onOpenCopySettings).toHaveBeenCalledTimes(1);
   });
@@ -208,6 +627,7 @@ describe("AppSettingsDialog", () => {
   it("applies type-wide display formats while keeping the two-line string contract", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
+    selectCategory("Display");
     await user.selectOptions(screen.getByRole("combobox", { name: "Integer grouping" }), "comma");
     await user.click(screen.getByRole("button", { name: "Show Timestamp details" }));
     await user.selectOptions(
@@ -243,6 +663,7 @@ describe("AppSettingsDialog", () => {
       },
     };
     const { onApply } = renderDialog({ initialSettings });
+    selectCategory("Display");
     await user.click(screen.getByRole("button", { name: "Reset display formats" }));
     expect(screen.getByRole("combobox", { name: "Integer grouping" })).toHaveValue("none");
     expect(screen.getByRole("combobox", { name: "Boolean display format" })).toHaveValue(
@@ -257,6 +678,7 @@ describe("AppSettingsDialog", () => {
   it("uses production previews and hides timestamp time controls for Date only", async () => {
     const user = userEvent.setup();
     renderDialog();
+    selectCategory("Display");
     expect(screen.getByText("2d 03:04:05.123456789", { selector: "output" })).toBeVisible();
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Timestamp preset" }),
@@ -273,6 +695,7 @@ describe("AppSettingsDialog", () => {
   it("keeps all format rows visible and allows only one inline detail panel", async () => {
     const user = userEvent.setup();
     renderDialog();
+    selectCategory("Display");
     const timestamp = screen.getByRole("button", { name: "Show Timestamp details" });
     await user.click(timestamp);
     expect(screen.getByLabelText("Timestamp details")).toBeVisible();
@@ -286,6 +709,7 @@ describe("AppSettingsDialog", () => {
   it("applies inclusive copy limits in cells and MiB", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
+    selectCategory("Copy");
     const cells = screen.getByRole("spinbutton", { name: "Maximum cells" });
     const bytes = screen.getByRole("spinbutton", { name: "Maximum clipboard size" });
 
@@ -305,6 +729,7 @@ describe("AppSettingsDialog", () => {
   it("exposes copy-limit validation and blocks invalid values", async () => {
     const user = userEvent.setup();
     const { onApply } = renderDialog();
+    selectCategory("Copy");
     const cells = screen.getByRole("spinbutton", { name: "Maximum cells" });
     const bytes = screen.getByRole("spinbutton", { name: "Maximum clipboard size" });
 
@@ -380,6 +805,7 @@ describe("AppSettingsDialog", () => {
       onClearCsvCache,
     });
 
+    selectCategory("Storage");
     expect(screen.getByRole("heading", { name: "Query temporary data" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Reusable CSV cache" })).toBeInTheDocument();
     expect(screen.getByText("512.0 MiB · 3 items")).toBeInTheDocument();
@@ -414,6 +840,7 @@ describe("AppSettingsDialog", () => {
       onClearTemp: vi.fn(),
     });
 
+    selectCategory("Storage");
     expect(screen.getByRole("button", { name: "Clearing CSV cache..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear inactive query data" })).toBeDisabled();
     expect(screen.getByText("One inactive cache item was removed.")).toHaveAttribute(
